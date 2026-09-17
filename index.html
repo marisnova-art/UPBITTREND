@@ -485,7 +485,8 @@ th[title]{text-decoration:underline dotted rgba(255,255,255,.25);text-underline-
    CONFIG — 분석 기준값은 여기서 직접 수정할 수 있습니다.
    ========================================================================= */
 const CONFIG = {
-  api: { base: 'https://api.upbit.com/v1', minGapMs: 130, maxGapMs: 1600, workers: 2, timeoutMs: 10000, retries: 4 },
+  // direct: 브라우저 → 업비트 직접 / proxy: 같은 사이트의 Cloudflare Pages Function(/api/upbit) 경유
+  api: { base: 'https://api.upbit.com/v1', proxyBase: '/api/upbit', mode: 'auto', minGapMs: 130, maxGapMs: 1600, workers: 2, timeoutMs: 10000, retries: 4 },
   candles: { daily: 200, weekly: 104, monthly: 60 },
   cache: { weeklyTTLh: 24, monthlyTTLh: 24 },
   minBars: { daily: 130, weekly: 40, monthly: 12 },
@@ -1074,7 +1075,7 @@ const S = {
   progress:{done:0,total:0}, errors:[], updatedAt:null, fromCache:false, dailyDate:null,
   tab:'top', sort:{key:'rank',dir:-1}, page:1, basis:'confirmed', rankMode:'pullback', pickVolOnly:true, pickShowAll:false, search:'', selected:null, detailTok:0, shown:[],
   filters:{ stages:[], statuses:[], risks:[], minTotal:0, minEntry:0, r7min:-100, r7max:300, r30max:1000, minVr:0 },
-  autoTimer:null, net:{ gap:CONFIG.api.minGapMs, lastAt:0, okStreak:0, rateHits:0 }, reqCount:0
+  autoTimer:null, net:{ via:'direct', gap:CONFIG.api.minGapMs, lastAt:0, okStreak:0, rateHits:0 }, reqCount:0
 };
 
 /* =========================================================================
@@ -1088,8 +1089,9 @@ async function rateWait(){
   if(t > now) await sleep(t - now);
 }
 // Fetch JSON with retry / 429 backoff
+const canProxy = () => /^https?:$/.test(location.protocol) && CONFIG.api.mode!=='direct';
 async function api(path){
-  const url = CONFIG.api.base + path;
+  if(CONFIG.api.mode==='proxy' && canProxy()) S.net.via='proxy';
   let lastErr;
   for(let attempt=0; attempt<=CONFIG.api.retries; attempt++){
     if(S.abort) throw new Error('중단됨');
@@ -1097,6 +1099,7 @@ async function api(path){
     const ctrl = new AbortController(); const to = setTimeout(()=>ctrl.abort(), CONFIG.api.timeoutMs);
     try{
       S.reqCount++;
+      const url = (S.net.via==='proxy' ? CONFIG.api.proxyBase : CONFIG.api.base) + path;
       const res = await fetch(url, { signal: ctrl.signal, headers:{ accept:'application/json' } });
       clearTimeout(to);
       if(res.status === 429){
@@ -1107,7 +1110,7 @@ async function api(path){
         continue;
       }
       if(!res.ok){
-        lastErr = new Error('HTTP '+res.status);
+        lastErr = new Error('HTTP '+res.status + (S.net.via==='proxy' && res.status===404 ? ' — /api/upbit 프록시 함수가 배포되지 않았습니다' : ''));
         if(res.status>=400 && res.status<500) break;
         await sleep(600*(attempt+1)); continue;
       }
@@ -1119,7 +1122,11 @@ async function api(path){
       return json;
     }catch(e){
       clearTimeout(to);
-      lastErr = e.name==='AbortError' ? new Error('응답 시간 초과') : new Error('네트워크 오류');
+      if(e.name!=='AbortError' && S.net.via==='direct' && canProxy()){
+        // 직접 호출이 브라우저에서 차단됨(CORS 등) → 같은 도메인 프록시로 전환 후 즉시 재시도
+        S.net.via='proxy'; attempt--; continue;
+      }
+      lastErr = e.name==='AbortError' ? new Error('응답 시간 초과') : new Error(S.net.via==='proxy' ? '프록시 연결 실패' : '네트워크 오류(브라우저 차단 가능성)');
       await sleep(700*(attempt+1));
     }
   }
@@ -1455,7 +1462,7 @@ function renderProgress(){
   $('#progNum').textContent = scanningLike && total ? `${done} / ${total}` : (S.results.size ? `${ok} / ${S.markets.length||all.length}` : '');
   $('#stUpdated').textContent = S.updatedAt ? fmtTime(S.updatedAt)+' KST' : '—';
   const dd=all.find(r=>r.dailyDate); $('#stDaily').textContent = dd ? dd.dailyDate+' (진행 중, KST 09:00 시작)' : '—';
-  $('#stGap').textContent = S.net.gap+'ms'+(S.net.rateHits?` · 제한 감지 ${S.net.rateHits}회`:'');
+  $('#stGap').textContent = (S.net.via==='proxy'?'프록시 경유':'업비트 직접')+' · '+S.net.gap+'ms'+(S.net.rateHits?` · 제한 감지 ${S.net.rateHits}회`:'');
   $('#baseDate').textContent = S.updatedAt ? '기준 '+fmtTime(S.updatedAt) : '기준 데이터 없음';
   const dCount=[...S.store.keys()].filter(k=>k.startsWith('D:')).length;
   $('#stCache').textContent = `캐시: 캔들 ${S.store.size}건 (${DB.ok?'IndexedDB':'메모리'}) · 이번 스캔 요청 ${S.reqCount}회 · 일봉 ${dCount}종목`;
