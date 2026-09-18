@@ -551,7 +551,7 @@ const CONFIG = {
   // 추천: 거래대금 10억 미만·손익비 1.2 미만 제외, 카드 5개
   // 기기 간 동기화(Supabase). 아래 두 값을 채우면 켜지고, 비워두면 지금처럼 이 브라우저에만 저장됩니다.
   // Supabase 대시보드 → Project Settings → API 에서 확인합니다.
-  supabase: { url: 'https://owrtvchfcrpiwielyqvo.supabase.co', anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im93cnR2Y2hmY3JwaXdpZWx5cXZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NzcxODMsImV4cCI6MjEwNTI1MzE4M30.gLS438ACEIb9H_Art1HicRomcZO3CT0ctfpau93fPoc' },
+  supabase: { url: '', anonKey: '' },
   // 보유 종목 실시간 갱신 주기(ms)와 5분봉 설정
   live: { ms: 6000, minuteUnit: 5, minuteCount: 100, chartRefreshMs: 30000 },
   pick: { minTradeValue: 1e9, minRR: 1.2, minWeekRange: 18, count: 5 },
@@ -1478,6 +1478,19 @@ async function sbLogin(email){
   SB.msg = error ? ('전송 실패: '+error.message) : (email+' 로 로그인 링크를 보냈습니다. 메일의 링크를 누르면 이 기기가 연결됩니다.');
   SB.err = !!error; renderSync();
 }
+// 비밀번호 로그인 (Supabase Authentication → Email 의 "Confirm email"을 끄면 메일 없이 바로 됩니다)
+async function sbPassword(email, password, mode){
+  if(!SB.client) return;
+  if(!email || !password){ SB.msg='이메일과 비밀번호를 모두 입력하세요.'; SB.err=true; renderSync(); return; }
+  if(password.length<6){ SB.msg='비밀번호는 6자 이상이어야 합니다.'; SB.err=true; renderSync(); return; }
+  SB.msg = mode==='signup' ? '계정을 만드는 중…' : '로그인 중…'; SB.err=false; renderSync();
+  const fn = mode==='signup' ? SB.client.auth.signUp({ email, password }) : SB.client.auth.signInWithPassword({ email, password });
+  const { data, error } = await fn;
+  if(error){ SB.msg=(mode==='signup'?'가입 실패: ':'로그인 실패: ')+error.message; SB.err=true; }
+  else if(mode==='signup' && !(data && data.session)){ SB.msg='가입은 됐지만 메일 인증이 필요한 설정입니다. Supabase → Authentication → Providers → Email 에서 "Confirm email"을 끄거나, 받은 인증 메일을 확인하세요.'; SB.err=true; }
+  else { SB.msg=''; SB.err=false; }
+  renderSync();
+}
 async function sbLogout(){ if(SB.client) await SB.client.auth.signOut(); SB.msg='로그아웃했습니다. 이 기기에만 저장됩니다.'; SB.err=false; renderSync(); }
 // 서버 → 로컬. first=true 이면 로컬 값과 합치고(첫 로그인 이전 데이터 보존), 이후에는 서버 기준으로 맞춥니다.
 async function sbPull(first){
@@ -1543,8 +1556,9 @@ function renderSync(){
   }
   if(!SB.on){ box.innerHTML=`<div class="sync-msg ${SB.err?'err':''}">${esc(SB.msg||'동기화 준비 중…')}</div>`; tag.textContent=''; return; }
   if(!SB.user){
-    box.innerHTML=`<div class="sync-form"><input id="syncEmail" type="email" placeholder="이메일 주소" autocomplete="email"><button class="btn" id="syncLogin">로그인 링크 받기</button></div>
-      <div class="sync-msg ${SB.err?'err':''}">${esc(SB.msg||'로그인하면 보유 종목과 즐겨찾기가 기기 간에 동기화됩니다.')}</div>`;
+    box.innerHTML=`<div class="sync-form"><input id="syncEmail" type="email" placeholder="이메일 주소" autocomplete="email"><input id="syncPw" type="password" placeholder="비밀번호 (6자 이상)" autocomplete="current-password"></div>
+      <div class="sync-form"><button class="btn" id="syncPwLogin">로그인</button><button class="btn" id="syncSignup">가입</button><button class="btn-quiet" id="syncLogin">메일 링크로 로그인</button></div>
+      <div class="sync-msg ${SB.err?'err':''}">${esc(SB.msg||'같은 계정으로 로그인한 기기끼리 보유 종목과 즐겨찾기가 동기화됩니다. 메일이 오지 않으면 비밀번호 방식을 쓰세요.')}</div>`;
     tag.textContent='이 기기에만 저장';
     return;
   }
@@ -2428,10 +2442,18 @@ function init(){
   // 즐겨찾기 별: 어디에 있든 행 클릭보다 먼저 처리
   document.addEventListener('click', e=>{ const b=e.target.closest('[data-fav]'); if(!b) return; e.stopPropagation(); e.preventDefault(); toggleFav(b.dataset.fav); }, true);
   $('#syncBox').onclick=e=>{
-    if(e.target.id==='syncLogin'){ const em=$('#syncEmail').value.trim(); if(!em){ alert('이메일 주소를 입력하세요.'); return; } sbLogin(em); }
+    const em=()=>($('#syncEmail')||{value:''}).value.trim(), pw=()=>($('#syncPw')||{value:''}).value;
+    if(e.target.id==='syncLogin'){ if(!em()){ alert('이메일 주소를 입력하세요.'); return; } sbLogin(em()); }
+    if(e.target.id==='syncPwLogin') sbPassword(em(), pw(), 'login');
+    if(e.target.id==='syncSignup') sbPassword(em(), pw(), 'signup');
     if(e.target.id==='syncLogout') sbLogout();
   };
-  $('#syncBox').onkeydown=e=>{ if(e.key==='Enter' && e.target.id==='syncEmail'){ e.preventDefault(); const em=e.target.value.trim(); if(em) sbLogin(em); } };
+  $('#syncBox').onkeydown=e=>{
+    if(e.key!=='Enter' || !(e.target.id==='syncEmail' || e.target.id==='syncPw')) return;
+    e.preventDefault();
+    const em=($('#syncEmail')||{value:''}).value.trim(), pw=($('#syncPw')||{value:''}).value;
+    if(pw) sbPassword(em, pw, 'login'); else if(em) sbLogin(em);
+  };
   $('#holdAddBtn').onclick=()=>{ const f=$('#holdForm'); f.classList.contains('show') ? closeHoldForm() : openHoldForm(null); };
   $('#hfCancel').onclick=closeHoldForm;
   $('#holdForm').onsubmit=e=>{
