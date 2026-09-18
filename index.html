@@ -79,11 +79,11 @@ small{font-size:var(--fs-3)}
 
 /* 배지: 의미별 톤 4가지 */
 .badge{display:inline-flex;align-items:center;height:22px;padding:0 var(--s2);border-radius:var(--r-2);font-size:var(--fs-3);font-weight:600;white-space:nowrap;border:1px solid var(--line-2);color:var(--text-2)}
-.badge.t-mute{color:var(--text-3);border-color:var(--line)}
-.badge.t-plain{color:var(--text);border-color:var(--line-2)}
-.badge.t-pos{color:var(--primary);border-color:rgba(214,255,30,.35)}
+.badge.t-mute{color:var(--text-3);border-color:var(--line);background:rgba(255,255,255,.03)}
+.badge.t-plain{color:var(--text);border-color:var(--line-2);background:rgba(255,255,255,.06)}
+.badge.t-pos{color:var(--primary);border-color:rgba(214,255,30,.35);background:rgba(214,255,30,.12)}
 .badge.t-strong{color:#000;background:var(--primary);border-color:var(--primary)}
-.badge.t-neg{color:var(--accent);border-color:rgba(255,77,46,.45)}
+.badge.t-neg{color:var(--accent);border-color:rgba(255,77,46,.45);background:rgba(255,77,46,.14)}
 .badge + .badge{margin-left:var(--s1)}
 
 /* ---------- Layout ---------- */
@@ -98,7 +98,9 @@ main{max-width:1480px;margin:0 auto;padding:var(--s4) var(--s5) var(--s6)}
 .section{background:var(--surface);border-radius:var(--r-1);padding:var(--s5);margin-bottom:var(--s4);min-width:0}
 .sec-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s3);flex-wrap:wrap;margin-bottom:var(--s4)}
 .sec-head>div:first-child{flex:1 1 360px;min-width:0}
-.sec-head h2{font-size:var(--fs-1);font-weight:700}
+.sec-head h2{font-size:var(--fs-1);font-weight:700;display:flex;align-items:center;gap:var(--s2)}
+.sec-head h2::before{content:'';width:3px;height:15px;border-radius:2px;background:var(--primary)}
+.fold>summary h2::before{background:var(--text-3)}
 .sec-sub{max-width:760px}
 .tool-row{display:flex;gap:var(--s2);align-items:center}
 .sec-sub{font-size:var(--fs-2);color:var(--text-2);margin-top:var(--s1)}
@@ -139,8 +141,11 @@ main{max-width:1480px;margin:0 auto;padding:var(--s4) var(--s5) var(--s6)}
 
 /* ---------- 추천 ---------- */
 .pick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:var(--s3)}
-.pick{background:var(--surface-2);border:1px solid transparent;border-radius:var(--r-1);padding:var(--s4);cursor:pointer;display:flex;flex-direction:column;gap:var(--s3);min-width:0}
-.pick:hover{border-color:var(--line-2)}
+.pick{background:linear-gradient(180deg,#1c1c1c,#141414);border:1px solid var(--line);border-left:3px solid var(--line-2);border-radius:var(--r-1);padding:var(--s4);cursor:pointer;display:flex;flex-direction:column;gap:var(--s3);min-width:0;transition:border-color .15s,transform .15s}
+.pick:hover{border-color:var(--line-2);transform:translateY(-1px)}
+.pick.tone-pos{border-left-color:var(--primary);background:linear-gradient(180deg,rgba(214,255,30,.07),#141414 60%)}
+.pick.tone-neg{border-left-color:var(--accent);background:linear-gradient(180deg,rgba(255,77,46,.08),#141414 60%)}
+.pick.tone-plain{border-left-color:var(--secondary);background:linear-gradient(180deg,rgba(138,147,245,.07),#141414 60%)}
 .pick.sel{border-color:var(--primary)}
 .pick.wait .pick-verdict{color:var(--text-2)!important}
 .pick-top{display:flex;align-items:center;gap:var(--s2)}
@@ -164,7 +169,9 @@ main{max-width:1480px;margin:0 auto;padding:var(--s4) var(--s5) var(--s6)}
 .up{color:var(--primary)} .down{color:var(--accent)}
 .hold-sum{display:flex;flex-wrap:wrap;gap:var(--s3) var(--s5);margin-bottom:var(--s4)}
 .hold-sum .k{font-size:var(--fs-3);color:var(--text-3)}
+.hold-sum{padding:var(--s3) var(--s4);border-radius:var(--r-2);background:linear-gradient(90deg,rgba(214,255,30,.06),rgba(255,255,255,.02))}
 .hold-sum .v{font-size:var(--fs-1);font-weight:700}
+.hold-sum.loss{background:linear-gradient(90deg,rgba(255,77,46,.07),rgba(255,255,255,.02))}
 .hold-form{display:none;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--s3);align-items:end;padding:var(--s4);margin-bottom:var(--s4);background:var(--surface-2);border-radius:var(--r-2)}
 .hold-form.show{display:grid}
 .hold-form label{display:grid;gap:var(--s1);font-size:var(--fs-3);color:var(--text-3)}
@@ -209,13 +216,13 @@ table.res th.r,table.res td.r{text-align:right}
 table.res th .ar{margin-left:var(--s1)}
 table.res td{padding:var(--s3) var(--s2);border-bottom:1px solid var(--line);vertical-align:middle}
 table.res tbody tr{cursor:pointer}
-table.res tbody tr:hover{background:rgba(255,255,255,.03)}
+table.res tbody tr:hover{background:rgba(214,255,30,.04)}
 table.res tbody tr.sel{background:rgba(214,255,30,.05);box-shadow:inset 2px 0 0 var(--primary)}
 .rank{font-weight:600;color:var(--text-3)}
 .rank.top{color:var(--text)}
 .score-big{font-weight:700}
 .mini{display:flex;align-items:center;gap:var(--s2)}
-.mini .trk{width:44px;height:4px;border-radius:2px;background:#2c2c2c;overflow:hidden}
+.mini .trk{width:44px;height:5px;border-radius:3px;background:#2c2c2c;overflow:hidden}
 .mini .trk i{display:block;height:100%}
 .loc-sub,.sub-note{font-size:var(--fs-3);color:var(--text-3);white-space:nowrap}
 .reason{max-width:320px;color:var(--text-2);font-size:var(--fs-3);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -236,7 +243,7 @@ table.res tbody tr.sel{background:rgba(214,255,30,.05);box-shadow:inset 2px 0 0 
 .ov-grid{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,8fr);gap:var(--s5)}
 .ov-list{display:grid;gap:0}
 .ov-item{display:flex;justify-content:space-between;align-items:center;height:40px;border:0;border-bottom:1px solid var(--line);background:transparent;padding:0;text-align:left;color:var(--text-2)}
-button.ov-item:hover{color:var(--text)}
+button.ov-item:hover{color:var(--text);background:rgba(214,255,30,.05)}
 .ov-item b{color:var(--text);font-weight:600}
 .ov-item.static{cursor:default}
 .gauge{margin-top:var(--s4)}
@@ -289,7 +296,7 @@ body.dopen table.res .hd{display:none}
 .sbar{margin-top:var(--s3)}
 .sbar .top{display:flex;justify-content:space-between;font-size:var(--fs-3);margin-bottom:var(--s1);color:var(--text-2)}
 .sbar .trk,.part-row .trk{height:4px;border-radius:2px;background:#2c2c2c;overflow:hidden}
-.sbar .trk i,.part-row .trk i{display:block;height:100%;background:var(--text-2)!important}
+.sbar .trk i,.part-row .trk i{display:block;height:100%}
 .lv-row{display:flex;justify-content:space-between;align-items:baseline;padding:var(--s2) 0;border-bottom:1px solid var(--line);gap:var(--s3)}
 .lv-row span{color:var(--text-2);font-size:var(--fs-3)}
 .lv-row b{font-weight:600;text-align:right}
@@ -465,6 +472,8 @@ body.dopen table.res .hd{display:none}
           <option value="entry">타이밍 점수</option>
           <option value="r7">7일 상승률</option>
           <option value="r30">30일 상승률</option>
+          <option value="chg">전일대비</option>
+          <option value="tv">거래대금(24h)</option>
           <option value="vr">거래량 증가율</option>
           <option value="risk">위험도</option>
         </select>
@@ -535,7 +544,7 @@ const CONFIG = {
   overheat: { extendedP: 6.5, statusP: 5 },
   // 추천: 거래대금 10억 미만·손익비 1.2 미만 제외, 카드 5개
   // 보유 종목 실시간 갱신 주기(ms)와 5분봉 설정
-  live: { ms: 6000, minuteUnit: 5, minuteCount: 100, chartRefreshMs: 60000 },
+  live: { ms: 6000, minuteUnit: 5, minuteCount: 100, chartRefreshMs: 30000 },
   pick: { minTradeValue: 1e9, minRR: 1.2, minWeekRange: 18, count: 5 },
   ui: { throttleMs: 1500, topN: 10, pageSize: 60 }
 };
@@ -1419,7 +1428,9 @@ function holdingCalc(h){
   const tk=S.tickers.get(h.market), r=S.results.get(h.market);
   const price = tk ? tk.trade_price : (r ? (r.livePrice ?? r.price) : null);
   const cost=h.avg*h.qty, value = price!=null ? price*h.qty : null;
-  return { price, cost, value, pl: value!=null ? value-cost : null, rate: (value!=null && cost) ? (value/cost-1)*100 : null, r, tk };
+  return { price, cost, value, pl: value!=null ? value-cost : null, rate: (value!=null && cost) ? (value/cost-1)*100 : null, r, tk,
+    chg: tk ? tk.signed_change_rate*100 : (r ? r.change24 : null),
+    tv: tk ? tk.acc_trade_price_24h : (r ? r.tradeValue : null) };
 }
 
 /* =========================================================================
@@ -1490,6 +1501,7 @@ function sortVal(r, key){
   switch(key){
     case 'total': return r.total; case 'trend': return r.trendScore; case 'entry': return r.entryScore; case 'loc': return r.loc??-1;
     case 'r7': return r.r7??-1e6; case 'r30': return r.r30??-1e6; case 'vr': return r.vr20d??-1e6;
+    case 'chg': return r.change24??-1e6; case 'tv': return r.tradeValue??-1;
     case 'risk': return r.riskPts; case 'pick': return A.pickScore(r,{relaxed:true})??-1;
     default: return S.tab==='pick' ? (A.pickScore(r,{volOnly:S.pickVolOnly})??-1) : A.rankScore(r, S.rankMode);
   }
@@ -1641,7 +1653,8 @@ function roundRect(ctx,x,y,w,h,r){ r=Math.min(r,h/2,w/2); ctx.beginPath(); ctx.m
 const COLS = [
   {k:'rank', l:'순위'}, {k:null, l:'코인'}, {k:null, l:'현재가', r:1, hd:1}, {k:'total', l:'총점', r:1, hd:1, t:'월봉 25 + 주봉 35 + 일봉 40 = 100점'},
   {k:'trend', l:'추세', t:'월봉·주봉으로 본 상승 흐름의 강도 (0~100)'}, {k:'entry', l:'타이밍', t:'일봉으로 본 지금 가격이 살 자리로 적합한 정도 (0~100)'}, {k:'loc', l:'가격 위치', t:'지지선(매수 검토가)에 가까울수록 높음. 100 = 매수 검토가 안'},
-  {k:null, l:'단계', t:'지금 상승 사이클의 어디쯤인지'}, {k:null, l:'상태', t:'지금 가격에서 해야 할 행동'}, {k:'r7', l:'7일', r:1, hd:1}, {k:'r30', l:'30일', r:1},
+  {k:null, l:'단계', t:'지금 상승 사이클의 어디쯤인지'}, {k:null, l:'상태', t:'지금 가격에서 해야 할 행동'}, {k:'chg', l:'전일대비', r:1, t:'업비트 전일 종가 대비 등락률 (마지막 스캔 기준, 보유 종목은 실시간)'}, {k:'r7', l:'7일', r:1, hd:1}, {k:'r30', l:'30일', r:1},
+  {k:'tv', l:'거래대금(24h)', r:1, t:'최근 24시간 누적 거래대금'},
   {k:'vr', l:'거래량', r:1, hd:1, t:'어제 거래량 ÷ 최근 20일 평균. 1.0x보다 크면 평소보다 많음'}, {k:null, l:'20일선 거리', r:1, hd:1, t:'현재가가 20일 이동평균선보다 몇 % 위/아래인지'}, {k:'risk', l:'위험도'}, {k:null, l:'핵심 이유', hd:1}
 ];
 function renderTable(){
@@ -1650,8 +1663,8 @@ function renderTable(){
   const list=currentList();
   setTblTitle(q ? `검색 "${S.search.trim()}" — ${list.length}건 · 탭과 필터와 관계없이 전체 종목에서 찾습니다` : TABS.find(t=>t.id===S.tab).title);
   const body=$('#tbody');
-  if(!S.results.size && !q && S.tab!=='hold' && S.tab!=='fav'){ S.shown=[]; body.innerHTML=`<tr><td colspan="15"><div class="empty">아직 분석 결과가 없습니다. 지금 스캔을 누르면 Upbit KRW 마켓 전체를 월봉·주봉·일봉으로 순차 분석합니다. 첫 스캔은 캔들 수집 때문에 수 분이 걸리고, 이후에는 캐시를 재사용해 훨씬 빠릅니다.</div></td></tr>`; $('#moreWrap').innerHTML=''; return; }
-  if(!list.length){ S.shown=[]; body.innerHTML=`<tr><td colspan="15"><div class="empty">${q?'검색어와 일치하는 KRW 종목이 없습니다. 한글 이름이나 심볼(예: BTC)로 검색하세요.':(S.tab==='pick' ? '오늘은 추천 기준을 모두 통과한 종목이 없습니다. 위 카드의 "대기" 종목이나 매수 검토 후보·바닥 관찰 탭을 확인하세요.' : '현재 탭과 필터 조건에 맞는 종목이 없습니다. 필터를 완화하거나 다른 탭을 확인하세요.')}</div></td></tr>`; $('#moreWrap').innerHTML=''; return; }
+  if(!S.results.size && !q && S.tab!=='hold' && S.tab!=='fav'){ S.shown=[]; body.innerHTML=`<tr><td colspan="17"><div class="empty">아직 분석 결과가 없습니다. 지금 스캔을 누르면 Upbit KRW 마켓 전체를 월봉·주봉·일봉으로 순차 분석합니다. 첫 스캔은 캔들 수집 때문에 수 분이 걸리고, 이후에는 캐시를 재사용해 훨씬 빠릅니다.</div></td></tr>`; $('#moreWrap').innerHTML=''; return; }
+  if(!list.length){ S.shown=[]; body.innerHTML=`<tr><td colspan="17"><div class="empty">${q?'검색어와 일치하는 KRW 종목이 없습니다. 한글 이름이나 심볼(예: BTC)로 검색하세요.':(S.tab==='pick' ? '오늘은 추천 기준을 모두 통과한 종목이 없습니다. 위 카드의 "대기" 종목이나 매수 검토 후보·바닥 관찰 탭을 확인하세요.' : '현재 탭과 필터 조건에 맞는 종목이 없습니다. 필터를 완화하거나 다른 탭을 확인하세요.')}</div></td></tr>`; $('#moreWrap').innerHTML=''; return; }
   const shown = (S.tab==='top' && !q) ? list : list.slice(0, S.page*CONFIG.ui.pageSize);
   S.shown=shown;
   body.innerHTML = shown.map((r,i)=>rowHTML(r,i)).join('');
@@ -1670,25 +1683,27 @@ function rowHTML(r, i){
     const msg = r.error ? '데이터 요청 실패: '+esc(r.error) : r.notScanned ? '아직 스캔되지 않았습니다. 클릭하면 이 종목만 개별 분석합니다.' : `분석에 필요한 캔들이 부족합니다 (일 ${r.bars?.d||0} · 주 ${r.bars?.w||0} · 월 ${r.bars?.m||0}).`;
     const st = r.error ? badge('데이터 오류','#ff4d2e') : r.notScanned ? badge('미분석','#8c8c8c') : badge('데이터 부족','#8c8c8c');
     return `<tr data-mk="${r.market}" class="${sel}"><td class="c-rank" data-l="순위"><span class="rank">—</span></td><td class="c-coin" data-l="코인">${coinCell(r)}</td><td class="r num hd" data-l="현재가">${fmtPrice(shownPrice)}</td>
-      <td class="r hd" data-l="총점">—</td><td data-l="추세">—</td><td data-l="타이밍">—</td><td data-l="가격 위치">—</td><td data-l="Stage">${bStage('UNKNOWN')}</td>
-      <td data-l="상태">${st}</td><td class="r hd" data-l="7D">—</td><td class="r" data-l="30D">—</td><td class="r hd" data-l="거래량">—</td><td class="r hd" data-l="MA20">—</td><td data-l="Risk">—</td>
+      <td class="r hd" data-l="총점">—</td><td data-l="추세">—</td><td data-l="타이밍">—</td><td data-l="가격 위치">—</td><td data-l="단계">${bStage('UNKNOWN')}</td>
+      <td data-l="상태">${st}</td><td class="r" data-l="전일대비">—</td><td class="r hd" data-l="7일">—</td><td class="r" data-l="30일">—</td><td class="r" data-l="거래대금(24h)">—</td><td class="r hd" data-l="거래량">—</td><td class="r hd" data-l="20일선 거리">—</td><td data-l="위험도">—</td>
       <td class="c-reason hd" data-l="핵심 이유"><div class="reason">${msg}</div></td></tr>`;
   }
   const mini=(v,col)=>`<div class="mini"><b class="num">${v}</b><div class="trk"><i style="width:${v}%;background:${col}"></i></div></div>`;
-  const loc = r.loc==null ? 0 : r.loc, locCol = loc>=60?'#d6ff1e':'#6b6b6b';
+  const loc = r.loc==null ? 0 : r.loc, locCol = loc>=60?'#d6ff1e':loc>=40?'#8a93f5':'#6b6b6b';
   const zd = r.zoneDist==null ? '—' : r.zoneDist<=0 ? '매수 검토가 안·아래' : '검토가보다 +'+r.zoneDist.toFixed(1)+'%';
   return `<tr data-mk="${r.market}" class="${sel}">
     <td class="c-rank" data-l="순위"><span class="rank ${i<3?'top':''} num">${i+1}</span></td>
     <td class="c-coin" data-l="코인">${coinCell(r)}</td>
     <td class="r num hd" data-l="현재가">${fmtPrice(shownPrice)}</td>
     <td class="r hd" data-l="총점"><span class="score-big num">${r.total}</span></td>
-    <td data-l="추세">${mini(r.trendScore,'#a3a3a3')}</td>
-    <td data-l="타이밍">${mini(r.entryScore,'#a3a3a3')}</td>
+    <td data-l="추세">${mini(r.trendScore,'#d6ff1e')}</td>
+    <td data-l="타이밍">${mini(r.entryScore,'#8a93f5')}</td>
     <td data-l="가격 위치">${r.loc==null?'—':mini(loc,locCol)}<div class="loc-sub num">${zd}</div></td>
     <td data-l="단계">${bStage(r.stage)}</td>
     <td data-l="상태">${bStatus(r.status)}</td>
+    <td class="r num ${pcCls(r.change24)}" data-l="전일대비">${fmtPct(r.change24,2)}</td>
     <td class="r num hd ${pcCls(r.r7)}" data-l="7일">${fmtPct(r.r7)}</td>
     <td class="r num ${pcCls(r.r30)}" data-l="30일">${fmtPct(r.r30)}</td>
+    <td class="r num" data-l="거래대금(24h)">${r.tradeValue==null?'—':fmtKRW(r.tradeValue)+'원'}</td>
     <td class="r num hd" data-l="거래량">${fmtX(r.vr20d)}</td>
     <td class="r num hd ${pcCls(r.gap20)}" data-l="20일선 거리">${fmtPct(r.gap20)}</td>
     <td data-l="위험도">${bRisk(r.risk)}${r.highVolTrend?'<div class="sub-note">고변동 추세</div>':''}</td>
@@ -1795,32 +1810,40 @@ function renderHoldings(){
   let cost=0, value=0, ok=true;
   const cards=S.holdings.map(h=>{ const c=holdingCalc(h); cost+=c.cost; if(c.value!=null) value+=c.value; else ok=false; return holdCard(h,c); });
   const pl=value-cost, rate=cost? (value/cost-1)*100 : 0, cls=pl>=0?'up':'down';
+  $('#holdSum').className = 'hold-sum'+(pl<0?' loss':'');
   sum.innerHTML = `
-    <div><div class="k">총 매수금액</div><div class="v num">${fmtKRW(cost)}원</div></div>
-    <div><div class="k">평가금액</div><div class="v num">${ok?fmtKRW(value)+'원':'—'}</div></div>
-    <div><div class="k">평가손익</div><div class="v num ${cls}">${ok?(pl>=0?'+':'-')+fmtKRW(Math.abs(pl))+'원':'—'}</div></div>
+    <div><div class="k">총 매수금액</div><div class="v num">${fmtWon(cost)}</div></div>
+    <div><div class="k">평가금액</div><div class="v num">${ok?fmtWon(value):'—'}</div></div>
+    <div><div class="k">평가손익</div><div class="v num ${cls}">${ok?fmtWonSigned(pl):'—'}</div></div>
     <div><div class="k">총 수익률</div><div class="v num ${cls}">${ok?fmtPct(rate,2):'—'}</div></div>`;
   grid.innerHTML = cards.join('');
   $('#holdLive').textContent = S.live.at ? '실시간 ' + new Date(S.live.at).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour12:false}) : '실시간 연결 중…';
 }
 const fmtQty = q => q.toLocaleString('ko-KR',{maximumFractionDigits:8});
+// 보유 금액은 반올림 없이 원 단위까지 표시
+const fmtWon = v => v==null ? '—' : Math.round(v).toLocaleString('ko-KR')+'원';
+const fmtWonSigned = v => v==null ? '—' : (v>=0?'+':'-')+Math.round(Math.abs(v)).toLocaleString('ko-KR')+'원';
 function holdCard(h, c){
   const r=c.r, cls=c.pl==null?'':c.pl>=0?'up':'down';
   const info=r||{market:h.market, name:(S.marketInfo.get(h.market)||{}).name||h.market};
   const plan = (r && !r.insufficient && !r.error && c.price)
     ? `${bStage(r.stage)}${bStatus(r.status)} · 손절 기준 ${fmtPrice(r.levels.invalid)} (${fmtPct((r.levels.invalid/c.price-1)*100,1)})${r.levels.breakout?` · 1차 목표 ${fmtPrice(r.levels.breakout.v)} (${fmtPct((r.levels.breakout.v/c.price-1)*100,1)})`:''}`
     : '아직 분석 전입니다. 지금 스캔을 누르면 단계·손절 기준이 함께 표시됩니다.';
-  return `<div class="pick hold ${h.market===S.selected?'sel':''}" data-mk="${h.market}" tabindex="0">
+  return `<div class="pick hold ${c.pl==null?'tone-plain':c.pl>=0?'tone-pos':'tone-neg'} ${h.market===S.selected?'sel':''}" data-mk="${h.market}" tabindex="0">
     <div class="pick-top">${coinCell(info)}<button class="btn-quiet" data-edit="${h.market}">수정</button><button class="btn-quiet" data-del="${h.market}" aria-label="삭제">✕</button></div>
     <div>
       <div class="pick-verdict num ${cls}">${c.rate==null?'—':fmtPct(c.rate,2)}</div>
-      <div class="pick-price num">${fmtPrice(c.price)}<small class="${cls}">${c.pl==null?'':(c.pl>=0?'+':'-')+fmtKRW(Math.abs(c.pl))+'원'}</small></div>
+      <div class="pick-price num">${fmtPrice(c.price)}<small class="${cls}">${c.pl==null?'':fmtWonSigned(c.pl)}</small></div>
     </div>
     <dl class="pick-stats">
       <div><dt>매수 평단가</dt><dd class="num">${fmtPrice(h.avg)}</dd></div>
       <div><dt>보유 수량</dt><dd class="num">${fmtQty(h.qty)}</dd></div>
-      <div><dt>매수금액</dt><dd class="num">${fmtKRW(c.cost)}원</dd></div>
-      <div><dt>평가금액</dt><dd class="num">${c.value==null?'—':fmtKRW(c.value)+'원'}</dd></div>
+      <div><dt>매수금액</dt><dd class="num">${fmtWon(c.cost)}</dd></div>
+      <div><dt>평가금액</dt><dd class="num">${fmtWon(c.value)}</dd></div>
+    </dl>
+    <dl class="pick-stats" style="border-top:1px solid var(--line);padding-top:var(--s2)">
+      <div><dt>전일대비</dt><dd class="num ${c.chg==null?'':c.chg>=0?'up':'down'}">${fmtPct(c.chg,2)}</dd></div>
+      <div><dt>거래대금(24h)</dt><dd class="num">${c.tv==null?'—':fmtKRW(c.tv)+'원'}</dd></div>
     </dl>
     <div class="pick-sub">${plan}${r&&r.spark?`<div style="margin-top:var(--s2)">${sparkSVG(r.spark,140,28)}</div>`:''}</div>
   </div>`;
@@ -1859,13 +1882,19 @@ async function livePoll(){
     const arr=await api('/ticker?markets='+mks.join(','));
     arr.forEach(t=>S.tickers.set(t.market,t));
     S.live.at=Date.now();
-    renderHoldings(); renderHoldBlock();
+    renderHoldings(); renderHoldBlock(); patchLiveChart();
   }catch(e){ $('#holdLive').textContent='실시간 연결 실패 — 다시 시도 중'; }
   const mk=S.selected;
   if(mk && isHeld(mk) && document.body.classList.contains('dopen')){
     try{ const ob=await api('/orderbook?markets='+mk); S.live.ob=ob[0]; renderOrderbook(); }catch(e){}
-    if(Date.now()-S.live.chartAt > CONFIG.live.chartRefreshMs) loadLiveChart(mk);
+    if(Date.now()-S.live.chartAt > CONFIG.live.chartRefreshMs) await loadLiveChart(mk);
+    else patchLiveChart();
   }
+  // 보유 종목은 목록의 현재가·전일대비·거래대금도 최신으로
+  let touched=false;
+  for(const h of S.holdings){ const t=S.tickers.get(h.market), r=S.results.get(h.market);
+    if(t && r){ r.livePrice=t.trade_price; r.change24=t.signed_change_rate*100; r.tradeValue=t.acc_trade_price_24h; touched=true; } }
+  if(touched && (S.tab==='hold' || S.tab==='fav')) renderTable();
 }
 function startLive(){ if(S.live.timer) clearInterval(S.live.timer); S.live.timer=setInterval(livePoll, CONFIG.live.ms); livePoll(); }
 // 상세 패널 안의 보유 현황 블록
@@ -1886,11 +1915,13 @@ function renderHoldBlock(){
   const h=heldOf(mk), c=holdingCalc(h), cls=c.pl==null?'':c.pl>=0?'up':'down';
   box.innerHTML = `<div class="rk-grid">
     <div><div class="k">수익률</div><div class="v num ${cls}">${c.rate==null?'—':fmtPct(c.rate,2)}</div></div>
-    <div><div class="k">평가손익</div><div class="v num ${cls}">${c.pl==null?'—':(c.pl>=0?'+':'-')+fmtKRW(Math.abs(c.pl))+'원'}</div></div>
+    <div><div class="k">평가손익</div><div class="v num ${cls}">${fmtWonSigned(c.pl)}</div></div>
     <div><div class="k">매수 평단가</div><div class="v num">${fmtPrice(h.avg)}</div></div>
     <div><div class="k">현재가</div><div class="v num">${fmtPrice(c.price)}</div></div>
     <div><div class="k">보유 수량</div><div class="v num">${fmtQty(h.qty)}</div></div>
-    <div><div class="k">매수금액 → 평가금액</div><div class="v num">${fmtKRW(c.cost)} → ${c.value==null?'—':fmtKRW(c.value)}원</div></div>
+    <div><div class="k">전일대비</div><div class="v num ${c.chg==null?'':c.chg>=0?'up':'down'}">${fmtPct(c.chg,2)}</div></div>
+    <div><div class="k">거래대금(24h)</div><div class="v num">${c.tv==null?'—':fmtKRW(c.tv)+'원'}</div></div>
+    <div><div class="k">매수금액 → 평가금액</div><div class="v num">${fmtWon(c.cost)} → ${fmtWon(c.value)}</div></div>
   </div>
   <div class="lv-note">업비트 거래 수수료(기본 0.05%)와 세금은 반영하지 않은 단순 계산입니다.</div>`;
 }
@@ -1906,6 +1937,14 @@ function renderOrderbook(){
   box.innerHTML = units.slice().reverse().map(u=>row(u.ask_price,u.ask_size,'ask')).join('')
     + `<div class="ob-mid"><span>매도 잔량 ${ob.total_ask_size.toFixed(2)}</span><span>스프레드 ${spread==null?'—':spread.toFixed(2)+'%'}</span><span>매수 잔량 ${ob.total_bid_size.toFixed(2)}</span></div>`
     + units.map(u=>row(u.bid_price,u.bid_size,'bid')).join('');
+}
+// 갱신된 현재가를 마지막 5분봉에 즉시 반영 (재요청 없이 실시간 표시)
+function patchLiveChart(){
+  const cv=document.getElementById('chLive'); if(!cv || !cv._cfg || !cv._cfg.candles.length) return;
+  const tk=S.tickers.get(S.selected); if(!tk) return;
+  const cs=cv._cfg.candles, last=cs[cs.length-1];
+  last.c=tk.trade_price; last.h=Math.max(last.h, tk.trade_price); last.l=Math.min(last.l, tk.trade_price);
+  drawChart(cv, cv._cfg);
 }
 async function loadLiveChart(mk){
   const cv=document.getElementById('chLive'); if(!cv) return;
@@ -1939,7 +1978,8 @@ function renderPicks(){
 function pickCard(r, sc, i, fallback){
   const u=r.up, v=A.verdict(r), price=r.livePrice??r.price, pf=t=>t?fmtPct((t/price-1)*100):'';
   const riskNote = (r.risk==='HIGH'||r.risk==='EXTREME') ? `<div style="margin-top:var(--s2)">${bRisk(r.risk,'위험도 ')}</div>` : '';
-  return `<div class="pick ${fallback?'wait':''} ${r.market===S.selected?'sel':''}" data-mk="${r.market}" tabindex="0">
+  const tone = fallback ? 'tone-plain' : (r.status==='EXTENDED' ? 'tone-neg' : (r.loc??0)>=60 ? 'tone-pos' : 'tone-plain');
+  return `<div class="pick ${tone} ${fallback?'wait':''} ${r.market===S.selected?'sel':''}" data-mk="${r.market}" tabindex="0">
     <div class="pick-top"><span class="pick-rank num">${i+1}</span>${coinCell(r)}<span class="pick-score num" title="추천 점수">${fallback?'대기':'추천 '+Math.round(sc)}</span></div>
     <div>
       <div class="pick-verdict" style="color:${v.c}">${esc(v.t)}</div>
@@ -1951,7 +1991,7 @@ function pickCard(r, sc, i, fallback){
       <div><dt>1차 목표</dt><dd class="num">${u.t1?fmtPrice(u.t1)+'<small>'+pf(u.t1)+'</small>':'신고가권'}</dd></div>
       <div><dt>손익비</dt><dd class="num">${u.rr!=null?'1 : '+u.rr.toFixed(1):'—'}</dd></div>
     </dl>
-    <div class="pick-sub">2차 목표 ${u.t2?fmtPrice(u.t2)+' ('+pf(u.t2)+')':'—'} · 주간 변동폭 ${u.weekRange!=null?u.weekRange.toFixed(0)+'%':'—'}<br>과거 비슷한 자리에서 7일 내 +20%: ${u.setupN>=5?`${u.setupHits} / ${u.setupN}회 (${(u.setupHit20*100).toFixed(0)}%)`:'표본 부족'}${riskNote}</div>
+    <div class="pick-sub">전일대비 <span class="${pcCls(r.change24)}">${fmtPct(r.change24,2)}</span> · 거래대금 ${r.tradeValue==null?'—':fmtKRW(r.tradeValue)+'원'}<br>2차 목표 ${u.t2?fmtPrice(u.t2)+' ('+pf(u.t2)+')':'—'} · 주간 변동폭 ${u.weekRange!=null?u.weekRange.toFixed(0)+'%':'—'}<br>과거 비슷한 자리에서 7일 내 +20%: ${u.setupN>=5?`${u.setupHits} / ${u.setupN}회 (${(u.setupHit20*100).toFixed(0)}%)`:'표본 부족'}${riskNote}</div>
   </div>`;
 }
 function renderGuide(){
@@ -2011,7 +2051,7 @@ function renderDetail({res:r, internals:I, D, W, M}){
       <div class="d-card">
         <h4>종합 점수<span>규칙 기반 분석 · 매매 명령 아님</span></h4>
         <div class="total-big num">${r.total}<small> / 100</small></div>
-        <div class="sbar"><div class="top"><span>장기 사이클 (월봉)</span><b class="num">${r.longS} / 25</b></div><div class="trk"><i style="width:${r.longS/25*100}%;background:linear-gradient(90deg,#8a93f5,#8a8a8a)"></i></div></div>
+        <div class="sbar"><div class="top"><span>장기 사이클 (월봉)</span><b class="num">${r.longS} / 25</b></div><div class="trk"><i style="width:${r.longS/25*100}%;background:#8a8a8a"></i></div></div>
         <div class="sbar"><div class="top"><span>상승 추세 (주봉)</span><b class="num">${r.trendPts} / 35</b></div><div class="trk"><i style="width:${r.trendPts/35*100}%;background:#d6ff1e"></i></div></div>
         <div class="sbar"><div class="top"><span>매수 타이밍 (일봉)</span><b class="num">${r.entryPts} / 40</b></div><div class="trk"><i style="width:${r.entryPts/40*100}%;background:#8a93f5"></i></div></div>
         <div class="rk-grid" style="margin-top:16px">
