@@ -15,13 +15,14 @@
    ===================================================================== */
 html{color-scheme:dark}
 :root{
-  --bg:#0a0a0a; --surface:#121212; --surface-2:#1a1a1a; --line:rgba(255,255,255,.08); --line-2:rgba(255,255,255,.16);
-  --text:#f2f2f2; --text-2:#a3a3a3; --text-3:#6b6b6b;
+  --bg:#050505; --surface:#0f0f0f; --surface-2:#161616; --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.14);
+  --text:#f3f3f1; --text-2:#9b9b9b; --text-3:#6b6b6b;
   --primary:#d6ff1e;      /* 핵심 행동 · 매수 검토 · 상승 */
-  --secondary:#8a93f5;    /* 보조 데이터 · 하락 */
-  --accent:#ff4d2e;       /* 위험 · 추격 주의 · 손절 */
-  --fs-1:18px; --fs-2:14px; --fs-3:12px;
-  --r-1:12px; --r-2:8px;
+  --secondary:#7d88f3;    /* 보조 데이터 · 타이밍 */
+  --accent:#ff3b1f;       /* 위험 · 추격 주의 · 손절 */
+  --down:#ff7b7b;         /* 하락 수치 */
+  --fs-0:26px; --fs-1:17px; --fs-2:14px; --fs-3:12px;
+  --r-1:20px; --r-2:12px; --r-pill:999px;
   --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
   --ctl:36px;
   --font:'Urbanist','Pretendard',system-ui,-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;
@@ -36,7 +37,10 @@ button{cursor:pointer}
 h1,h2,h3,h4,h5,p{margin:0}
 :focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 .num{font-variant-numeric:tabular-nums}
-.pos{color:var(--primary)} .neg{color:var(--secondary)}
+.pos{color:var(--primary)} .neg{color:var(--down)}
+.up{color:var(--primary)} .down{color:var(--down)}
+body{background:radial-gradient(1100px 620px at 8% -12%, rgba(214,255,30,.05), transparent 62%), radial-gradient(900px 520px at 96% 4%, rgba(255,123,123,.045), transparent 60%), var(--bg);min-height:100vh}
+.hero{font-size:var(--fs-0);font-weight:700;letter-spacing:-.01em}
 small{font-size:var(--fs-3)}
 
 /* scrollbars */
@@ -47,14 +51,14 @@ small{font-size:var(--fs-3)}
 
 /* ---------- Controls: 하나의 버튼·입력 형태 ---------- */
 .btn,.btn-ghost,.btn-icon,.pill-select,.toggle,.searchbox input{
-  height:var(--ctl);border-radius:var(--r-2);border:1px solid var(--line-2);background:var(--surface-2);
+  height:var(--ctl);border-radius:var(--r-pill);border:1px solid var(--line-2);background:var(--surface-2);
   font-size:var(--fs-2);font-weight:500;color:var(--text);display:inline-flex;align-items:center;gap:var(--s2);padding:0 var(--s3);white-space:nowrap}
 .btn:hover,.btn-ghost:hover,.btn-icon:hover,.pill-select:hover,.toggle:hover{border-color:var(--text-2)}
 .btn-icon{width:var(--ctl);justify-content:center;padding:0}
 .btn-icon:disabled{opacity:.35;cursor:default;border-color:var(--line-2)}
-.btn-primary{height:var(--ctl);border-radius:var(--r-2);border:0;background:var(--primary);color:#000;font-weight:700;padding:0 var(--s4)}
+.btn-primary{height:var(--ctl);border-radius:var(--r-pill);box-shadow:0 0 24px rgba(214,255,30,.18);border:0;background:var(--primary);color:#000;font-weight:700;padding:0 var(--s4)}
 .btn-primary.stop{background:var(--accent);color:#fff}
-.btn-quiet{height:var(--ctl);border:0;background:transparent;color:var(--text-2);padding:0 var(--s2);border-radius:var(--r-2)}
+.btn-quiet{height:var(--ctl);border:0;background:transparent;color:var(--text-2);padding:0 var(--s3);border-radius:var(--r-pill)}
 .btn-quiet:hover{color:var(--text)}
 .pill-select{appearance:none;padding-right:28px;background-image:linear-gradient(45deg,transparent 50%,var(--text-2) 50%),linear-gradient(135deg,var(--text-2) 50%,transparent 50%);background-position:calc(100% - 15px) 52%,calc(100% - 10px) 52%;background-size:5px 5px;background-repeat:no-repeat}
 .toggle input{accent-color:var(--primary);width:14px;height:14px;margin:0}
@@ -63,14 +67,14 @@ small{font-size:var(--fs-3)}
 .searchbox input::-webkit-search-cancel-button{display:none}
 .searchbox input:focus{border-color:var(--primary)}
 .searchbox .ico{position:absolute;left:10px;color:var(--text-3);pointer-events:none}
-.searchbox .clr{position:absolute;right:6px;width:24px;height:24px;border:0;border-radius:var(--r-2);background:transparent;color:var(--text-2);display:none}
+.searchbox .clr{position:absolute;right:6px;width:24px;height:24px;border:0;border-radius:var(--r-pill);background:transparent;color:var(--text-2);display:none}
 .searchbox.has .clr{display:block}
 .kbd{display:inline-block;border:1px solid var(--line-2);border-radius:var(--r-2);padding:0 var(--s1);font-size:var(--fs-3);color:var(--text-3);margin-left:var(--s1)}
 
 /* 탭 · 선택 칩: 같은 형태 */
-.tabs,.seg{display:flex;gap:var(--s1);overflow-x:auto;scrollbar-width:none}
+.tabs,.seg{display:flex;gap:var(--s1);overflow-x:auto;scrollbar-width:none;padding:var(--s1);background:#0b0b0b;border:1px solid var(--line);border-radius:var(--r-pill);width:fit-content;max-width:100%}
 .tabs::-webkit-scrollbar,.seg::-webkit-scrollbar{display:none}
-.tabs button,.seg button,.chips button{height:32px;border:1px solid transparent;background:transparent;border-radius:var(--r-2);padding:0 var(--s3);font-size:var(--fs-2);color:var(--text-2);white-space:nowrap}
+.tabs button,.seg button,.chips button{height:32px;border:1px solid transparent;background:transparent;border-radius:var(--r-pill);padding:0 var(--s3);font-size:var(--fs-2);color:var(--text-2);white-space:nowrap}
 .tabs button:hover,.seg button:hover,.chips button:hover{color:var(--text)}
 .tabs button.on,.seg button.on,.chips button.on{background:var(--text);color:#000;font-weight:600}
 .tabs button .cnt{margin-left:6px;font-size:var(--fs-3);opacity:.6}
@@ -78,12 +82,12 @@ small{font-size:var(--fs-3)}
 .chips button{border-color:var(--line-2);font-size:var(--fs-3);height:28px}
 
 /* 배지: 의미별 톤 4가지 */
-.badge{display:inline-flex;align-items:center;height:22px;padding:0 var(--s2);border-radius:var(--r-2);font-size:var(--fs-3);font-weight:600;white-space:nowrap;border:1px solid var(--line-2);color:var(--text-2)}
-.badge.t-mute{color:var(--text-3);border-color:var(--line);background:rgba(255,255,255,.03)}
-.badge.t-plain{color:var(--text);border-color:var(--line-2);background:rgba(255,255,255,.06)}
-.badge.t-pos{color:var(--primary);border-color:rgba(214,255,30,.35);background:rgba(214,255,30,.12)}
+.badge{display:inline-flex;align-items:center;height:22px;padding:0 var(--s3);border-radius:var(--r-pill);font-size:var(--fs-3);font-weight:600;white-space:nowrap;border:1px solid var(--line-2);color:var(--text-2)}
+.badge.t-mute{color:var(--text-3);border-color:var(--line);background:#111}
+.badge.t-plain{color:var(--text);border-color:var(--line-2);background:#141414}
+.badge.t-pos{color:var(--primary);border-color:rgba(214,255,30,.3);background:rgba(214,255,30,.08)}
 .badge.t-strong{color:#000;background:var(--primary);border-color:var(--primary)}
-.badge.t-neg{color:var(--accent);border-color:rgba(255,77,46,.45);background:rgba(255,77,46,.14)}
+.badge.t-neg{color:var(--accent);border-color:rgba(255,59,31,.4);background:rgba(255,59,31,.1)}
 .badge + .badge{margin-left:var(--s1)}
 
 /* ---------- Layout ---------- */
@@ -98,9 +102,7 @@ main{max-width:1480px;margin:0 auto;padding:var(--s4) var(--s5) var(--s6)}
 .section{background:var(--surface);border-radius:var(--r-1);padding:var(--s5);margin-bottom:var(--s4);min-width:0}
 .sec-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s3);flex-wrap:wrap;margin-bottom:var(--s4)}
 .sec-head>div:first-child{flex:1 1 360px;min-width:0}
-.sec-head h2{font-size:var(--fs-1);font-weight:700;display:flex;align-items:center;gap:var(--s2)}
-.sec-head h2::before{content:'';width:3px;height:15px;border-radius:2px;background:var(--primary)}
-.fold>summary h2::before{background:var(--text-3)}
+.sec-head h2{font-size:var(--fs-1);font-weight:600}
 .sec-sub{max-width:760px}
 .tool-row{display:flex;gap:var(--s2);align-items:center}
 .sec-sub{font-size:var(--fs-2);color:var(--text-2);margin-top:var(--s1)}
@@ -123,6 +125,11 @@ main{max-width:1480px;margin:0 auto;padding:var(--s4) var(--s5) var(--s6)}
 .sb-set summary::-webkit-details-marker{display:none}
 .sb-panel{position:absolute;right:0;top:calc(100% + var(--s2));z-index:20;width:360px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:var(--r-1);padding:var(--s4);display:grid;gap:var(--s3);font-size:var(--fs-3);color:var(--text-2)}
 .sb-panel .row{display:grid;gap:var(--s2)}
+.sync-form{display:flex;gap:var(--s2);flex-wrap:wrap}
+.sync-form input{flex:1 1 150px;min-width:0;height:var(--ctl);border-radius:var(--r-pill);border:1px solid var(--line-2);background:var(--bg);padding:0 var(--s3);font-size:var(--fs-3);outline:none}
+.sync-form input:focus{border-color:var(--primary)}
+.sync-msg{font-size:var(--fs-3);color:var(--text-2);line-height:1.6}
+.sync-msg.err{color:var(--down)}
 .banner{display:none;margin:0 0 var(--s4);padding:var(--s3) var(--s4);border-radius:var(--r-2);background:var(--surface);border-left:2px solid var(--text-3);color:var(--text-2);line-height:1.6}
 .banner.show{display:block}
 .banner.err{border-left-color:var(--accent);color:var(--text)}
@@ -141,11 +148,8 @@ main{max-width:1480px;margin:0 auto;padding:var(--s4) var(--s5) var(--s6)}
 
 /* ---------- 추천 ---------- */
 .pick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:var(--s3)}
-.pick{background:linear-gradient(180deg,#1c1c1c,#141414);border:1px solid var(--line);border-left:3px solid var(--line-2);border-radius:var(--r-1);padding:var(--s4);cursor:pointer;display:flex;flex-direction:column;gap:var(--s3);min-width:0;transition:border-color .15s,transform .15s}
-.pick:hover{border-color:var(--line-2);transform:translateY(-1px)}
-.pick.tone-pos{border-left-color:var(--primary);background:linear-gradient(180deg,rgba(214,255,30,.07),#141414 60%)}
-.pick.tone-neg{border-left-color:var(--accent);background:linear-gradient(180deg,rgba(255,77,46,.08),#141414 60%)}
-.pick.tone-plain{border-left-color:var(--secondary);background:linear-gradient(180deg,rgba(138,147,245,.07),#141414 60%)}
+.pick{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-1);padding:var(--s4);cursor:pointer;display:flex;flex-direction:column;gap:var(--s3);min-width:0;transition:border-color .15s}
+.pick:hover{border-color:rgba(214,255,30,.35)}
 .pick.sel{border-color:var(--primary)}
 .pick.wait .pick-verdict{color:var(--text-2)!important}
 .pick-top{display:flex;align-items:center;gap:var(--s2)}
@@ -154,6 +158,7 @@ main{max-width:1480px;margin:0 auto;padding:var(--s4) var(--s5) var(--s6)}
 .pick-score{font-size:var(--fs-3);color:var(--text-2);white-space:nowrap}
 .pick-verdict{font-size:var(--fs-2);font-weight:700;line-height:1.4}
 .pick-price{font-size:var(--fs-1);font-weight:700}
+.hold .pick-verdict{font-size:var(--fs-0)}
 .pick-price small{margin-left:var(--s2);font-weight:500}
 .pick-stats{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2) var(--s3);margin:0}
 .pick-stats div{min-width:0}
@@ -166,19 +171,19 @@ main{max-width:1480px;margin:0 auto;padding:var(--s4) var(--s5) var(--s6)}
 .pick-note b{color:var(--text)}
 
 /* 보유 종목 · 즐겨찾기 · 호가 */
-.up{color:var(--primary)} .down{color:var(--accent)}
 .hold-sum{display:flex;flex-wrap:wrap;gap:var(--s3) var(--s5);margin-bottom:var(--s4)}
 .hold-sum .k{font-size:var(--fs-3);color:var(--text-3)}
-.hold-sum{padding:var(--s3) var(--s4);border-radius:var(--r-2);background:linear-gradient(90deg,rgba(214,255,30,.06),rgba(255,255,255,.02))}
+.hold-sum{padding:var(--s4);border-radius:var(--r-2);background:var(--surface-2);align-items:flex-end}
 .hold-sum .v{font-size:var(--fs-1);font-weight:700}
-.hold-sum.loss{background:linear-gradient(90deg,rgba(255,77,46,.07),rgba(255,255,255,.02))}
+.hold-sum .v.hero{font-size:var(--fs-0)}
+
 .hold-form{display:none;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--s3);align-items:end;padding:var(--s4);margin-bottom:var(--s4);background:var(--surface-2);border-radius:var(--r-2)}
 .hold-form.show{display:grid}
 .hold-form label{display:grid;gap:var(--s1);font-size:var(--fs-3);color:var(--text-3)}
 .hold-form input{height:var(--ctl);border-radius:var(--r-2);border:1px solid var(--line-2);background:var(--bg);padding:0 var(--s3);outline:none;font-size:var(--fs-2)}
 .hold-form input:focus{border-color:var(--primary)}
 .hold-form .toolbar{align-self:end}
-.hold .pick-verdict{font-size:var(--fs-1)}
+
 .coin .nm{flex:1}
 .star{border:0;background:transparent;color:var(--text-3);padding:0 var(--s1);line-height:1;flex:none;margin-left:auto}
 .hold .pick-top .btn-quiet{height:24px;font-size:var(--fs-3);padding:0 var(--s1);flex:none}
@@ -186,7 +191,7 @@ main{max-width:1480px;margin:0 auto;padding:var(--s4) var(--s5) var(--s6)}
 .star:hover{color:var(--text)}
 .hold-badge{font-size:var(--fs-3);color:var(--primary);margin-left:var(--s1);font-weight:500}
 .ob{display:grid;gap:2px}
-.ob-row{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);align-items:center;font-size:var(--fs-3);padding:4px var(--s2);border-radius:2px;overflow:hidden}
+.ob-row{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);align-items:center;font-size:var(--fs-3);padding:5px var(--s3);border-radius:var(--r-pill);overflow:hidden}
 .ob-row .bar{position:absolute;top:0;bottom:0;right:0;opacity:.18}
 .ob-row.ask .bar{background:var(--secondary)} .ob-row.bid .bar{background:var(--primary)}
 .ob-row.now{outline:1px solid var(--line-2)}
@@ -216,7 +221,7 @@ table.res th.r,table.res td.r{text-align:right}
 table.res th .ar{margin-left:var(--s1)}
 table.res td{padding:var(--s3) var(--s2);border-bottom:1px solid var(--line);vertical-align:middle}
 table.res tbody tr{cursor:pointer}
-table.res tbody tr:hover{background:rgba(214,255,30,.04)}
+table.res tbody tr:hover{background:rgba(255,255,255,.03)}
 table.res tbody tr.sel{background:rgba(214,255,30,.05);box-shadow:inset 2px 0 0 var(--primary)}
 .rank{font-weight:600;color:var(--text-3)}
 .rank.top{color:var(--text)}
@@ -229,7 +234,7 @@ table.res tbody tr.sel{background:rgba(214,255,30,.05);box-shadow:inset 2px 0 0 
 .warn-tag{font-size:var(--fs-3);color:var(--accent);margin-left:var(--s1);font-weight:500}
 
 .coin{display:flex;align-items:center;gap:var(--s2);min-width:0}
-.coin .ic{width:28px;height:28px;border-radius:var(--r-2);display:grid;place-items:center;font-size:var(--fs-3);font-weight:700;color:var(--text-2);background:var(--surface-2)!important;flex:none}
+.coin .ic{width:28px;height:28px;border-radius:var(--r-pill);display:grid;place-items:center;font-size:var(--fs-3);font-weight:700;color:var(--text-2);background:var(--surface-2)!important;flex:none}
 .pick .coin .ic{background:#262626!important}
 .coin .nm{min-width:0}
 .coin .nm b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -243,16 +248,16 @@ table.res tbody tr.sel{background:rgba(214,255,30,.05);box-shadow:inset 2px 0 0 
 .ov-grid{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,8fr);gap:var(--s5)}
 .ov-list{display:grid;gap:0}
 .ov-item{display:flex;justify-content:space-between;align-items:center;height:40px;border:0;border-bottom:1px solid var(--line);background:transparent;padding:0;text-align:left;color:var(--text-2)}
-button.ov-item:hover{color:var(--text);background:rgba(214,255,30,.05)}
+button.ov-item:hover{color:var(--text)}
 .ov-item b{color:var(--text);font-weight:600}
 .ov-item.static{cursor:default}
 .gauge{margin-top:var(--s4)}
 .gauge .k{display:flex;justify-content:space-between;font-size:var(--fs-3);color:var(--text-3);margin-bottom:var(--s2)}
-.gbar{display:flex;height:12px;border-radius:var(--r-2);overflow:hidden;gap:2px;background:var(--surface-2)}
-.gbar div{min-width:2px;height:100%;cursor:pointer}
+.gbar{display:flex;height:30px;border-radius:var(--r-pill);overflow:hidden;gap:4px;background:var(--surface-2);padding:0}
+.gbar div{min-width:6px;height:100%;cursor:pointer;border-radius:var(--r-pill)}
 .glegend{display:flex;flex-wrap:wrap;gap:var(--s1) var(--s3);margin-top:var(--s2);font-size:var(--fs-3);color:var(--text-3)}
 .glegend span{display:inline-flex;align-items:center;gap:var(--s1);cursor:pointer}
-.glegend i{width:8px;height:8px;border-radius:2px}
+.glegend i{width:9px;height:9px;border-radius:var(--r-pill)}
 .glegend b{color:var(--text-2);font-weight:500}
 .map-head{display:flex;align-items:baseline;gap:var(--s3);flex-wrap:wrap}
 .map-title{font-size:var(--fs-2);font-weight:700}
@@ -282,7 +287,7 @@ body.dopen table.res .hd{display:none}
 .d-title .ic{width:36px;height:36px}
 .d-title h3{font-size:var(--fs-1);font-weight:700}
 .d-title .mk{font-size:var(--fs-3);color:var(--text-3)}
-.d-price{font-size:var(--fs-1);font-weight:700;text-align:right}
+.d-price{font-size:var(--fs-0);font-weight:700;text-align:right}
 .d-price small{display:block;font-weight:500}
 .d-badges{display:flex;gap:var(--s1);flex-wrap:wrap;margin-top:var(--s2)}
 .d-badges .badge + .badge{margin-left:0}
@@ -291,7 +296,7 @@ body.dopen table.res .hd{display:none}
 .d-card h4{font-size:var(--fs-2);font-weight:700;margin-bottom:var(--s3);display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2);flex-wrap:wrap}
 .d-card h4 span{font-size:var(--fs-3);color:var(--text-3);font-weight:400}
 .d-card .v small{color:var(--text-3)}
-.total-big{font-size:var(--fs-1);font-weight:700}
+.total-big{font-size:var(--fs-0);font-weight:700}
 .total-big small{color:var(--text-3);font-weight:400}
 .sbar{margin-top:var(--s3)}
 .sbar .top{display:flex;justify-content:space-between;font-size:var(--fs-3);margin-bottom:var(--s1);color:var(--text-2)}
@@ -405,6 +410,7 @@ body.dopen table.res .hd{display:none}
           <div class="row"><span>분석 기준</span><div class="seg" id="basisSeg"><button data-b="confirmed">확정 일봉 (09:00 마감)</button><button data-b="live">진행 중인 봉 포함</button></div></div>
           <div>일봉 기준일 <b id="stDaily">—</b></div>
           <div>연결 <b id="stGap">—</b></div>
+          <div class="row"><span>기기 간 동기화</span><div id="syncBox"></div></div>
           <div id="stCache">캐시: —</div>
           <div id="baseDate" hidden></div>
         </div>
@@ -422,7 +428,7 @@ body.dopen table.res .hd{display:none}
 
   <section class="section" id="holdCard">
     <div class="sec-head">
-      <div><h2>내 보유 종목</h2><p class="sec-sub" id="holdSub">매수한 종목을 추가하면 실시간 시세로 수익률·호가·차트를 볼 수 있습니다.</p></div>
+      <div><h2>내 보유 종목 <span class="sub-note" id="holdSync"></span></h2><p class="sec-sub" id="holdSub">매수한 종목을 추가하면 실시간 시세로 수익률·호가·차트를 볼 수 있습니다.</p></div>
       <div class="toolbar"><span class="sub-note" id="holdLive"></span><button class="btn" id="holdAddBtn">종목 추가</button></div>
     </div>
     <form class="hold-form" id="holdForm" autocomplete="off">
@@ -543,6 +549,9 @@ const CONFIG = {
   extendedTab: { minTrend: 60 },
   overheat: { extendedP: 6.5, statusP: 5 },
   // 추천: 거래대금 10억 미만·손익비 1.2 미만 제외, 카드 5개
+  // 기기 간 동기화(Supabase). 아래 두 값을 채우면 켜지고, 비워두면 지금처럼 이 브라우저에만 저장됩니다.
+  // Supabase 대시보드 → Project Settings → API 에서 확인합니다.
+  supabase: { url: 'https://owrtvchfcrpiwielyqvo.supabase.co', anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im93cnR2Y2hmY3JwaXdpZWx5cXZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NzcxODMsImV4cCI6MjEwNTI1MzE4M30.gLS438ACEIb9H_Art1HicRomcZO3CT0ctfpau93fPoc' },
   // 보유 종목 실시간 갱신 주기(ms)와 5분봉 설정
   live: { ms: 6000, minuteUnit: 5, minuteCount: 100, chartRefreshMs: 30000 },
   pick: { minTradeValue: 1e9, minRR: 1.2, minWeekRange: 18, count: 5 },
@@ -553,9 +562,9 @@ const STAGES = ['DOWN','BOTTOMING','BASE','EARLY TREND','TREND','PULLBACK','RE-E
 const STATUSES = ['WAIT','WATCH','ENTRY ZONE','BREAKOUT WATCH','EXTENDED'];
 const RISKS = ['LOW','MEDIUM','HIGH','EXTREME'];
 // 색은 의미가 있을 때만: primary(상승·매수 검토) / secondary(보조) / accent(위험)
-const STAGE_COLOR = {'DOWN':'#4a4a4a','BOTTOMING':'#6b6b6b','BASE':'#8f8f8f','EARLY TREND':'#d6ff1e','TREND':'#b3d61a','PULLBACK':'#8fab15','RE-ENTRY':'#e8ff7a','EXTENDED':'#ff4d2e','UNKNOWN':'#2a2a2a'};
-const STATUS_COLOR = {'WAIT':'#6b6b6b','WATCH':'#a3a3a3','ENTRY ZONE':'#d6ff1e','BREAKOUT WATCH':'#f2f2f2','EXTENDED':'#ff4d2e','INSUFFICIENT DATA':'#4a4a4a'};
-const RISK_COLOR = {'LOW':'#6b6b6b','MEDIUM':'#a3a3a3','HIGH':'#f2f2f2','EXTREME':'#ff4d2e'};
+const STAGE_COLOR = {'DOWN':'#ff7b7b','BOTTOMING':'#ff9d73','BASE':'#f3d64b','EARLY TREND':'#d6ff1e','TREND':'#b3e619','PULLBACK':'#7fd4c1','RE-ENTRY':'#7d88f3','EXTENDED':'#ff3b1f','UNKNOWN':'#2f2f2f'};
+const STATUS_COLOR = {'WAIT':'#6b6b6b','WATCH':'#9b9b9b','ENTRY ZONE':'#d6ff1e','BREAKOUT WATCH':'#f3f3f1','EXTENDED':'#ff3b1f','INSUFFICIENT DATA':'#4a4a4a'};
+const RISK_COLOR = {'LOW':'#6b6b6b','MEDIUM':'#9b9b9b','HIGH':'#f3f3f1','EXTREME':'#ff3b1f'};
 const STAGE_TONE = {'DOWN':'mute','BOTTOMING':'plain','BASE':'plain','EARLY TREND':'pos','TREND':'pos','PULLBACK':'pos','RE-ENTRY':'pos','EXTENDED':'neg','UNKNOWN':'mute'};
 const STATUS_TONE = {'WAIT':'mute','WATCH':'plain','ENTRY ZONE':'strong','BREAKOUT WATCH':'plain','EXTENDED':'neg','INSUFFICIENT DATA':'mute'};
 const RISK_TONE = {'LOW':'mute','MEDIUM':'mute','HIGH':'plain','EXTREME':'neg'};
@@ -1409,8 +1418,10 @@ const heldOf = mk => S.holdings.find(h=>h.market===mk) || null;
 const isHeld = mk => !!heldOf(mk);
 const isFav = mk => S.favs.has(mk);
 function toggleFav(mk){
-  if(S.favs.has(mk)) S.favs.delete(mk); else S.favs.add(mk);
+  const on = !S.favs.has(mk);
+  if(on) S.favs.add(mk); else S.favs.delete(mk);
   savePortfolio();
+  if(on) sbSave('favorites', { market:mk }); else sbRemove('favorites', mk);
   document.querySelectorAll(`[data-fav="${mk}"]`).forEach(b=>{ b.classList.toggle('on', isFav(mk)); b.textContent = isFav(mk)?'★':'☆'; });
   renderNav(); if(S.tab==='fav') renderTable();
 }
@@ -1421,8 +1432,9 @@ function addHolding(mk, avg, qty, replace){
   else if(cur){ cur.avg=avg; cur.qty=qty; }
   else S.holdings.push({market:mk, avg, qty, at:Date.now()});
   savePortfolio();
+  const h=heldOf(mk); if(h){ h.at=Date.now(); sbSave('holdings', { market:mk, avg_price:h.avg, qty:h.qty, updated_at:new Date().toISOString() }); }
 }
-function removeHolding(mk){ S.holdings=S.holdings.filter(h=>h.market!==mk); savePortfolio(); }
+function removeHolding(mk){ S.holdings=S.holdings.filter(h=>h.market!==mk); savePortfolio(); sbRemove('holdings', mk); }
 // 현재가 = 실시간 시세(없으면 마지막 분석가)
 function holdingCalc(h){
   const tk=S.tickers.get(h.market), r=S.results.get(h.market);
@@ -1431,6 +1443,114 @@ function holdingCalc(h){
   return { price, cost, value, pl: value!=null ? value-cost : null, rate: (value!=null && cost) ? (value/cost-1)*100 : null, r, tk,
     chg: tk ? tk.signed_change_rate*100 : (r ? r.change24 : null),
     tv: tk ? tk.acc_trade_price_24h : (r ? r.tradeValue : null) };
+}
+
+/* =========================================================================
+   SUPABASE SYNC — 기기 간 보유 종목·즐겨찾기 동기화 (선택 기능)
+   CONFIG.supabase 를 비워두면 전부 비활성화되고 localStorage만 사용합니다.
+   ========================================================================= */
+const SB = { client:null, user:null, on:false, msg:'', err:false, at:null, ch:null, merged:false };
+function loadScript(src){
+  return new Promise((res,rej)=>{ const el=document.createElement('script'); el.src=src; el.onload=res; el.onerror=()=>rej(new Error('스크립트 로드 실패')); document.head.appendChild(el); });
+}
+async function sbInit(){
+  const { url, anonKey } = CONFIG.supabase || {};
+  if(!url || !anonKey){ renderSync(); return; }
+  try{
+    await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js');
+    SB.client = window.supabase.createClient(url, anonKey, { auth:{ persistSession:true, detectSessionInUrl:true } });
+    SB.on = true;
+    const { data } = await SB.client.auth.getSession();
+    SB.user = (data && data.session && data.session.user) || null;
+    SB.client.auth.onAuthStateChange((_e, sess)=>{
+      SB.user = sess ? sess.user : null; SB.merged=false; renderSync();
+      if(SB.user){ sbPull(true).then(sbSubscribe); } else sbUnsubscribe();
+    });
+    renderSync();
+    if(SB.user){ await sbPull(true); sbSubscribe(); }
+  }catch(e){ SB.msg='동기화 연결 실패: '+e.message; SB.err=true; renderSync(); }
+}
+// 로그인: 이메일로 받은 링크를 누르면 이 페이지로 돌아옵니다.
+async function sbLogin(email){
+  if(!SB.client) return;
+  SB.msg='로그인 링크를 보내는 중…'; SB.err=false; renderSync();
+  const { error } = await SB.client.auth.signInWithOtp({ email, options:{ emailRedirectTo: location.href.split('#')[0] } });
+  SB.msg = error ? ('전송 실패: '+error.message) : (email+' 로 로그인 링크를 보냈습니다. 메일의 링크를 누르면 이 기기가 연결됩니다.');
+  SB.err = !!error; renderSync();
+}
+async function sbLogout(){ if(SB.client) await SB.client.auth.signOut(); SB.msg='로그아웃했습니다. 이 기기에만 저장됩니다.'; SB.err=false; renderSync(); }
+// 서버 → 로컬. first=true 이면 로컬 값과 합치고(첫 로그인 이전 데이터 보존), 이후에는 서버 기준으로 맞춥니다.
+async function sbPull(first){
+  if(!SB.client || !SB.user) return;
+  try{
+    const [h, f] = await Promise.all([
+      SB.client.from('holdings').select('market,avg_price,qty,updated_at'),
+      SB.client.from('favorites').select('market')
+    ]);
+    if(h.error) throw h.error; if(f.error) throw f.error;
+    const srv = (h.data||[]).map(x=>({ market:x.market, avg:Number(x.avg_price), qty:Number(x.qty), at:Date.parse(x.updated_at)||0 }));
+    if(first && !SB.merged){
+      const map=new Map(srv.map(x=>[x.market,x]));
+      for(const loc of S.holdings){ const cur=map.get(loc.market); if(!cur || (loc.at||0) > cur.at) map.set(loc.market, loc); }
+      S.holdings=[...map.values()];
+      const favs=new Set([...(f.data||[]).map(x=>x.market), ...S.favs]);
+      S.favs=favs; SB.merged=true;
+      await sbPushAll();           // 합친 결과를 서버에도 반영
+    } else {
+      S.holdings=srv; S.favs=new Set((f.data||[]).map(x=>x.market));
+    }
+    savePortfolio(); SB.at=Date.now(); SB.msg=''; SB.err=false;
+    renderHoldings(); renderNav(); renderTable(); renderSync();
+    if(S.holdings.length) startLive();
+  }catch(e){ SB.msg='불러오기 실패: '+(e.message||e); SB.err=true; renderSync(); }
+}
+async function sbPushAll(){
+  if(!SB.client || !SB.user) return;
+  const uid=SB.user.id;
+  const rows=S.holdings.map(h=>({ user_id:uid, market:h.market, avg_price:h.avg, qty:h.qty, updated_at:new Date(h.at||Date.now()).toISOString() }));
+  if(rows.length) await SB.client.from('holdings').upsert(rows, { onConflict:'user_id,market' });
+  const favs=[...S.favs].map(mk=>({ user_id:uid, market:mk }));
+  if(favs.length) await SB.client.from('favorites').upsert(favs, { onConflict:'user_id,market' });
+}
+async function sbSave(table, row){
+  if(!SB.client || !SB.user) return;
+  try{ const { error } = await SB.client.from(table).upsert({ user_id:SB.user.id, ...row }, { onConflict:'user_id,market' }); if(error) throw error; SB.at=Date.now(); SB.msg=''; SB.err=false; }
+  catch(e){ SB.msg='저장 실패: '+(e.message||e); SB.err=true; }
+  renderSync();
+}
+async function sbRemove(table, mk){
+  if(!SB.client || !SB.user) return;
+  try{ const { error } = await SB.client.from(table).delete().eq('user_id', SB.user.id).eq('market', mk); if(error) throw error; SB.at=Date.now(); }
+  catch(e){ SB.msg='삭제 실패: '+(e.message||e); SB.err=true; }
+  renderSync();
+}
+// 다른 기기에서 바뀌면 바로 반영
+function sbSubscribe(){
+  if(!SB.client || !SB.user || SB.ch) return;
+  const filter=`user_id=eq.${SB.user.id}`;
+  SB.ch = SB.client.channel('portfolio-'+SB.user.id)
+    .on('postgres_changes', { event:'*', schema:'public', table:'holdings', filter }, ()=>sbPull(false))
+    .on('postgres_changes', { event:'*', schema:'public', table:'favorites', filter }, ()=>sbPull(false))
+    .subscribe();
+}
+function sbUnsubscribe(){ if(SB.ch && SB.client){ SB.client.removeChannel(SB.ch); } SB.ch=null; }
+function renderSync(){
+  const box=$('#syncBox'), tag=$('#holdSync');
+  const time = SB.at ? new Date(SB.at).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour12:false}) : null;
+  if(!CONFIG.supabase.url || !CONFIG.supabase.anonKey){
+    box.innerHTML='<div class="sync-msg">이 브라우저에만 저장됩니다. 파일 상단 CONFIG.supabase 에 URL과 anon key를 넣으면 기기 간 동기화가 켜집니다.</div>';
+    tag.textContent=''; return;
+  }
+  if(!SB.on){ box.innerHTML=`<div class="sync-msg ${SB.err?'err':''}">${esc(SB.msg||'동기화 준비 중…')}</div>`; tag.textContent=''; return; }
+  if(!SB.user){
+    box.innerHTML=`<div class="sync-form"><input id="syncEmail" type="email" placeholder="이메일 주소" autocomplete="email"><button class="btn" id="syncLogin">로그인 링크 받기</button></div>
+      <div class="sync-msg ${SB.err?'err':''}">${esc(SB.msg||'로그인하면 보유 종목과 즐겨찾기가 기기 간에 동기화됩니다.')}</div>`;
+    tag.textContent='이 기기에만 저장';
+    return;
+  }
+  box.innerHTML=`<div class="sync-form"><span class="sync-msg">${esc(SB.user.email||'로그인됨')}</span><button class="btn" id="syncLogout">로그아웃</button></div>
+    <div class="sync-msg ${SB.err?'err':''}">${esc(SB.msg || (time ? '동기화됨 '+time : '동기화 중…'))}</div>`;
+  tag.textContent = SB.err ? '동기화 오류' : '기기 간 동기화 중';
 }
 
 /* =========================================================================
@@ -1607,7 +1727,7 @@ function renderOverview(){
 function sparkSVG(spark, w=84, h=26){
   if(!spark || spark.length<2) return '';
   const pts=spark.map((v,i)=>`${(i/(spark.length-1)*w).toFixed(1)},${(h-2-v*(h-4)).toFixed(1)}`).join(' ');
-  const col=spark[spark.length-1]>=spark[0]?'#d6ff1e':'#8a93f5';
+  const col=spark[spark.length-1]>=spark[0]?'#d6ff1e':'#ff7b7b';
   return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
 }
 function coinCell(r, noStar){
@@ -1810,10 +1930,9 @@ function renderHoldings(){
   let cost=0, value=0, ok=true;
   const cards=S.holdings.map(h=>{ const c=holdingCalc(h); cost+=c.cost; if(c.value!=null) value+=c.value; else ok=false; return holdCard(h,c); });
   const pl=value-cost, rate=cost? (value/cost-1)*100 : 0, cls=pl>=0?'up':'down';
-  $('#holdSum').className = 'hold-sum'+(pl<0?' loss':'');
-  sum.innerHTML = `
+    sum.innerHTML = `
     <div><div class="k">총 매수금액</div><div class="v num">${fmtWon(cost)}</div></div>
-    <div><div class="k">평가금액</div><div class="v num">${ok?fmtWon(value):'—'}</div></div>
+    <div><div class="k">평가금액</div><div class="v num hero">${ok?fmtWon(value):'—'}</div></div>
     <div><div class="k">평가손익</div><div class="v num ${cls}">${ok?fmtWonSigned(pl):'—'}</div></div>
     <div><div class="k">총 수익률</div><div class="v num ${cls}">${ok?fmtPct(rate,2):'—'}</div></div>`;
   grid.innerHTML = cards.join('');
@@ -1829,7 +1948,7 @@ function holdCard(h, c){
   const plan = (r && !r.insufficient && !r.error && c.price)
     ? `${bStage(r.stage)}${bStatus(r.status)} · 손절 기준 ${fmtPrice(r.levels.invalid)} (${fmtPct((r.levels.invalid/c.price-1)*100,1)})${r.levels.breakout?` · 1차 목표 ${fmtPrice(r.levels.breakout.v)} (${fmtPct((r.levels.breakout.v/c.price-1)*100,1)})`:''}`
     : '아직 분석 전입니다. 지금 스캔을 누르면 단계·손절 기준이 함께 표시됩니다.';
-  return `<div class="pick hold ${c.pl==null?'tone-plain':c.pl>=0?'tone-pos':'tone-neg'} ${h.market===S.selected?'sel':''}" data-mk="${h.market}" tabindex="0">
+  return `<div class="pick hold ${h.market===S.selected?'sel':''}" data-mk="${h.market}" tabindex="0">
     <div class="pick-top">${coinCell(info)}<button class="btn-quiet" data-edit="${h.market}">수정</button><button class="btn-quiet" data-del="${h.market}" aria-label="삭제">✕</button></div>
     <div>
       <div class="pick-verdict num ${cls}">${c.rate==null?'—':fmtPct(c.rate,2)}</div>
@@ -1886,7 +2005,8 @@ async function livePoll(){
   }catch(e){ $('#holdLive').textContent='실시간 연결 실패 — 다시 시도 중'; }
   const mk=S.selected;
   if(mk && isHeld(mk) && document.body.classList.contains('dopen')){
-    try{ const ob=await api('/orderbook?markets='+mk); S.live.ob=ob[0]; renderOrderbook(); }catch(e){}
+    try{ const ob=await api('/orderbook?markets='+mk); S.live.ob=ob[0]; S.live.obErr=null; renderOrderbook(); }
+    catch(e){ S.live.obErr=e.message; renderOrderbook(); }
     if(Date.now()-S.live.chartAt > CONFIG.live.chartRefreshMs) await loadLiveChart(mk);
     else patchLiveChart();
   }
@@ -1928,6 +2048,7 @@ function renderHoldBlock(){
 function renderOrderbook(){
   const box=document.getElementById('obBox'), ob=S.live.ob;
   if(!box) return;
+  if(S.live.obErr){ box.innerHTML=`<div class="lv-note">호가를 불러오지 못했습니다 (${esc(S.live.obErr)}). 사이트에 올린 경우 /api/upbit 프록시가 최신 파일인지 확인하세요.</div>`; return; }
   if(!ob || ob.market!==S.selected){ box.innerHTML='<div class="lv-note">호가를 불러오는 중…</div>'; return; }
   const units=ob.orderbook_units.slice(0,8);
   const max=Math.max(...units.map(u=>Math.max(u.ask_size,u.bid_size)));
@@ -1957,7 +2078,9 @@ async function loadLiveChart(mk){
     const lines=[{v:h.avg, color:'#d6ff1e', label:'평단'}];
     if(r && r.levels && !r.insufficient){ lines.push({v:r.levels.invalid, color:'#ff4d2e', label:'손절'}); if(r.levels.breakout) lines.push({v:r.levels.breakout.v, color:'#d9d9d9', label:'목표'}); }
     drawChart(cv, { candles:cs, show:cs.length, unit:CONFIG.live.minuteUnit+'분', mas:[{a:A.sma(cs.map(x=>x.c),20), color:'#8a8a8a'}], lines });
-  }catch(e){}
+  }catch(e){
+    const p=cv.parentElement; if(p) p.innerHTML=`<div class="lv-note">5분봉을 불러오지 못했습니다 (${esc(e.message)}). 사이트에 올린 경우 /api/upbit 프록시가 최신 파일인지 확인하세요.</div>`;
+  }
 }
 
 /* 오늘의 추천 카드 */
@@ -1978,8 +2101,7 @@ function renderPicks(){
 function pickCard(r, sc, i, fallback){
   const u=r.up, v=A.verdict(r), price=r.livePrice??r.price, pf=t=>t?fmtPct((t/price-1)*100):'';
   const riskNote = (r.risk==='HIGH'||r.risk==='EXTREME') ? `<div style="margin-top:var(--s2)">${bRisk(r.risk,'위험도 ')}</div>` : '';
-  const tone = fallback ? 'tone-plain' : (r.status==='EXTENDED' ? 'tone-neg' : (r.loc??0)>=60 ? 'tone-pos' : 'tone-plain');
-  return `<div class="pick ${tone} ${fallback?'wait':''} ${r.market===S.selected?'sel':''}" data-mk="${r.market}" tabindex="0">
+  return `<div class="pick ${fallback?'wait':''} ${r.market===S.selected?'sel':''}" data-mk="${r.market}" tabindex="0">
     <div class="pick-top"><span class="pick-rank num">${i+1}</span>${coinCell(r)}<span class="pick-score num" title="추천 점수">${fallback?'대기':'추천 '+Math.round(sc)}</span></div>
     <div>
       <div class="pick-verdict" style="color:${v.c}">${esc(v.t)}</div>
@@ -2305,6 +2427,11 @@ function init(){
   $('#scanBtn').onclick=scan;
   // 즐겨찾기 별: 어디에 있든 행 클릭보다 먼저 처리
   document.addEventListener('click', e=>{ const b=e.target.closest('[data-fav]'); if(!b) return; e.stopPropagation(); e.preventDefault(); toggleFav(b.dataset.fav); }, true);
+  $('#syncBox').onclick=e=>{
+    if(e.target.id==='syncLogin'){ const em=$('#syncEmail').value.trim(); if(!em){ alert('이메일 주소를 입력하세요.'); return; } sbLogin(em); }
+    if(e.target.id==='syncLogout') sbLogout();
+  };
+  $('#syncBox').onkeydown=e=>{ if(e.key==='Enter' && e.target.id==='syncEmail'){ e.preventDefault(); const em=e.target.value.trim(); if(em) sbLogin(em); } };
   $('#holdAddBtn').onclick=()=>{ const f=$('#holdForm'); f.classList.contains('show') ? closeHoldForm() : openHoldForm(null); };
   $('#hfCancel').onclick=closeHoldForm;
   $('#holdForm').onsubmit=e=>{
@@ -2387,6 +2514,7 @@ function init(){
   if(!S.results.size) setStatus('IDLE');
   DB.open();
   if(S.holdings.length) startLive();
+  sbInit();
 }
 init();
 </script>
