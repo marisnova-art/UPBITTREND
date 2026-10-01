@@ -151,6 +151,18 @@ main{max-width:1480px;margin:0 auto;padding:var(--s4) var(--s5) var(--s6)}
 .sync-form input:focus{border-color:var(--primary)}
 .sync-msg{font-size:var(--fs-3);color:var(--text-2);line-height:1.6}
 .sync-msg.err{color:var(--down)}
+.sync-strip{display:grid;gap:var(--s2);padding:var(--s3) var(--s4);margin-bottom:var(--s4);background:var(--surface-2);border:1px solid var(--line-2);border-radius:var(--r-2)}
+.sync-strip.off{border-color:#f3d64b55}
+.sync-strip.bad{border-color:var(--down)}
+.sync-head{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap;font-size:var(--fs-3)}
+.sync-head b{font-weight:600}
+.sync-act{margin-left:auto;display:flex;gap:var(--s1)}
+.sync-act .btn-quiet{height:28px;font-size:var(--fs-3)}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:var(--text-3);flex:none}
+.sync-dot.ok{background:var(--primary);box-shadow:0 0 8px var(--primary)}
+.sync-dot.warn{background:#f3d64b}
+.sync-dot.bad{background:var(--down)}
+.sync-strip .sync-form input{max-width:260px}
 .banner{display:none;margin:0 0 var(--s4);padding:var(--s3) var(--s4);border-radius:var(--r-2);background:var(--surface);border-left:2px solid var(--text-3);color:var(--text-2);line-height:1.6}
 .banner.show{display:block}
 .banner.err{border-left-color:var(--accent);color:var(--text)}
@@ -470,7 +482,7 @@ body.offline .offline-pill{display:block}
           <div class="row"><span>분석 기준</span><div class="seg" id="basisSeg"><button data-b="confirmed">확정 일봉 (09:00 마감)</button><button data-b="live">진행 중인 봉 포함</button></div></div>
           <div>일봉 기준일 <b id="stDaily">—</b></div>
           <div>연결 <b id="stGap">—</b></div>
-          <div class="row"><span>기기 간 동기화</span><div id="syncBox"></div></div>
+          <div class="row"><span>기기 간 동기화</span><button class="btn-quiet" id="syncGo" title="보유 종목 영역의 동기화 상자로 이동">— <span id="syncMini">준비 중</span></button></div>
           <div id="stCache">캐시: —</div>
           <div id="baseDate" hidden></div>
         </div>
@@ -491,6 +503,7 @@ body.offline .offline-pill{display:block}
       <div><h2>내 보유 종목 <span class="sub-note" id="holdSync"></span></h2><p class="sec-sub" id="holdSub">매수한 종목을 추가하면 실시간 시세로 수익률·호가·차트를 볼 수 있습니다.</p></div>
       <div class="toolbar"><span class="sub-note" id="holdLive"></span><button class="btn" id="holdAddBtn">종목 추가</button></div>
     </div>
+    <div class="sync-strip" id="syncBox"></div>
     <form class="hold-form" id="holdForm" autocomplete="off">
       <label>종목 <input id="hfMarket" list="mkList" placeholder="BTC 또는 비트코인"></label>
       <label>매수 평단가 (원) <input id="hfPrice" type="number" step="any" inputmode="decimal" placeholder="예: 95000000"></label>
@@ -1468,7 +1481,7 @@ function loadSavedResults(){
   return true;
 }
 
-// ---- 보유 종목 · 즐겨찾기 저장 (localStorage)
+// ---- 보유 종목 · 즐겨찾기 저장 (이 기기 사본은 localStorage, 로그인 시 Supabase가 기준)
 const HOLD_KEY='utes:holdings:v1', FAV_KEY='utes:favs:v1';
 function loadPortfolio(){
   const h=LS.get(HOLD_KEY,[]); if(Array.isArray(h)) S.holdings=h.filter(x=>x && x.market && x.qty>0);
@@ -1478,12 +1491,13 @@ const savePortfolio = () => { LS.set(HOLD_KEY, S.holdings); LS.set(FAV_KEY, [...
 const heldOf = mk => S.holdings.find(h=>h.market===mk) || null;
 const isHeld = mk => !!heldOf(mk);
 const isFav = mk => S.favs.has(mk);
+function paintFav(mk){ document.querySelectorAll(`[data-fav="${mk}"]`).forEach(b=>{ b.classList.toggle('on', isFav(mk)); b.textContent = isFav(mk)?'★':'☆'; }); }
 function toggleFav(mk){
   const on = !S.favs.has(mk);
   if(on) S.favs.add(mk); else S.favs.delete(mk);
   savePortfolio();
-  if(on) sbSave('favorites', { market:mk }); else sbRemove('favorites', mk);
-  document.querySelectorAll(`[data-fav="${mk}"]`).forEach(b=>{ b.classList.toggle('on', isFav(mk)); b.textContent = isFav(mk)?'★':'☆'; });
+  sbQueue({ t:'favorites', k:mk, del:!on, row:{ market:mk } });
+  paintFav(mk);
   renderNav(); if(S.tab==='fav') renderTable();
 }
 // 같은 종목을 다시 추가하면 매수 평단가를 가중평균으로 합칩니다.
@@ -1492,10 +1506,11 @@ function addHolding(mk, avg, qty, replace){
   if(cur && !replace){ const q=cur.qty+qty; cur.avg=(cur.avg*cur.qty+avg*qty)/q; cur.qty=q; }
   else if(cur){ cur.avg=avg; cur.qty=qty; }
   else S.holdings.push({market:mk, avg, qty, at:Date.now()});
+  const h=heldOf(mk); if(h) h.at=Date.now();
   savePortfolio();
-  const h=heldOf(mk); if(h){ h.at=Date.now(); sbSave('holdings', { market:mk, avg_price:h.avg, qty:h.qty, updated_at:new Date().toISOString() }); }
+  if(h) sbQueue({ t:'holdings', k:mk, ts:h.at, row:{ market:mk, avg_price:h.avg, qty:h.qty, updated_at:new Date(h.at).toISOString() } });
 }
-function removeHolding(mk){ S.holdings=S.holdings.filter(h=>h.market!==mk); savePortfolio(); sbRemove('holdings', mk); }
+function removeHolding(mk){ S.holdings=S.holdings.filter(h=>h.market!==mk); savePortfolio(); sbQueue({ t:'holdings', k:mk, del:true }); }
 // 현재가 = 실시간 시세(없으면 마지막 분석가)
 function holdingCalc(h){
   const tk=S.tickers.get(h.market), r=S.results.get(h.market);
@@ -1507,30 +1522,61 @@ function holdingCalc(h){
 }
 
 /* =========================================================================
-   SUPABASE SYNC — 기기 간 보유 종목·즐겨찾기 동기화 (선택 기능)
-   CONFIG.supabase 를 비워두면 전부 비활성화되고 localStorage만 사용합니다.
+   SUPABASE SYNC — 기기 간 보유 종목 · 즐겨찾기 · 화면 설정 동기화
+   - 로그인한 계정의 서버 데이터가 기준입니다. 이 기기 localStorage는 빠른 표시용 사본입니다.
+   - 변경은 '보낼 목록(outbox)'에 먼저 적고 서버로 보냅니다 → 오프라인·로그아웃 중 변경도 다음 연결 때 반영.
+   - 이 기기에서 이 계정으로 '처음' 로그인할 때만 기존 기기 데이터를 서버와 합칩니다.
+     (예전 버전은 페이지를 열 때마다 합쳐서, 다른 기기에서 지운 종목·즐겨찾기가 되살아났습니다)
+   - 다른 기기 변경은 실시간 구독 + 화면 복귀 시 + 45초마다 다시 불러와 반영합니다.
+   - 테이블이 없으면 파일 맨 아래 'SUPABASE 설정 SQL'을 Supabase → SQL Editor에서 한 번 실행하세요.
    ========================================================================= */
-const SB = { client:null, user:null, on:false, msg:'', err:false, at:null, ch:null, merged:false };
+const SB = { client:null, user:null, on:false, msg:'', err:false, at:null, ch:null, pulling:false, again:false, flushing:null, poll:null, deb:null, setDeb:null, setOk:true };
+const OUTBOX_KEY='utes:sync:outbox:v1', UI_KEY='utes:ui:v1';
+const mergedKey = uid => 'utes:sync:merged:'+uid;
+const sbConfigured = () => !!(CONFIG.supabase && CONFIG.supabase.url && CONFIG.supabase.anonKey);
+const sbReady = () => !!(SB.client && SB.user);
+const sbPullSoon = () => { if(sbReady() && Date.now()-(SB.lastPull||0)>3000){ SB.lastPull=Date.now(); sbPull(); } };
+const sbPending = () => (LS.get(OUTBOX_KEY,[])||[]).length;
+const isMissingTable = e => !!e && (e.code==='42P01' || e.code==='PGRST205' || /does not exist|could not find the table/i.test(e.message||''));
+function sbErrText(e){
+  const m=(e && (e.message||e.details)) || String(e);
+  if(isMissingTable(e)) return 'Supabase에 저장 테이블이 없습니다. 파일 맨 아래 "SUPABASE 설정 SQL"을 Supabase → SQL Editor에서 한 번 실행하세요.';
+  if(e && e.code==='42501' || /row-level security|permission denied/i.test(m)) return 'Supabase 권한 설정(RLS)이 막고 있습니다. 파일 맨 아래 "SUPABASE 설정 SQL"을 다시 실행하세요.';
+  if(/no unique or exclusion constraint/i.test(m)) return '테이블에 (user_id, market) 고유 키가 없습니다. 파일 맨 아래 "SUPABASE 설정 SQL"을 실행하세요.';
+  if(/JWT|expired|401/i.test(m)) return '로그인이 만료되었습니다. 다시 로그인하세요.';
+  if(/Failed to fetch|NetworkError|network|Load failed/i.test(m)) return '연결이 끊겨 변경을 이 기기에 보관 중입니다. 연결되면 자동으로 올립니다.';
+  return m;
+}
 function loadScript(src){
   return new Promise((res,rej)=>{ const el=document.createElement('script'); el.src=src; el.onload=res; el.onerror=()=>rej(new Error('스크립트 로드 실패')); document.head.appendChild(el); });
 }
 async function sbInit(){
-  const { url, anonKey } = CONFIG.supabase || {};
-  if(!url || !anonKey){ renderSync(); return; }
+  if(!sbConfigured()){ renderSync(); return; }
   try{
     await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js');
-    SB.client = window.supabase.createClient(url, anonKey, { auth:{ persistSession:true, detectSessionInUrl:true } });
+    SB.client = window.supabase.createClient(CONFIG.supabase.url, CONFIG.supabase.anonKey, { auth:{ persistSession:true, autoRefreshToken:true, detectSessionInUrl:true } });
     SB.on = true;
     const { data } = await SB.client.auth.getSession();
     SB.user = (data && data.session && data.session.user) || null;
-    SB.client.auth.onAuthStateChange((_e, sess)=>{
-      SB.user = sess ? sess.user : null; SB.merged=false; renderSync();
-      if(SB.user){ sbPull(true).then(sbSubscribe); } else sbUnsubscribe();
+    // 토큰 갱신(TOKEN_REFRESHED) 등 같은 사용자 이벤트는 무시하고, 로그인 사용자가 바뀔 때만 처리합니다.
+    // supabase 콜백 안에서 바로 supabase 호출을 기다리면 잠금이 걸릴 수 있어 setTimeout으로 넘깁니다.
+    SB.client.auth.onAuthStateChange((_ev, sess)=>{
+      const nu = sess ? sess.user : null;
+      if((nu && nu.id) === (SB.user && SB.user.id)){ if(nu) SB.user=nu; return; }
+      SB.user = nu; renderSync();
+      setTimeout(()=> nu ? sbStart() : sbStop(), 0);
     });
     renderSync();
-    if(SB.user){ await sbPull(true); sbSubscribe(); }
+    if(SB.user) sbStart();
   }catch(e){ SB.msg='동기화 연결 실패: '+e.message; SB.err=true; renderSync(); }
 }
+function sbStart(){
+  sbPull();
+  sbSubscribe();
+  clearInterval(SB.poll);
+  SB.poll = setInterval(()=>{ if(document.visibilityState==='visible') sbPullSoon(); }, 45000);
+}
+function sbStop(){ sbUnsubscribe(); clearInterval(SB.poll); SB.poll=null; renderSync(); }
 // 로그인: 이메일로 받은 링크를 누르면 이 페이지로 돌아옵니다.
 async function sbLogin(email){
   if(!SB.client) return;
@@ -1547,85 +1593,181 @@ async function sbPassword(email, password, mode){
   SB.msg = mode==='signup' ? '계정을 만드는 중…' : '로그인 중…'; SB.err=false; renderSync();
   const fn = mode==='signup' ? SB.client.auth.signUp({ email, password }) : SB.client.auth.signInWithPassword({ email, password });
   const { data, error } = await fn;
-  if(error){ SB.msg=(mode==='signup'?'가입 실패: ':'로그인 실패: ')+error.message; SB.err=true; }
-  else if(mode==='signup' && !(data && data.session)){ SB.msg='가입은 됐지만 메일 인증이 필요한 설정입니다. Supabase → Authentication → Providers → Email 에서 "Confirm email"을 끄거나, 받은 인증 메일을 확인하세요.'; SB.err=true; }
+  if(error){ SB.msg=(mode==='signup'?'가입 실패: ':'로그인 실패: ')+(/invalid login/i.test(error.message)?'이메일 또는 비밀번호가 맞지 않습니다.':error.message); SB.err=true; }
+  else if(mode==='signup' && !(data && data.session)){ SB.msg='가입은 됐지만 메일 인증이 필요한 설정입니다. 받은 인증 메일의 링크를 누르거나, Supabase → Authentication → Providers → Email 에서 "Confirm email"을 끄세요.'; SB.err=true; }
   else { SB.msg=''; SB.err=false; }
   renderSync();
 }
-async function sbLogout(){ if(SB.client) await SB.client.auth.signOut(); SB.msg='로그아웃했습니다. 이 기기에만 저장됩니다.'; SB.err=false; renderSync(); }
-// 서버 → 로컬. first=true 이면 로컬 값과 합치고(첫 로그인 이전 데이터 보존), 이후에는 서버 기준으로 맞춥니다.
-async function sbPull(first){
-  if(!SB.client || !SB.user) return;
+async function sbLogout(){ if(SB.client) await SB.client.auth.signOut(); SB.msg='로그아웃했습니다. 지금부터는 이 기기에만 저장되고, 다시 로그인하면 서버로 올라갑니다.'; SB.err=false; renderSync(); }
+
+// ---- 보낼 목록(outbox): {t:테이블, k:키, del:삭제여부, row, ts}
+function sbQueue(op, noFlush){
+  if(!sbConfigured()) return;
+  const q=(LS.get(OUTBOX_KEY,[])||[]).filter(x=>!(x.t===op.t && x.k===op.k));   // 같은 항목은 마지막 변경만
+  q.push({ ...op, ts: op.ts || Date.now() });
+  LS.set(OUTBOX_KEY, q);
+  if(!noFlush) sbFlush();
+  renderSync();
+}
+async function sbSend(op, uid){
+  if(op.t==='user_settings'){
+    if(!SB.setOk) return { error:null };
+    return SB.client.from('user_settings').upsert({ user_id:uid, data:op.row, updated_at:new Date(op.ts).toISOString() }, { onConflict:'user_id' });
+  }
+  if(op.del) return SB.client.from(op.t).delete().eq('user_id', uid).eq('market', op.k);
+  return SB.client.from(op.t).upsert({ user_id:uid, ...op.row }, { onConflict:'user_id,market' });
+}
+async function sbFlush(){
+  if(!sbReady() || !navigator.onLine) return;
+  if(SB.flushing) return SB.flushing;
+  SB.flushing = (async()=>{
+    const uid=SB.user.id;
+    let q=LS.get(OUTBOX_KEY,[])||[], failed=false;
+    while(q.length){
+      const op=q[0];
+      try{
+        const res=await sbSend(op, uid);
+        if(res && res.error){
+          if(op.t==='user_settings' && isMissingTable(res.error)) SB.setOk=false;   // 설정 테이블만 없으면 설정 동기화만 건너뜀
+          else throw res.error;
+        }
+      }catch(e){ SB.msg=sbErrText(e); SB.err=true; failed=true; break; }
+      q=(LS.get(OUTBOX_KEY,[])||[]).filter(x=>!(x.t===op.t && x.k===op.k && x.ts===op.ts));
+      LS.set(OUTBOX_KEY, q);
+    }
+    if(!failed){ SB.at=Date.now(); SB.msg=''; SB.err=false; }
+    renderSync();
+  })();
+  try{ await SB.flushing; } finally{ SB.flushing=null; }
+}
+
+// ---- 서버 → 이 기기
+async function sbPull(){
+  if(!sbReady()) return;
+  if(SB.pulling){ SB.again=true; return; }
+  SB.pulling=true;
+  try{ do{ SB.again=false; await sbPullOnce(); } while(SB.again && sbReady()); }
+  finally{ SB.pulling=false; }
+}
+async function sbPullOnce(){
   try{
-    const [h, f] = await Promise.all([
+    await sbFlush();                                    // 내 변경을 먼저 올린 뒤
+    if(!sbReady()) return;
+    const uid=SB.user.id;
+    const [h, f, s] = await Promise.all([
       SB.client.from('holdings').select('market,avg_price,qty,updated_at'),
-      SB.client.from('favorites').select('market')
+      SB.client.from('favorites').select('market'),
+      SB.setOk ? SB.client.from('user_settings').select('data,updated_at').eq('user_id', uid).maybeSingle() : Promise.resolve({ data:null, error:null })
     ]);
     if(h.error) throw h.error; if(f.error) throw f.error;
-    const srv = (h.data||[]).map(x=>({ market:x.market, avg:Number(x.avg_price), qty:Number(x.qty), at:Date.parse(x.updated_at)||0 }));
-    if(first && !SB.merged){
-      const map=new Map(srv.map(x=>[x.market,x]));
-      for(const loc of S.holdings){ const cur=map.get(loc.market); if(!cur || (loc.at||0) > cur.at) map.set(loc.market, loc); }
-      S.holdings=[...map.values()];
-      const favs=new Set([...(f.data||[]).map(x=>x.market), ...S.favs]);
-      S.favs=favs; SB.merged=true;
-      await sbPushAll();           // 합친 결과를 서버에도 반영
-    } else {
-      S.holdings=srv; S.favs=new Set((f.data||[]).map(x=>x.market));
+    if(s.error && isMissingTable(s.error)) SB.setOk=false;
+
+    let holds=(h.data||[]).map(x=>({ market:x.market, avg:Number(x.avg_price), qty:Number(x.qty), at:Date.parse(x.updated_at)||0 })).filter(x=>x.qty>0);
+    const favs=new Set((f.data||[]).map(x=>x.market));
+    const first = !LS.get(mergedKey(uid), false);
+
+    if(first){
+      // 이 기기에서 이 계정으로 처음 연결 → 이 기기에만 있던 종목·즐겨찾기도 버리지 않고 서버에 올립니다.
+      const map=new Map(holds.map(x=>[x.market,x]));
+      for(const loc of S.holdings){
+        const cur=map.get(loc.market);
+        if(!cur || (loc.at||0) > cur.at) sbQueue({ t:'holdings', k:loc.market, ts:loc.at||Date.now(), row:{ market:loc.market, avg_price:loc.avg, qty:loc.qty, updated_at:new Date(loc.at||Date.now()).toISOString() } }, true);
+      }
+      for(const mk of S.favs) if(!favs.has(mk)) sbQueue({ t:'favorites', k:mk, row:{ market:mk } }, true);
+      LS.set(mergedKey(uid), true);
     }
-    savePortfolio(); SB.at=Date.now(); SB.msg=''; SB.err=false;
-    renderHoldings(); renderNav(); renderTable(); renderSync();
-    if(S.holdings.length) startLive();
-  }catch(e){ SB.msg='불러오기 실패: '+(e.message||e); SB.err=true; renderSync(); }
+    // 서버 값 + 아직 못 올린 내 변경 = 이 기기에 보일 값
+    const queue=LS.get(OUTBOX_KEY,[])||[];
+    for(const op of queue){
+      if(op.t==='holdings'){ holds=holds.filter(x=>x.market!==op.k); if(!op.del && op.row) holds.push({ market:op.k, avg:Number(op.row.avg_price), qty:Number(op.row.qty), at:op.ts }); }
+      else if(op.t==='favorites'){ if(op.del) favs.delete(op.k); else favs.add(op.k); }
+    }
+    // 원래 보이던 순서는 유지하고 새 종목은 뒤에
+    const idx=new Map(S.holdings.map((x,i)=>[x.market,i]));
+    holds.sort((a,b)=>(idx.has(a.market)?idx.get(a.market):1e9)-(idx.has(b.market)?idx.get(b.market):1e9) || a.at-b.at);
+
+    const before=JSON.stringify([S.holdings.map(x=>[x.market,x.avg,x.qty]), [...S.favs].sort()]);
+    const after =JSON.stringify([holds.map(x=>[x.market,x.avg,x.qty]), [...favs].sort()]);
+    const favDiff=[...new Set([...S.favs, ...favs])].filter(mk=>S.favs.has(mk)!==favs.has(mk));
+    S.holdings=holds; S.favs=favs; savePortfolio();
+    if(before!==after){
+      favDiff.forEach(paintFav);
+      renderHoldings(); renderNav(); renderTable();
+      if(S.holdings.length) startLive();
+    }
+
+    // 화면 설정(필터·정렬·자동 갱신·분석 기준 등): 더 최근에 바뀐 쪽이 이깁니다.
+    if(SB.setOk){
+      const loc=LS.get(UI_KEY,null), locAt=(loc && loc.at) || 0;
+      const srv=s.data, srvAt=srv ? (Date.parse(srv.updated_at)||0) : 0;
+      const pendingUI=queue.some(op=>op.t==='user_settings');
+      if(srv && srv.data && srvAt>locAt && !pendingUI) applyUI(srv.data, srvAt);
+      else if(loc && locAt && (!srv || locAt>srvAt) && !pendingUI) sbQueue({ t:'user_settings', k:'ui', ts:locAt, row:syncedUI(loc) }, true);
+    }
+
+    SB.at=Date.now(); SB.msg=''; SB.err=false;
+    if(sbPending()) sbFlush();
+    renderSync();
+  }catch(e){ SB.msg='불러오기 실패: '+sbErrText(e); SB.err=true; renderSync(); }
 }
-async function sbPushAll(){
-  if(!SB.client || !SB.user) return;
-  const uid=SB.user.id;
-  const rows=S.holdings.map(h=>({ user_id:uid, market:h.market, avg_price:h.avg, qty:h.qty, updated_at:new Date(h.at||Date.now()).toISOString() }));
-  if(rows.length) await SB.client.from('holdings').upsert(rows, { onConflict:'user_id,market' });
-  const favs=[...S.favs].map(mk=>({ user_id:uid, market:mk }));
-  if(favs.length) await SB.client.from('favorites').upsert(favs, { onConflict:'user_id,market' });
-}
-async function sbSave(table, row){
-  if(!SB.client || !SB.user) return;
-  try{ const { error } = await SB.client.from(table).upsert({ user_id:SB.user.id, ...row }, { onConflict:'user_id,market' }); if(error) throw error; SB.at=Date.now(); SB.msg=''; SB.err=false; }
-  catch(e){ SB.msg='저장 실패: '+(e.message||e); SB.err=true; }
-  renderSync();
-}
-async function sbRemove(table, mk){
-  if(!SB.client || !SB.user) return;
-  try{ const { error } = await SB.client.from(table).delete().eq('user_id', SB.user.id).eq('market', mk); if(error) throw error; SB.at=Date.now(); }
-  catch(e){ SB.msg='삭제 실패: '+(e.message||e); SB.err=true; }
-  renderSync();
-}
-// 다른 기기에서 바뀌면 바로 반영
+// 다른 기기에서 바뀌면 바로 반영 (DELETE 이벤트 필터에는 테이블 replica identity full 필요 — SQL에 포함)
 function sbSubscribe(){
   if(!SB.client || !SB.user || SB.ch) return;
-  const filter=`user_id=eq.${SB.user.id}`;
+  const filter=`user_id=eq.${SB.user.id}`, hit=()=>{ clearTimeout(SB.deb); SB.deb=setTimeout(sbPull, 400); };
   SB.ch = SB.client.channel('portfolio-'+SB.user.id)
-    .on('postgres_changes', { event:'*', schema:'public', table:'holdings', filter }, ()=>sbPull(false))
-    .on('postgres_changes', { event:'*', schema:'public', table:'favorites', filter }, ()=>sbPull(false))
+    .on('postgres_changes', { event:'*', schema:'public', table:'holdings', filter }, hit)
+    .on('postgres_changes', { event:'*', schema:'public', table:'favorites', filter }, hit)
+    .on('postgres_changes', { event:'*', schema:'public', table:'user_settings', filter }, hit)
     .subscribe();
 }
 function sbUnsubscribe(){ if(SB.ch && SB.client){ SB.client.removeChannel(SB.ch); } SB.ch=null; }
+
+// ---- 화면 설정 동기화 대상 (탭은 기기마다 다르게 둡니다)
+const syncedUI = ui => ({ filters:ui.filters, sort:ui.sort, auto:ui.auto, basis:ui.basis, rankMode:ui.rankMode, pickVolOnly:ui.pickVolOnly });
+function applyUI(ui, at){
+  if(!ui) return;
+  if(ui.filters) S.filters={ ...S.filters, ...ui.filters };
+  if(ui.sort && ui.sort.key) S.sort={ key:ui.sort.key, dir:ui.sort.dir===1?1:-1 };
+  if(ui.basis) S.basis=ui.basis;
+  if(ui.rankMode) S.rankMode=ui.rankMode;
+  if(ui.pickVolOnly!=null) S.pickVolOnly=!!ui.pickVolOnly;
+  if(ui.auto!=null && $('#autoSel').value!==String(ui.auto)){ $('#autoSel').value=ui.auto; setAuto(ui.auto); }
+  $('#sortSel').value=S.sort.key; $('#rankSel').value=S.rankMode; $('#sortDir').textContent=S.sort.dir===-1?'내림차순':'오름차순';
+  $('#pickVolOnly').checked=S.pickVolOnly;
+  LS.set(UI_KEY, { ...(LS.get(UI_KEY,{})||{}), ...syncedUI({ ...ui, filters:S.filters, sort:S.sort }), tab:S.tab, v3:1, at });
+  renderBasis(); renderFilters(); bindFilterInputs(); S.page=1; renderAll();
+}
+
 function renderSync(){
-  const box=$('#syncBox'), tag=$('#holdSync');
+  const box=$('#syncBox'), tag=$('#holdSync'), mini=$('#syncMini');
+  if(!box) return;
   const time = SB.at ? new Date(SB.at).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour12:false}) : null;
-  if(!CONFIG.supabase.url || !CONFIG.supabase.anonKey){
+  const pend = sbPending();
+  const setMini = t => { if(mini) mini.textContent=t; };
+  box.className='sync-strip';
+  if(!sbConfigured()){
     box.innerHTML='<div class="sync-msg">이 브라우저에만 저장됩니다. 파일 상단 CONFIG.supabase 에 URL과 anon key를 넣으면 기기 간 동기화가 켜집니다.</div>';
-    tag.textContent=''; return;
+    tag.textContent='이 기기에만 저장'; setMini('꺼짐'); return;
   }
-  if(!SB.on){ box.innerHTML=`<div class="sync-msg ${SB.err?'err':''}">${esc(SB.msg||'동기화 준비 중…')}</div>`; tag.textContent=''; return; }
+  if(!SB.on){
+    box.innerHTML=`<div class="sync-head"><span class="sync-dot"></span><span class="sync-msg ${SB.err?'err':''}">${esc(SB.msg||'동기화 준비 중…')}</span></div>`;
+    tag.textContent=''; setMini(SB.err?'연결 실패':'준비 중'); return;
+  }
   if(!SB.user){
-    box.innerHTML=`<div class="sync-form"><input id="syncEmail" type="email" placeholder="이메일 주소" autocomplete="email"><input id="syncPw" type="password" placeholder="비밀번호 (6자 이상)" autocomplete="current-password"></div>
-      <div class="sync-form"><button class="btn" id="syncPwLogin">로그인</button><button class="btn" id="syncSignup">가입</button><button class="btn-quiet" id="syncLogin">메일 링크로 로그인</button></div>
-      <div class="sync-msg ${SB.err?'err':''}">${esc(SB.msg||'같은 계정으로 로그인한 기기끼리 보유 종목과 즐겨찾기가 동기화됩니다. 메일이 오지 않으면 비밀번호 방식을 쓰세요.')}</div>`;
-    tag.textContent='이 기기에만 저장';
-    return;
+    box.classList.add('off');
+    box.innerHTML=`<div class="sync-head"><span class="sync-dot warn"></span><b>지금은 이 기기에만 저장됩니다</b><span class="sync-msg">— 로그인하면 휴대폰·PC 어디서나 같은 보유 종목·즐겨찾기·화면 설정을 봅니다.${pend?` (올릴 변경 ${pend}건 보관 중)`:''}</span></div>
+      <div class="sync-form"><input id="syncEmail" type="email" placeholder="이메일 주소" autocomplete="email"><input id="syncPw" type="password" placeholder="비밀번호 (6자 이상)" autocomplete="current-password">
+      <button class="btn-primary" id="syncPwLogin">로그인</button><button class="btn" id="syncSignup">처음이면 가입</button><button class="btn-quiet" id="syncLogin">메일 링크로 로그인</button></div>
+      ${SB.msg?`<div class="sync-msg ${SB.err?'err':''}">${esc(SB.msg)}</div>`:'<div class="sync-msg">모든 기기에서 같은 이메일·비밀번호로 로그인하세요. 처음 로그인하면 이 기기에 있던 종목도 함께 올라갑니다.</div>'}`;
+    tag.textContent='이 기기에만 저장'; setMini('로그인 필요'); return;
   }
-  box.innerHTML=`<div class="sync-form"><span class="sync-msg">${esc(SB.user.email||'로그인됨')}</span><button class="btn" id="syncLogout">로그아웃</button></div>
-    <div class="sync-msg ${SB.err?'err':''}">${esc(SB.msg || (time ? '동기화됨 '+time : '동기화 중…'))}</div>`;
+  box.classList.add(SB.err?'bad':'on');
+  const state = SB.err ? '동기화 오류' : (pend ? `올리는 중 (${pend}건)` : (time ? '동기화됨 '+time : '동기화 중…'));
+  box.innerHTML=`<div class="sync-head"><span class="sync-dot ${SB.err?'bad':'ok'}"></span><b>기기 간 동기화 켜짐</b><span class="sync-msg">${esc(SB.user.email||'로그인됨')} · ${esc(state)}</span>
+      <span class="sync-act"><button class="btn-quiet" id="syncNow">지금 동기화</button><button class="btn-quiet" id="syncLogout">로그아웃</button></span></div>
+    ${SB.err&&SB.msg?`<div class="sync-msg err">${esc(SB.msg)}</div>`:''}`;
   tag.textContent = SB.err ? '동기화 오류' : '기기 간 동기화 중';
+  setMini(SB.err ? '오류 — 보유 종목 영역 확인' : '켜짐 · '+(SB.user.email||''));
 }
 
 /* =========================================================================
@@ -1937,7 +2079,14 @@ function bindFilterInputs(){
     el.oninput=()=>{ S.filters[key]=+el.value; document.getElementById(id+'V').textContent=fmt(+el.value); clearTimeout(tmr); tmr=setTimeout(()=>{ S.page=1; renderTable(); saveUI(); },120); };
   });
 }
-function saveUI(){ LS.set('utes:ui:v1', { filters:S.filters, sort:S.sort, tab:S.tab, auto:$('#autoSel').value, basis:S.basis, rankMode:S.rankMode, pickVolOnly:S.pickVolOnly, v3:1 }); }
+function saveUI(){
+  const prev=LS.get(UI_KEY,null)||{};
+  const ui={ filters:S.filters, sort:S.sort, tab:S.tab, auto:$('#autoSel').value, basis:S.basis, rankMode:S.rankMode, pickVolOnly:S.pickVolOnly, v3:1 };
+  const changed = JSON.stringify(syncedUI(ui)) !== JSON.stringify(syncedUI(prev));
+  ui.at = changed ? Date.now() : (prev.at||0);          // 탭만 바꾼 경우는 동기화하지 않음
+  LS.set(UI_KEY, ui);
+  if(changed){ clearTimeout(SB.setDeb); const snap=JSON.parse(JSON.stringify(ui)); SB.setDeb=setTimeout(()=>sbQueue({ t:'user_settings', k:'ui', ts:snap.at, row:syncedUI(snap) }), 800); }
+}
 
 /* =========================================================================
    DETAIL VIEW
@@ -2544,7 +2693,13 @@ function init(){
     if(e.target.id==='syncPwLogin') sbPassword(em(), pw(), 'login');
     if(e.target.id==='syncSignup') sbPassword(em(), pw(), 'signup');
     if(e.target.id==='syncLogout') sbLogout();
+    if(e.target.id==='syncNow'){ SB.msg=''; SB.err=false; sbPull(); }
   };
+  $('#syncGo').onclick=()=>{ $('#sbSet').open=false; $('#holdCard').scrollIntoView({behavior:'smooth',block:'start'}); };
+  // 다른 기기에서 바꾼 내용: 화면으로 돌아오거나 다시 연결되면 즉시 불러옴
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') sbPullSoon(); });
+  window.addEventListener('focus', sbPullSoon);
+  window.addEventListener('online', ()=>{ SB.lastPull=0; sbPullSoon(); });
   $('#syncBox').onkeydown=e=>{
     if(e.key!=='Enter' || !(e.target.id==='syncEmail' || e.target.id==='syncPw')) return;
     e.preventDefault();
@@ -2730,6 +2885,68 @@ init();
   }
   if(wantScan) window.addEventListener('load', () => setTimeout(() => { const b = document.getElementById('scanBtn'); if(b && !b.disabled) b.click(); }, 600));
 })();
+</script>
+<script type="text/plain" id="supabase-setup-sql">
+/* SUPABASE 설정 SQL — Supabase → SQL Editor 에 붙여넣고 Run (supabase-setup.sql 과 동일) */
+-- =====================================================================
+-- UPBIT TREND & ENTRY SCANNER — 기기 간 동기화용 Supabase 설정
+-- Supabase 대시보드 → SQL Editor → 새 쿼리에 전체 붙여넣고 Run.
+-- 여러 번 실행해도 안전합니다(이미 있는 것은 건너뜀).
+-- =====================================================================
+
+-- 1) 보유 종목
+create table if not exists public.holdings (
+  user_id    uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  market     text not null,
+  avg_price  double precision not null,
+  qty        double precision not null,
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists holdings_user_market on public.holdings (user_id, market);
+
+-- 2) 즐겨찾기
+create table if not exists public.favorites (
+  user_id    uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  market     text not null,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists favorites_user_market on public.favorites (user_id, market);
+
+-- 3) 화면 설정(필터·정렬·자동 갱신·분석 기준 등)
+create table if not exists public.user_settings (
+  user_id    uuid primary key default auth.uid() references auth.users(id) on delete cascade,
+  data       jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+-- 4) 본인 데이터만 읽고 쓰기 (RLS)
+alter table public.holdings      enable row level security;
+alter table public.favorites     enable row level security;
+alter table public.user_settings enable row level security;
+
+drop policy if exists "own rows" on public.holdings;
+drop policy if exists "own rows" on public.favorites;
+drop policy if exists "own rows" on public.user_settings;
+create policy "own rows" on public.holdings      for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "own rows" on public.favorites     for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "own rows" on public.user_settings for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+grant select, insert, update, delete on public.holdings, public.favorites, public.user_settings to authenticated;
+
+-- 5) 실시간 반영(다른 기기에서 바꾸면 즉시 반영). 삭제 이벤트도 받으려면 replica identity full 필요.
+alter table public.holdings      replica identity full;
+alter table public.favorites     replica identity full;
+alter table public.user_settings replica identity full;
+do $$
+declare t text;
+begin
+  foreach t in array array['holdings','favorites','user_settings'] loop
+    begin
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    exception when duplicate_object then null;
+    end;
+  end loop;
+end $$;
 </script>
 </body>
 </html>
