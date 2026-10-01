@@ -2,8 +2,20 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>UPBIT TREND & ENTRY SCANNER</title>
+<!-- PWA -->
+<meta name="description" content="업비트 원화 마켓 전 종목을 월봉·주봉·일봉으로 분석해 추세 단계와 매수 타이밍을 보여주는 스캐너">
+<meta name="theme-color" content="#050505">
+<meta name="color-scheme" content="dark">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-64.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="매수 스캐너">
+<meta name="application-name" content="매수 스캐너">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -390,6 +402,36 @@ body.dopen table.res .hd{display:none}
   body.dopen main,body.dopen footer{margin:0 auto}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* =====================================================================
+   PWA — 설치 버튼 · 업데이트 알림 · 오프라인 표시 · 안전 영역(노치)
+   ===================================================================== */
+.btn-install{display:none;height:var(--ctl);border:1px solid var(--line-2);background:transparent;color:var(--text);padding:0 var(--s3);border-radius:var(--r-pill);align-items:center;gap:6px;white-space:nowrap}
+.btn-install.on{display:inline-flex}
+.btn-install:hover{border-color:var(--primary);color:var(--primary)}
+.btn-install svg{width:14px;height:14px}
+.pwa-toast{position:fixed;left:50%;bottom:calc(var(--s5) + env(safe-area-inset-bottom));transform:translate(-50%,140%);z-index:90;display:flex;align-items:center;gap:var(--s3);max-width:calc(100vw - 32px);padding:var(--s2) var(--s2) var(--s2) var(--s4);background:var(--surface-2);border:1px solid var(--line-2);border-radius:var(--r-pill);box-shadow:0 12px 40px rgba(0,0,0,.6);font-size:var(--fs-3);transition:transform .25s ease;visibility:hidden}
+.pwa-toast.on{transform:translate(-50%,0);visibility:visible}
+.pwa-toast .msg{color:var(--text);line-height:1.4}
+.pwa-toast .msg small{display:block;color:var(--text-2)}
+.pwa-toast button{height:30px;padding:0 var(--s3);border-radius:var(--r-pill);border:0;font-size:var(--fs-3);flex:none}
+.pwa-toast .go{background:var(--primary);color:#0a0a0a;font-weight:700}
+.pwa-toast .x{background:transparent;color:var(--text-2)}
+.offline-pill{display:none;position:fixed;top:calc(var(--topH,61px) + 8px);left:50%;transform:translateX(-50%);z-index:35;padding:4px 12px;border-radius:var(--r-pill);background:rgba(255,61,28,.14);border:1px solid rgba(255,61,28,.45);color:#ffb1a3;font-size:var(--fs-3);white-space:nowrap}
+body.offline .offline-pill{display:block}
+.ios-sheet ol{margin:var(--s2) 0 0;padding-left:18px;color:var(--text-2)}
+.ios-sheet b{color:var(--text)}
+/* 설치된 앱(홈 화면)으로 실행할 때 — 노치/상태바 영역 확보 */
+@media (display-mode: standalone), (display-mode: window-controls-overlay){
+  .topbar{padding-top:calc(var(--s3) + env(safe-area-inset-top));padding-left:calc(var(--s5) + env(safe-area-inset-left));padding-right:calc(var(--s5) + env(safe-area-inset-right))}
+  body{overscroll-behavior-y:none}
+  .btn-install{display:none!important}
+}
+@media (display-mode: window-controls-overlay){
+  .topbar{-webkit-app-region:drag;app-region:drag}
+  .topbar button,.topbar nav,.topbar a,.topbar input,.topbar select{-webkit-app-region:no-drag;app-region:no-drag}
+}
+@media (max-width:760px){ .btn-install .t{display:none} .btn-install{padding:0 10px} }
 </style>
 </head>
 <body>
@@ -402,6 +444,7 @@ body.dopen table.res .hd{display:none}
   </div>
   <nav class="pillnav" id="navTabs" aria-label="결과 탭"></nav>
   <div class="actions">
+    <button class="btn-install" id="installBtn" title="홈 화면 · 바탕화면에 앱으로 설치"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span class="t">앱 설치</span></button>
     <button class="btn-quiet" id="guideBtn">보는 법</button>
     <button id="scanBtn" class="btn-primary">지금 스캔</button>
   </div>
@@ -2593,6 +2636,100 @@ function init(){
   sbInit();
 }
 init();
+</script>
+
+<!-- =====================================================================
+     PWA — 서비스 워커 등록 · 설치 · 업데이트 · 오프라인
+     ===================================================================== -->
+<div class="offline-pill" role="status">오프라인 — 시세를 불러올 수 없습니다</div>
+<div class="pwa-toast" id="pwaToast" role="status" aria-live="polite"></div>
+<script>
+(function(){
+  const toast = document.getElementById('pwaToast');
+  const installBtn = document.getElementById('installBtn');
+  const isStandalone = () => matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: window-controls-overlay)').matches || navigator.standalone === true;
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const escH = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let toastTimer;
+
+  function showToast(html, actions, ms){
+    clearTimeout(toastTimer);
+    toast.innerHTML = '<div class="msg">'+html+'</div>' + (actions||[]).map((a,i)=>'<button class="'+(a.primary?'go':'x')+'" data-i="'+i+'">'+escH(a.label)+'</button>').join('');
+    toast.querySelectorAll('button').forEach(b => b.onclick = () => { const a = actions[+b.dataset.i]; hideToast(); a.run && a.run(); });
+    toast.classList.add('on');
+    if(ms) toastTimer = setTimeout(hideToast, ms);
+  }
+  function hideToast(){ toast.classList.remove('on'); }
+
+  /* ---- 1. 서비스 워커 (https 또는 localhost 에서만 동작) ---- */
+  let refreshing = false;
+  if('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')){
+    window.addEventListener('load', async () => {
+      try{
+        const reg = await navigator.serviceWorker.register('sw.js', { scope: './' });
+        const offerUpdate = w => {
+          if(!w || !navigator.serviceWorker.controller) return;   // 첫 설치 때는 알림 생략
+          showToast('새 버전이 준비됐습니다<small>새로고침하면 바로 적용됩니다</small>', [
+            { label:'새로고침', primary:true, run:() => w.postMessage('SKIP_WAITING') },
+            { label:'나중에' }
+          ]);
+        };
+        if(reg.waiting) offerUpdate(reg.waiting);
+        reg.addEventListener('updatefound', () => {
+          const w = reg.installing;
+          w && w.addEventListener('statechange', () => { if(w.state === 'installed') offerUpdate(w); });
+        });
+        // 앱을 오래 켜 두는 경우를 위해 1시간마다 · 다시 볼 때마다 업데이트 확인
+        setInterval(() => reg.update().catch(()=>{}), 60*60*1000);
+        document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') reg.update().catch(()=>{}); });
+      }catch(err){ console.warn('[PWA] 서비스 워커 등록 실패', err); }
+    });
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if(refreshing) return; refreshing = true; location.reload();
+    });
+  }
+
+  /* ---- 2. 설치 버튼 (Chrome · Edge · Android / iOS 안내) ---- */
+  let deferred = null;
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault(); deferred = e;
+    if(!isStandalone()) installBtn.classList.add('on');
+  });
+  window.addEventListener('appinstalled', () => {
+    deferred = null; installBtn.classList.remove('on');
+    showToast('설치 완료 — 홈 화면이나 바탕화면에서 바로 열 수 있습니다', [{label:'닫기'}], 5000);
+  });
+  if(isIOS && !isStandalone()) installBtn.classList.add('on');   // iOS Safari 는 설치 이벤트가 없어 안내로 대신
+
+  installBtn.addEventListener('click', async () => {
+    if(deferred){
+      deferred.prompt();
+      const { outcome } = await deferred.userChoice;
+      deferred = null;
+      if(outcome === 'accepted') installBtn.classList.remove('on');
+      return;
+    }
+    if(isIOS){
+      showToast('<span class="ios-sheet"><b>아이폰 · 아이패드에 설치하기</b><ol><li>Safari 아래쪽 <b>공유 버튼</b>(□↑)을 누르고</li><li><b>홈 화면에 추가</b>를 선택하세요</li></ol></span>', [{label:'확인', primary:true}]);
+      return;
+    }
+    showToast('브라우저 주소창 오른쪽의 <b>설치</b> 아이콘이나 메뉴의 <b>앱 설치</b>를 이용하세요', [{label:'확인', primary:true}], 8000);
+  });
+
+  /* ---- 3. 오프라인 표시 ---- */
+  const syncNet = () => document.body.classList.toggle('offline', !navigator.onLine);
+  window.addEventListener('online', () => { syncNet(); showToast('다시 연결됐습니다', [{label:'닫기'}], 3000); });
+  window.addEventListener('offline', syncNet);
+  syncNet();
+
+  /* ---- 4. 앱 바로가기 "지금 스캔" (?action=scan) — 다른 주소 파라미터(로그인 등)는 건드리지 않음 ---- */
+  const u = new URL(location.href), wantScan = u.searchParams.get('action') === 'scan';
+  if(u.searchParams.has('action') || u.searchParams.has('source')){
+    u.searchParams.delete('action'); u.searchParams.delete('source');
+    history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+  }
+  if(wantScan) window.addEventListener('load', () => setTimeout(() => { const b = document.getElementById('scanBtn'); if(b && !b.disabled) b.click(); }, 600));
+})();
 </script>
 </body>
 </html>

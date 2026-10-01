@@ -1,0 +1,24 @@
+{
+  "id": "/",
+  "name": "매수 타이밍 스캐너 — 업비트 원화 마켓",
+  "short_name": "매수 스캐너",
+  "description": "업비트 원화 마켓 전 종목을 월봉·주봉·일봉으로 분석해 추세 단계와 매수 타이밍을 보여주는 스캐너",
+  "lang": "ko",
+  "dir": "ltr",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "categories": ["finance", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "지금 스캔", "short_name": "스캔", "url": "/?action=scan", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
