@@ -16,7 +16,9 @@ export const SURGE_DEFAULTS = {
   surgeRepeat: 5,        // 확인 전까지 이 간격(초)으로 계속 울림
   surgeCombos: '1/1, 2/2, 2/5, 3/3',   // 익절%/손절% 조합
   surgeTimeoutMin: 30,   // 이 시간(분) 안에 둘 다 안 닿으면 '시간 종료'로 그때 가격 기록
-  surgeFeePct: 0.1       // 왕복 수수료(%)
+  surgeFeePct: 0.1,      // 왕복 수수료(%)
+  surgeTradeTp: 2,       // 급등 거래 주문 기본 익절(%)
+  surgeTradeSl: 5        // 급등 거래 주문 기본 손절(%)
 };
 
 const LOG_KEY = 'quantera:surgeLog';

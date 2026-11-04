@@ -83,8 +83,9 @@
       </section>
       <div class="split h" data-split="journal"></div>
       <section class="panel" id="pJournal" data-panel="journal">
-        <header><div class="tabs" id="jTabs" style="border:0;padding:0"><button class="pill on" data-j="journal">거래일지</button><button class="pill" data-j="news">업비트 소식</button></div><span class="muted" id="jSummary"></span><div class="grow"></div><button class="iconbtn collapse" data-collapse="journal" aria-label="접기">⌄</button></header>
+        <header><div class="tabs" id="jTabs" style="border:0;padding:0"><button class="pill on" data-j="journal">거래일지</button><button class="pill" data-j="orders">주문</button><button class="pill" data-j="news">업비트 소식</button></div><span class="muted" id="jSummary"></span><div class="grow"></div><button class="iconbtn collapse" data-collapse="journal" aria-label="접기">⌄</button></header>
         <div class="body" id="jBody"></div>
+        <div class="body hidden" id="ordBody"></div>
         <div class="body hidden" id="newsBody"><div class="empty">불러오는 중…</div></div>
       </section>
     </div>
@@ -110,19 +111,21 @@
     <section class="panel" id="pAlerts">
       <header><h2>업비트 소식</h2><div class="grow"></div><span class="muted" style="font-size:12px">가격 알림은 다음 단계</span></header>
       <div class="body" id="alertBody"><div class="empty">불러오는 중…</div></div>
-      <div class="sec" style="border:0"><button class="estop" style="width:100%;height:48px" disabled>긴급 정지 · 자동매매 연결 후 사용</button></div>
+      <div class="sec" style="border:0"><button class="estop" id="estopM" style="width:100%;height:48px">긴급 정지 · 모의 주문 전체 멈춤</button></div>
     </section>
   </main>
 
   <footer class="statusbar">
+    <span class="sb-acct" id="sbAcct">모의</span>
     <span>총자산 <b class="mono" id="sbAssets">-</b></span>
     <span>평가손익 <b class="mono" id="sbPnl">-</b></span>
     <span class="muted">자동매매 <b>OFF</b></span>
     <div class="grow"></div>
     <span class="muted mono" id="sbReq"></span>
     <span><span class="dot" id="sbDbDot"></span> <span id="sbDb">기록 저장소</span></span>
-    <button class="estop" disabled title="자동매매 연결 후 사용">긴급 정지</button>
+    <button class="estop" id="estop" data-tip="모의 계좌의 모든 미체결 주문과 예약 매도를 한 번에 멈춰요. 다시 누르면 해제.">긴급 정지</button>
   </footer>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
 
   <nav class="mtabs" aria-label="하단 메뉴">
     <button class="on" data-m="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11l8-7 8 7v9H4z"/></svg>홈</button>

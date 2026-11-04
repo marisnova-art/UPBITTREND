@@ -88,3 +88,40 @@ export async function remoteLayout(){
   try { const rows = await q(() => db.client.from('q_user_settings').select('layout').limit(1)); return rows[0] && Object.keys(rows[0].layout || {}).length ? rows[0].layout : null; }
   catch(e){ return null; }
 }
+
+// ---------- 모의투자 (상태는 q_user_settings.prefs.paper, 체결은 q_trades source='paper')
+let prefsCache = null, paperTimer = null;
+async function loadPrefs(){
+  if (prefsCache) return prefsCache;
+  try { const rows = await q(() => db.client.from('q_user_settings').select('prefs').limit(1)); prefsCache = (rows[0] && rows[0].prefs) || {}; }
+  catch(e){ prefsCache = {}; }
+  return prefsCache;
+}
+export const paperRemote = {
+  saveState(st){
+    if (!online()) return;
+    clearTimeout(paperTimer);
+    paperTimer = setTimeout(async () => {
+      try{
+        const prefs = { ...(await loadPrefs()), paper: st }; prefsCache = prefs;
+        await q(() => db.client.from('q_user_settings').upsert({ prefs, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }));
+      }catch(e){ console.warn('모의 상태 저장 실패', e.message); }
+    }, 1500);
+  },
+  async addTrade(t){
+    if (!online()) return false;
+    const row = { trade_no: t.trade_no, symbol: t.symbol, side: t.side, price: t.price, qty: t.qty, fee: t.fee, executed_at: t.executed_at,
+      source: 'paper', strategy: t.strategy, reason: t.reason, guide: t.guide };
+    try { await q(() => db.client.from('q_trades').insert(row)); return true; }
+    catch(e){ return e && e.code === '23505'; }   // 다른 기기에서 이미 올린 기록
+  },
+  async load(){
+    if (!online()) return null;
+    try{
+      const prefs = await loadPrefs();
+      const trades = await q(() => db.client.from('q_trades').select('*').eq('source', 'paper').order('executed_at', { ascending: true }).limit(5000));
+      return { state: prefs.paper || null, trades: (trades || []).filter(t => t.source === 'paper') };
+    }catch(e){ return null; }
+  }
+};
+export function resetPrefsCache(){ prefsCache = null; }

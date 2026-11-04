@@ -150,8 +150,8 @@ export function createChart(el, legendEl, infoEl){
     try { localStorage.setItem(LBL_KEY, showLabels ? '1' : '0'); } catch(err){}
     setGuide(...lastGuide);
   });
-  function setGuide(g, pastBuys = []){
-    lastGuide = [g, pastBuys];
+  function setGuide(g, pastBuys = [], extra = []){
+    lastGuide = [g, pastBuys, extra];
     lines.forEach(l => candles.removePriceLine(l)); lines = [];
     const add = (price, title, color, style = 2, width = 1) => {
       if (!(price && isFinite(price))) return;
@@ -164,6 +164,8 @@ export function createChart(el, legendEl, infoEl){
       legend.push(['매수 구간', C.accent], ['매도가', C.white], ['손절', C.warn]);
     }
     for (const b of pastBuys.slice(0, 3)) add(b.price, b.label, '#7D7D86', 3);
+    for (const x of extra) add(x.price, x.title, x.color, x.style ?? 0, x.width ?? 1);
+    for (const [t, c] of [...new Map(extra.filter(x => x.legend).map(x => [x.legend, x.color]))]) legend.push([t, c]);
     if (pastBuys.length) legend.push(['과거 매수가', '#7D7D86']);
     legend.push(['20선', C.ma20], ['60선', C.ma60]);
     if (legendEl) legendEl.innerHTML = legend.map(([t, c]) => `<span style="color:${c}">${t}</span>`).join('') +

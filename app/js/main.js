@@ -11,7 +11,9 @@ import { loadNews, newsFor, newsHtml } from './news.js';
 import { createChart } from './ui/chart.js';
 import { initTips, BAR_TIPS } from './ui/tips.js';
 import { initLayout, apply as applyLayout } from './ui/layout.js';
-import { db, initDb, login, logout, loadWatchlist, setWatch, loadTrades, localLayout, saveLayout, remoteLayout } from './db.js';
+import { db, initDb, login, logout, loadWatchlist, setWatch, loadTrades, localLayout, saveLayout, remoteLayout, paperRemote, resetPrefsCache } from './db.js';
+import { createPaper } from './paper.js';
+import { FEE_RATE } from './analysis/ledger.js';
 
 const STATUS_KO = { 'WAIT': '대기', 'WATCH': '관찰', 'ENTRY ZONE': '매수 검토', 'BREAKOUT WATCH': '돌파 대기', 'EXTENDED': '추격 주의', 'INSUFFICIENT DATA': '데이터 부족' };
 const RISK_KO = { 'LOW': '낮음', 'MEDIUM': '보통', 'HIGH': '높음', 'EXTREME': '매우 높음' };
@@ -20,7 +22,9 @@ const S = {
   instruments: [], byMarket: new Map(), quotes: new Map(), results: new Map(),
   watch: new Set(), trades: [], ledger: { rows: [], positions: [], rebuy: [] },
   tab: 'fav', search: '', sel: null, tf: '1d', stream: null, scanning: null,
-  firstSeen: LS.get('quantera:firstSeen', null)
+  firstSeen: LS.get('quantera:firstSeen', null),
+  acct: LS.get('quantera:acct', 'paper'),
+  ledgerReal: { rows: [], positions: [], rebuy: [] }, ledgerPaper: { rows: [], positions: [], rebuy: [] }
 };
 // 최근 본 종목: 종목을 열 때마다 기록 (최신 순, 100개까지, 이 기기에 저장)
 const RECENT_KEY = 'quantera:recent';
@@ -33,6 +37,7 @@ function addRecent(m){
 const allCfg = () => ({ ...SURGE_DEFAULTS, ...screenCfg() });
 const surge = createSurge(allCfg);
 const priceOf = sym => { const q = S.quotes.get(upbit.toMarket(sym)); return q ? q.price : null; };
+const paper = createPaper({ priceOf, remote: paperRemote });
 
 // ---------------------------------------------------------------- 시작
 let chart;
@@ -64,6 +69,8 @@ async function boot(){
   S.stream = upbit.stream(S.instruments.map(i => i.market), {
     ticker: onTick, orderbook: renderOrderbook, status: setWs
   });
+  // 모의투자: 앱이 꺼져 있던 동안 지정가·예약 매도가 닿았는지 캔들로 확인
+  paper.catchUp(upbit.getCandles, upbit.toMarket).then(n => { if (n) toast(`앱이 꺼져 있던 동안 모의 주문 ${n}건이 체결됐어요. 거래일지에서 확인하세요.`, 'warn'); });
   // 관심·보유 종목은 열자마자 분석(캐시라 같은 날 재요청 없음)
   analyzeList([...S.watch].map(upbit.toMarket));
   renderNews();
@@ -86,6 +93,8 @@ async function onAuth(user){
   const lay = await remoteLayout(); if (lay) applyLayout(lay);
   S.watch = new Set(await loadWatchlist());
   S.trades = await loadTrades();
+  resetPrefsCache();
+  const pr = await paperRemote.load(); if (pr) paper.merge(pr.state, pr.trades);
   recompute(); renderWatch(); analyzeList([...S.watch, ...S.ledger.positions.map(p => p.symbol)].map(upbit.toMarket));
 }
 
@@ -94,6 +103,7 @@ let rafPending = false;
 function onTick(q){
   S.quotes.set(q.market, q);
   surge.push(q);
+  paper.tick(upbit.toSymbol(q.market), q.price);
   if (S.sel === q.market){ chart && chart.tick(q.price, q.ts || Date.now()); renderHead(); }
   if (!rafPending){ rafPending = true; setTimeout(() => { rafPending = false; patchWatchPrices(); }, 1000); }
 }
@@ -300,6 +310,7 @@ function patchWatchPrices(){
 async function select(market, { noRecent = false } = {}){
   if (unseen.has(market)) ackSurge(market);
   if (!S.byMarket.has(market)) market = 'KRW-BTC';
+  if (S.sel !== market) OF.price = OF.amount = OF.qty = OF.sellPct = '';
   S.sel = market; LS.set('quantera:sel', market);
   if (!noRecent){ addRecent(market); if (S.tab === 'recent' && !S.search) renderWatch(); }
   for (const el of $$('.wl-row')) el.classList.toggle('sel', el.dataset.m === market);
@@ -326,7 +337,16 @@ async function loadChart(){
 }
 function applyGuideToChart(){
   const r = S.results.get(S.sel);
-  chart && chart.setGuide(effGuide(S.sel), pastBuys(S.ledger.rows, upbit.toSymbol(S.sel)));
+  const sym = upbit.toSymbol(S.sel), extra = [];
+  const pos = S.ledger.positions.find(p => p.symbol === sym);
+  if (pos) extra.push({ price: pos.avg, title: S.acct === 'paper' ? '모의 평단' : '내 평단', color: '#B48CFF', legend: '내 평단', width: 2 });
+  if (S.acct === 'paper') for (const b of paper.activeBrackets().filter(b => b.symbol === sym)){
+    if (b.tp) extra.push({ price: b.tp, title: `예약 익절 +${b.tpPct}%`, color: '#F04452', style: 1, legend: '예약 익절' });
+    if (b.sl) extra.push({ price: b.sl, title: `예약 손절 -${b.slPct}%`, color: '#4C8DFF', style: 1, legend: '예약 손절' });
+  }
+  if (S.acct === 'paper') for (const o of paper.openOrders().filter(o => o.symbol === sym && o.type === 'limit'))
+    extra.push({ price: o.price, title: `미체결 ${o.side === 'buy' ? '매수' : '매도'}`, color: '#9A9AA3', style: 2, legend: '미체결' });
+  chart && chart.setGuide(effGuide(S.sel), pastBuys(S.ledger.rows, sym), extra);
 }
 function renderHead(){
   const i = S.byMarket.get(S.sel), q = S.quotes.get(S.sel) || {}, r = S.results.get(S.sel);
@@ -422,22 +442,225 @@ function renderOrderbook(ob){
   const bids = units.map(u => `<div class="ob-row bid"><i style="width:${u.bidSize / max * 100}%"></i><span class="p mono">${fmtPrice(u.bid)}</span><span class="sz mono">${u.bidSize.toFixed(3)}</span></div>`).join('');
   $('#obBody').innerHTML = asks + `<div class="ob-mid mono ${toneOf(q.changeRate)}">${fmtPrice(q.price)} <span style="font-size:12px">${fmtPct(q.changeRate)}</span></div>` + bids;
 }
-function renderOrderForm(){
-  const g = effGuide(S.sel);
-  const price = g && g.stance === 'buy_zone' ? g.buyHi : (S.quotes.get(S.sel) || {}).price;
-  $('#orderBox').innerHTML = `
-    <div class="seg"><button class="buy on" disabled>매수</button><button class="sell" disabled>매도</button></div>
-    <label class="field"><span>가격</span><input value="${price ? fmtPrice(price) : ''}" disabled></label>
-    <label class="field"><span>손절</span><input value="${g && g.stop ? fmtPrice(g.stop) : ''}" disabled></label>
-    <div class="note">가이드 값이 자동으로 들어가요. 모의투자 주문은 PHASE 2, 실주문은 PHASE 5에서 열려요.</div>`;
+// ---------------------------------------------------------------- 주문 칸 (모의투자)
+// 입력값은 OF에 들고 있어서 화면을 다시 그려도 지워지지 않음
+const OF = { side: 'buy', type: 'limit', strategy: LS.get('quantera:ofStrategy', 'manual'), price: '', amount: '', qty: '', sellPct: '',
+  tpPct: LS.get('quantera:ofTp', 2), slPct: LS.get('quantera:ofSl', 3), slNone: LS.get('quantera:ofSlNone', false), err: '' };
+const STRATS = { manual: '직접 입력', guide: '가이드 (눌림·바닥 신호)', bottom: '바닥 거래', surge: '급등 거래' };
+const num = v => { const n = +String(v ?? '').replace(/[,\s원%]/g, ''); return isFinite(n) ? n : NaN; };
+const r2 = v => Math.round(v * 100) / 100;
+function applyStrategy(){
+  const cur = priceOf(upbit.toSymbol(S.sel));
+  if (OF.strategy === 'bottom'){ OF.tpPct = screenCfg().btTp; OF.slNone = true; }
+  else if (OF.strategy === 'surge'){ const c = allCfg(); OF.tpPct = c.surgeTradeTp; OF.slPct = c.surgeTradeSl; OF.slNone = false; }
+  else if (OF.strategy === 'guide'){
+    const G = effGuide(S.sel);
+    if (G && G.stance === 'buy_zone' && cur){
+      const p = Math.min(cur, G.buyHi); OF.type = 'limit'; OF.price = p;
+      OF.tpPct = r2((G.sell1 / p - 1) * 100); OF.slPct = r2((1 - G.stop / p) * 100); OF.slNone = false; OF.err = '';
+    } else OF.err = '지금 이 종목엔 매수 가이드가 없어요. 직접 입력으로 넣어 주세요.';
+  }
 }
+function buyPreview(){
+  const cur = priceOf(upbit.toSymbol(S.sel));
+  const p = OF.type === 'market' ? cur : num(OF.price), A = num(OF.amount);
+  if (!(p > 0) || !(A > 0)) return '<div><span>금액과 가격을 넣으면 예상 손익이 보여요.</span></div>';
+  const qty = A / p, cost = A * (1 + FEE_RATE), tp = num(OF.tpPct), sl = OF.slNone ? NaN : num(OF.slPct);
+  const at = pct => { const px = p * (1 + pct / 100), net = qty * px * (1 - FEE_RATE) - cost; return [px, net]; };
+  const line = (label, pct, cls) => { const [px, net] = at(pct); return `<div><span>${label} ${fmtPrice(px)}</span><b class="${cls}">${net > 0 ? '+' : ''}${won(net)}원</b></div>`; };
+  return `<div><span>수량 ≈</span><b class="mono">${qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</b></div>` +
+    (tp > 0 ? line(`익절 +${tp}%`, tp, 'up') : '') +
+    (sl > 0 ? line(`손절 -${sl}%`, -sl, 'down') : `<div><span>손절</span><b class="muted">없음 · 기다림</b></div>`) +
+    `<div><span>수수료(사고 팔 때)</span><b class="muted">약 ${won(A * FEE_RATE * 2)}원</b></div>`;
+}
+function sellPreview(pos){
+  const cur = priceOf(upbit.toSymbol(S.sel));
+  const p = OF.type === 'market' ? cur : num(OF.price), q = num(OF.qty);
+  if (!(p > 0) || !(q > 0) || !pos) return '<div><span>가격과 수량을 넣으면 예상 손익이 보여요.</span></div>';
+  const net = q * p * (1 - FEE_RATE) - pos.avg * q, pct = (p / pos.avg - 1) * 100;
+  return `<div><span>받을 금액</span><b class="mono">${won(q * p * (1 - FEE_RATE))}원</b></div><div><span>예상 손익 (평단 대비 ${fmtPct(pct)})</span><b class="${toneOf(net)}">${net > 0 ? '+' : ''}${won(net)}원</b></div>`;
+}
+function renderOrderForm(){
+  const box = $('#orderBox'); if (!box || !S.sel) return;
+  const sym = upbit.toSymbol(S.sel), cur = priceOf(sym), name = (S.byMarket.get(S.sel) || {}).name || S.sel;
+  const sw = `<div class="acct-sw"><span>계좌</span><button data-acct="paper" class="${S.acct === 'paper' ? 'on' : ''}">모의</button><button data-acct="real" class="${S.acct === 'real' ? 'on' : ''}">실제</button><span class="grow"></span>${S.acct === 'paper' ? `<span class="mono" data-tip="모의 계좌에서 지금 주문에 쓸 수 있는 현금">${won(paper.available())}원</span>` : ''}</div>`;
+  if (S.acct === 'real'){
+    box.innerHTML = sw + `<div class="note">실제 계좌 주문은 업비트 API 연결(PHASE 5) 뒤에 열려요. 지금은 "모의"로 바꿔서 같은 화면으로 연습할 수 있어요. 실제 계좌 탭에서는 거래일지·보유가 실제 기록 기준으로 보여요.</div>`;
+    return;
+  }
+  const pos = S.ledgerPaper.positions.find(p => p.symbol === sym);
+  const seg = `<div class="seg"><button class="buy${OF.side === 'buy' ? ' on' : ''}" data-side="buy">매수</button><button class="sell${OF.side === 'sell' ? ' on' : ''}" data-side="sell">매도</button></div>`;
+  const type = `<div class="seg2"><button data-type="limit" class="${OF.type === 'limit' ? 'on' : ''}">지정가</button><button data-type="market" class="${OF.type === 'market' ? 'on' : ''}">시장가</button></div>`;
+  const priceField = OF.type === 'market'
+    ? `<label class="field"><span>가격</span><input value="${cur ? fmtPrice(cur) + ' (현재가)' : ''}" disabled></label>`
+    : `<label class="field"><span>가격 <button type="button" class="linkbtn" data-curpx data-tip="현재가 넣기">현재가</button></span><input data-f="price" inputmode="decimal" value="${OF.price !== '' ? OF.price : ''}" placeholder="${cur ? fmtPrice(cur) : ''}"></label>`;
+  let body;
+  if (OF.side === 'buy'){
+    body = `<label class="field"><span>방식</span><select data-f="strategy">${Object.entries(STRATS).map(([k, v]) => `<option value="${k}"${OF.strategy === k ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
+      ${type}${priceField}
+      <label class="field"><span>금액</span><input data-f="amount" inputmode="numeric" value="${OF.amount}" placeholder="원"></label>
+      <div class="quick">${[10, 25, 50, 100].map(x => `<button type="button" data-amt="${x}">${x === 100 ? '최대' : x + '%'}</button>`).join('')}</div>
+      <div class="row2"><label class="field"><span>익절</span><input data-f="tpPct" inputmode="decimal" value="${OF.tpPct ?? ''}"><span class="unit">%</span></label>
+        <label class="field"><span>손절</span><input data-f="slPct" inputmode="decimal" value="${OF.slNone ? '' : (OF.slPct ?? '')}" ${OF.slNone ? 'disabled placeholder="없음"' : ''}><span class="unit">%</span></label></div>
+      <label class="chk"><input type="checkbox" data-f="slNone" ${OF.slNone ? 'checked' : ''}> 손절 없음 (내려가도 기다림)</label>
+      <div class="pv" id="ofPv">${buyPreview()}</div>
+      ${OF.err ? `<div class="err">${esc(OF.err)}</div>` : ''}
+      <button class="submit buy" data-submit>모의 매수 · ${esc(name)}</button>
+      <div class="note">체결되면 체결가 기준으로 익절·손절 예약 매도가 자동으로 걸려요.</div>`;
+  } else {
+    const avail = paper.availableQty(sym);
+    body = (pos ? `<div class="hold-box">보유 <b>${pos.qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</b> · 평단 <b>${fmtPrice(pos.avg)}</b><br>평가손익 <b class="${toneOf(pos.pnl)}">${pos.pnl != null ? (pos.pnl > 0 ? '+' : '') + won(pos.pnl) + '원' : '-'}</b> <span class="${toneOf(pos.pnl)}">${cur ? fmtPct((cur / pos.avg - 1) * 100) : ''}</span></div>` : '<div class="note">이 종목은 모의 보유가 없어요.</div>') +
+      `${type}${priceField}
+      ${OF.type === 'limit' ? `<label class="field"><span>평단 대비</span><input data-f="sellPct" inputmode="decimal" value="${OF.sellPct}" placeholder="${pos ? '예: 2' : ''}" ${pos ? '' : 'disabled'}><span class="unit">%</span></label>` : ''}
+      <label class="field"><span>수량</span><input data-f="qty" inputmode="decimal" value="${OF.qty}" placeholder="${avail ? '최대 ' + avail.toLocaleString('ko-KR', { maximumFractionDigits: 8 }) : ''}"></label>
+      <div class="quick">${[25, 50, 75, 100].map(x => `<button type="button" data-qp="${x}" ${avail ? '' : 'disabled'}>${x === 100 ? '전량' : x + '%'}</button>`).join('')}</div>
+      <div class="pv" id="ofPv">${sellPreview(pos)}</div>
+      ${OF.err ? `<div class="err">${esc(OF.err)}</div>` : ''}
+      <button class="submit sell" data-submit ${avail ? '' : 'disabled'}>모의 매도 · ${esc(name)}</button>`;
+  }
+  // 이 종목의 미체결·예약 매도
+  const mine = paper.openOrders().filter(o => o.symbol === sym), br = paper.activeBrackets().filter(b => b.symbol === sym);
+  const mini = mine.length || br.length ? `<div class="pv">${mine.map(o => `<div><span>${o.side === 'buy' ? '매수' : '매도'} 대기 ${fmtPrice(o.price)}</span><button class="linkbtn" data-cancel="${o.id}">취소</button></div>`).join('')}${br.map(b => `<div><span>예약 ${b.tp ? '익절 ' + fmtPrice(b.tp) : ''}${b.tp && b.sl ? ' · ' : ''}${b.sl ? '손절 ' + fmtPrice(b.sl) : ''}</span><button class="linkbtn" data-boff="${b.id}">끄기</button></div>`).join('')}</div>` : '';
+  box.innerHTML = sw + seg + body + mini + (paper.state.halted ? '<div class="err">긴급 정지 중이에요. 하단의 정지 버튼을 다시 누르면 해제돼요.</div>' : '');
+}
+function refreshPreview(){
+  const pv = $('#ofPv'); if (!pv) return;
+  const pos = S.ledgerPaper.positions.find(p => p.symbol === upbit.toSymbol(S.sel));
+  pv.innerHTML = OF.side === 'buy' ? buyPreview() : sellPreview(pos);
+}
+function bindOrder(){
+  const box = $('#orderBox');
+  box.addEventListener('input', e => {
+    const f = e.target.dataset.f; if (!f || f === 'strategy' || f === 'slNone') return;
+    OF[f] = e.target.value; OF.err = '';
+    const sym = upbit.toSymbol(S.sel), pos = S.ledgerPaper.positions.find(p => p.symbol === sym);
+    if (f === 'sellPct' && pos && isFinite(num(OF.sellPct))){ OF.price = Math.round(pos.avg * (1 + num(OF.sellPct) / 100) * 1e8) / 1e8; const pi = $('[data-f="price"]', box); if (pi) pi.value = OF.price; }
+    if (f === 'price' && OF.side === 'sell' && pos && num(OF.price) > 0){ OF.sellPct = r2((num(OF.price) / pos.avg - 1) * 100); const si = $('[data-f="sellPct"]', box); if (si) si.value = OF.sellPct; }
+    if (f === 'tpPct') LS.set('quantera:ofTp', num(OF.tpPct)); if (f === 'slPct') LS.set('quantera:ofSl', num(OF.slPct));
+    refreshPreview();
+  });
+  box.addEventListener('change', e => {
+    const f = e.target.dataset.f;
+    if (f === 'strategy'){ OF.strategy = e.target.value; LS.set('quantera:ofStrategy', OF.strategy); OF.err = ''; applyStrategy(); renderOrderForm(); }
+    if (f === 'slNone'){ OF.slNone = e.target.checked; LS.set('quantera:ofSlNone', OF.slNone); renderOrderForm(); }
+  });
+  box.addEventListener('click', e => {
+    const t = e.target.closest('button'); if (!t) return;
+    const sym = upbit.toSymbol(S.sel), cur = priceOf(sym);
+    if (t.dataset.acct){ setAcct(t.dataset.acct); return; }
+    if (t.dataset.side){ OF.side = t.dataset.side; OF.err = ''; OF.price = ''; OF.sellPct = ''; renderOrderForm(); return; }
+    if (t.dataset.type){ OF.type = t.dataset.type; OF.err = ''; renderOrderForm(); return; }
+    if (t.hasAttribute('data-curpx')){ OF.price = cur || ''; renderOrderForm(); return; }
+    if (t.dataset.amt){ const p = OF.type === 'market' ? cur : (num(OF.price) || cur); const cash = paper.available() / (1 + FEE_RATE); OF.amount = Math.floor(cash * +t.dataset.amt / 100); if (!OF.price && OF.type === 'limit') OF.price = p; renderOrderForm(); return; }
+    if (t.dataset.qp){ OF.qty = Math.floor(paper.availableQty(sym) * +t.dataset.qp / 100 * 1e8) / 1e8; if (!OF.price && OF.type === 'limit') OF.price = cur; renderOrderForm(); return; }
+    if (t.dataset.cancel){ paper.cancel(t.dataset.cancel); return; }
+    if (t.dataset.boff){ paper.bracketOff(t.dataset.boff); return; }
+    if (t.hasAttribute('data-submit')){
+      try{
+        const base = { symbol: sym, side: OF.side, type: OF.type, price: OF.type === 'market' ? cur : (num(OF.price) || cur) };
+        if (OF.side === 'buy') paper.place({ ...base, amount: num(OF.amount), tpPct: num(OF.tpPct) || null, slPct: OF.slNone ? null : (num(OF.slPct) || null),
+          strategy: STRATS[OF.strategy], reason: OF.strategy === 'guide' ? (live(S.sel).text || (S.results.get(S.sel) || {}).peter || null) : null });
+        else paper.place({ ...base, qty: num(OF.qty), strategy: '직접 매도' });
+        OF.amount = ''; OF.qty = ''; OF.err = ''; renderOrderForm();
+      }catch(err){ OF.err = err.message; renderOrderForm(); }
+    }
+  });
+  // 호가를 누르면 그 가격이 주문 가격으로
+  $('#obBody').addEventListener('click', e => {
+    const row = e.target.closest('.ob-row'); if (!row) return;
+    OF.price = num($('.p', row).textContent); OF.type = 'limit'; renderOrderForm();
+  });
+  for (const id of ['#estop', '#estopM']) { const b = $(id); if (b) b.addEventListener('click', () => {
+    if (paper.state.halted){ paper.halt(false); toast('긴급 정지를 해제했어요. 취소된 주문은 다시 넣어야 해요.'); return; }
+    if (confirm('모의 계좌의 모든 미체결 주문과 예약 매도(익절·손절)를 멈출까요?')){ paper.halt(true); toast('긴급 정지: 모의 미체결 주문과 예약 매도를 모두 멈췄어요.', 'warn'); }
+  }); }
+  $('#ordBody').addEventListener('click', e => {
+    const t = e.target.closest('button'); if (!t) return;
+    try{
+      if (t.dataset.cancel) paper.cancel(t.dataset.cancel);
+      else if (t.dataset.amend){ const o = paper.openOrders().find(x => x.id === t.dataset.amend); const v = prompt('새 가격', o ? o.price : ''); if (v != null) paper.amend(t.dataset.amend, num(v)); }
+      else if (t.hasAttribute('data-cancel-all')){ if (confirm('모의 미체결 주문을 모두 취소할까요?')) paper.cancelAll(); }
+      else if (t.dataset.boff) paper.bracketOff(t.dataset.boff);
+      else if (t.dataset.bset){ const b = paper.activeBrackets().find(x => x.id === t.dataset.bset); const v = prompt('익절 %, 손절 % (손절 없으면 0)\n예: 2, 5', b ? `${b.tpPct || 0}, ${b.slPct || 0}` : '2, 0'); if (v != null){ const [tp, sl] = v.split(',').map(num); paper.bracketSet(t.dataset.bset, tp, sl); } }
+      else if (t.dataset.badd){ const p = S.ledgerPaper.positions.find(x => x.symbol === t.dataset.badd); const v = prompt('평단 기준 익절 %, 손절 % (손절 없으면 0)\n예: 2, 0', '2, 0'); if (p && v != null){ const [tp, sl] = v.split(',').map(num); paper.bracketAdd(p.symbol, p.avg, paper.availableQty(p.symbol), tp, sl, '직접'); } }
+      else if (t.dataset.sell){ select(upbit.toMarket(t.dataset.sell)); OF.side = 'sell'; renderOrderForm(); }
+      else if (t.hasAttribute('data-reset')){ const v = prompt('모의 계좌를 새로 시작할까요? 시작 금액(원)을 넣어 주세요.\n지금까지의 체결 기록은 거래일지에 남지만, 잔고·보유·주문은 새로 시작해요.', String(paper.state.start)); if (v != null && num(v) > 0) paper.reset(num(v)); }
+    }catch(err){ alert(err.message); }
+  });
+}
+function setAcct(a){
+  S.acct = a; LS.set('quantera:acct', a);
+  recompute(); renderOrderForm(); renderJournal(); renderStatus(); applyGuideToChart(); if (S.tab === 'hold') renderWatch();
+  if (isOrdersOpen()) renderOrders();
+}
+const isOrdersOpen = () => !$('#ordBody').classList.contains('hidden');
+// 거래일지 패널의 "주문" 탭: 미체결 · 예약 매도 · 모의 보유 · 계좌
+function renderOrders(){
+  const nm = s => (S.byMarket.get(upbit.toMarket(s)) || {}).name || s;
+  const t = ts => new Date(ts).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+  const oo = paper.openOrders().slice().reverse(), br = paper.activeBrackets().slice().reverse(), pos = S.ledgerPaper.positions;
+  const st = paper.state, val = pos.reduce((a, p) => a + (p.value || 0), 0), total = st.cash + val;
+  const gap = (sym, px) => { const c = priceOf(sym); return c ? fmtPct((px / c - 1) * 100) : ''; };
+  $('#ordBody').innerHTML = `
+    <div class="ot-title">미체결 주문 <span class="muted">${oo.length}건</span><span class="grow"></span>${oo.length ? '<button class="pill" data-cancel-all>전체 취소</button>' : ''}</div>
+    ${oo.length ? `<table class="ot"><thead><tr><th class="l">주문 시각</th><th class="l">종목</th><th class="l">구분</th><th>가격</th><th>현재가와 거리</th><th>수량</th><th>금액</th><th class="l">익절·손절</th><th></th></tr></thead><tbody>
+      ${oo.map(o => `<tr><td class="l mono">${t(o.at)}</td><td class="l">${esc(nm(o.symbol))}</td><td class="l ${o.side === 'buy' ? 'up' : 'down'}">${o.side === 'buy' ? '매수' : '매도'} 지정가</td><td class="mono">${fmtPrice(o.price)}</td><td class="mono muted">${gap(o.symbol, o.price)}</td><td class="mono">${(+o.qty).toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</td><td class="mono">${won(o.price * o.qty)}</td><td class="l">${o.tpPct ? '+' + o.tpPct + '%' : ''}${o.tpPct && o.slPct ? ' / ' : ''}${o.slPct ? '-' + o.slPct + '%' : (o.side === 'buy' && o.tpPct ? ' / 손절 없음' : '')}</td><td><button data-amend="${o.id}">정정</button><button data-cancel="${o.id}">취소</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty" style="padding:12px">미체결 주문이 없어요.</div>'}
+    <div class="ot-title">예약 매도 (익절·손절) <span class="muted">${br.length}건</span></div>
+    ${br.length ? `<table class="ot"><thead><tr><th class="l">종목</th><th>수량</th><th>매수가</th><th>익절가</th><th>손절가</th><th>지금 손익</th><th class="l">방식</th><th></th></tr></thead><tbody>
+      ${br.map(b => { const c = priceOf(b.symbol), pl = c ? (c / b.entry - 1) * 100 : null; return `<tr><td class="l">${esc(nm(b.symbol))}</td><td class="mono">${(+b.qty).toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</td><td class="mono">${fmtPrice(b.entry)}</td><td class="mono up">${b.tp ? fmtPrice(b.tp) + ` (+${b.tpPct}%)` : '-'}</td><td class="mono down">${b.sl ? fmtPrice(b.sl) + ` (-${b.slPct}%)` : '없음'}</td><td class="mono ${toneOf(pl)}">${pl != null ? fmtPct(pl) : ''}</td><td class="l">${esc(b.strategy || '')}</td><td><button data-bset="${b.id}">수정</button><button data-boff="${b.id}">끄기</button></td></tr>`; }).join('')}</tbody></table>` : '<div class="empty" style="padding:12px">걸려 있는 예약 매도가 없어요.</div>'}
+    <div class="ot-title">모의 보유 <span class="muted">${pos.length}종목</span></div>
+    ${pos.length ? `<table class="ot"><thead><tr><th class="l">종목</th><th>수량</th><th>평단</th><th>현재가</th><th>평가금액</th><th>평가손익</th><th></th></tr></thead><tbody>
+      ${pos.map(p => { const c = priceOf(p.symbol), has = br.some(b => b.symbol === p.symbol); return `<tr><td class="l">${esc(nm(p.symbol))}</td><td class="mono">${p.qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</td><td class="mono">${fmtPrice(p.avg)}</td><td class="mono">${fmtPrice(c)}</td><td class="mono">${p.value != null ? won(p.value) : ''}</td><td class="mono ${toneOf(p.pnl)}">${p.pnl != null ? (p.pnl > 0 ? '+' : '') + won(p.pnl) + ' (' + fmtPct((c / p.avg - 1) * 100) + ')' : ''}</td><td>${has ? '' : `<button data-badd="${p.symbol}">예약 걸기</button>`}<button data-sell="${p.symbol}">팔기</button></td></tr>`; }).join('')}</tbody></table>` : '<div class="empty" style="padding:12px">모의 보유 종목이 없어요.</div>'}
+    <div class="ot-title">모의 계좌 <span class="grow"></span><button class="pill" data-reset>새로 시작</button></div>
+    <table class="ot"><tbody><tr><td class="l">시작 금액</td><td class="mono">${won(st.start)}원</td><td class="l">현금</td><td class="mono">${won(st.cash)}원</td><td class="l">총자산</td><td class="mono">${won(total)}원</td><td class="l">수익률</td><td class="mono ${toneOf(total - st.start)}">${fmtPct((total / st.start - 1) * 100)}</td></tr></tbody></table>
+    <div class="note" style="padding:8px">앱이 켜져 있는 동안 실시간으로 체결돼요. 꺼져 있던 동안 가격이 닿았는지는 다시 열 때 분봉으로 확인해요. 수수료 0.05% 반영, 부분 체결 없음.</div>`;
+}
+// 화면 알림
+function toast(msg, tone = ''){
+  const el = document.createElement('div'); el.className = 'toast ' + tone; el.textContent = msg;
+  $('#toasts').appendChild(el); setTimeout(() => el.remove(), 7000);
+}
+let paperRaf = false;
+paper.on('change', () => {
+  if (paperRaf) return; paperRaf = true;
+  requestAnimationFrame(() => {
+    paperRaf = false; recompute(); renderStatus(); applyGuideToChart();
+    if (!$('#orderBox').contains(document.activeElement) || document.activeElement.tagName === 'BUTTON') renderOrderForm();
+    if (!$('#jBody').classList.contains('hidden')) renderJournal();
+    if (isOrdersOpen()) renderOrders();
+    if (S.tab === 'hold') renderWatch();
+  });
+});
+paper.on('fill', ({ order, trade }) => {
+  if (order.kind === 'tp' || order.kind === 'sl') return; // 예약 매도는 아래에서 알림
+  const nm = (S.byMarket.get(upbit.toMarket(trade.symbol)) || {}).name || trade.symbol;
+  toast(`모의 ${trade.side === 'buy' ? '매수' : '매도'} 체결 · ${nm} ${fmtPrice(trade.price)} × ${(+trade.qty).toLocaleString('ko-KR', { maximumFractionDigits: 8 })}`, trade.side === 'buy' ? 'up' : 'down');
+  if (order.type === 'limit') beep();
+});
+paper.on('bracket', ({ bracket, kind, trade }) => {
+  const nm = (S.byMarket.get(upbit.toMarket(trade.symbol)) || {}).name || trade.symbol;
+  const net = trade.qty * trade.price * (1 - FEE_RATE) - trade.qty * bracket.entry * (1 + FEE_RATE);
+  const msg = `${kind === 'tp' ? '익절' : '손절'} 도달 · ${nm} ${fmtPrice(trade.price)}에 모의 매도 · ${net > 0 ? '+' : ''}${won(net)}원`;
+  toast(msg, kind === 'tp' ? 'up' : 'down'); beep();
+  if ('Notification' in window && Notification.permission === 'granted') try { new Notification('모의 ' + (kind === 'tp' ? '익절' : '손절'), { body: msg, tag: 'quantera-paper-' + bracket.id, icon: './icons/icon-192.png' }); } catch(e){}
+});
 
 // ---------------------------------------------------------------- 거래일지
-function recompute(){ S.ledger = computeLedger(S.trades, priceOf); }
+function recompute(){
+  S.ledgerReal = computeLedger(S.trades.filter(t => t.source !== 'paper'), priceOf);
+  S.ledgerPaper = computeLedger(paper.trades, priceOf);
+  S.ledger = S.acct === 'paper' ? S.ledgerPaper : S.ledgerReal;
+}
 function renderJournal(){
+  if (S.acct === 'paper') return renderJournalRows(true);
   if (!db.user){ $('#jBody').innerHTML = '<div class="empty">로그인하면 거래 기록이 보여요. 기존 보유 종목은 "기초 이월" 매수로 옮겨져 있어요.</div>'; $('#jSummary').textContent = ''; return; }
+  renderJournalRows(false);
+}
+function renderJournalRows(isPaper){
   recompute();
   const rows = S.ledger.rows.slice().reverse();
+  renderStatus();
+  if (isPaper && !rows.length){ $('#jBody').innerHTML = '<div class="empty">아직 모의 체결이 없어요. 오른쪽 주문 칸에서 모의 매수를 해 보세요.</div>'; $('#jSummary').textContent = ''; return; }
   if (!rows.length){ $('#jBody').innerHTML = `<div class="empty">${db.tablesOk === false ? '기록 테이블이 아직 없어요. Supabase에 PHASE 1 SQL을 실행하면 보여요.' : '아직 거래 기록이 없어요.'}</div>`; return; }
   const realized = rows.reduce((s, r) => s + (r.realized || 0), 0);
   $('#jSummary').innerHTML = `${rows.length}건 · 실현손익 <b class="mono ${toneOf(realized)}">${realized ? (realized > 0 ? '+' : '') + Math.round(realized).toLocaleString('ko-KR') : '0'}</b>`;
@@ -458,13 +681,23 @@ function renderJournal(){
       <td class="mono ${toneOf(r.vsNow)}">${r.side === 'buy' && r.vsNow != null ? fmtPct(r.vsNow) : ''}</td>
       <td class="l">${esc([src[r.source] || r.source, r.strategy].filter(Boolean).join(' · '))}</td>
       <td class="l reason" title="${esc(r.reason || '')}">${esc(r.reason || '')}</td></tr>`).join('')}</tbody></table>`;
-  // 하단 바 자산
-  const pos = S.ledger.positions, val = pos.reduce((s, p) => s + (p.value || 0), 0), pnl = pos.reduce((s, p) => s + (p.pnl || 0), 0);
-  $('#sbAssets').textContent = val ? Math.round(val).toLocaleString('ko-KR') : '-';
-  $('#sbPnl').textContent = pos.length ? (pnl > 0 ? '+' : '') + Math.round(pnl).toLocaleString('ko-KR') : '-';
-  $('#sbPnl').className = 'mono ' + toneOf(pnl);
 }
-setInterval(() => { if (db.user && S.trades.length) renderJournal(); }, 15000);
+// 하단 바: 계좌 구분 + 총자산 + 평가손익
+function renderStatus(){
+  const pos = S.ledger.positions, val = pos.reduce((s, p) => s + (p.value || 0), 0), pnl = pos.reduce((s, p) => s + (p.pnl || 0), 0);
+  const isP = S.acct === 'paper';
+  $('#sbAcct').textContent = isP ? '모의' : '실제 기록'; $('#sbAcct').className = 'sb-acct' + (isP ? '' : ' real');
+  if (isP){
+    const total = paper.state.cash + val, ret = (total / paper.state.start - 1) * 100;
+    $('#sbAssets').innerHTML = `${won(total)} <span class="${toneOf(ret)}">(${fmtPct(ret)})</span>`;
+  } else $('#sbAssets').textContent = val ? won(val) : '-';
+  $('#sbPnl').textContent = pos.length ? (pnl > 0 ? '+' : '') + won(pnl) : '-';
+  $('#sbPnl').className = 'mono ' + toneOf(pnl);
+  const halted = paper.state.halted;
+  for (const b of [$('#estop'), $('#estopM')]) if (b){ b.classList.toggle('on', halted); b.textContent = halted ? (b.id === 'estopM' ? '긴급 정지 중 · 눌러서 해제' : '정지 중 · 해제') : (b.id === 'estopM' ? '긴급 정지 · 모의 주문 전체 멈춤' : '긴급 정지'); }
+}
+const won = v => Math.round(v).toLocaleString('ko-KR');
+setInterval(() => { if ((db.user && S.trades.length) || paper.trades.length) renderJournal(); if (isOrdersOpen()) renderOrders(); }, 15000);
 
 // ---------------------------------------------------------------- 분석 일괄
 async function analyzeList(markets){
@@ -491,12 +724,13 @@ async function toggleScan(){
 // ---------------------------------------------------------------- 이벤트
 function bindUi(){
   bindCfg();
+  bindOrder();
   $('#jTabs').addEventListener('click', e => {
     const b = e.target.closest('[data-j]'); if (!b) return;
     $$('#jTabs .pill').forEach(x => x.classList.toggle('on', x === b));
-    const news = b.dataset.j === 'news';
-    $('#jBody').classList.toggle('hidden', news); $('#newsBody').classList.toggle('hidden', !news); $('#jSummary').classList.toggle('hidden', news);
-    if (news) renderNews();
+    const j = b.dataset.j, news = j === 'news';
+    $('#jBody').classList.toggle('hidden', j !== 'journal'); $('#newsBody').classList.toggle('hidden', !news); $('#ordBody').classList.toggle('hidden', j !== 'orders'); $('#jSummary').classList.toggle('hidden', j !== 'journal');
+    if (news) renderNews(); if (j === 'orders') renderOrders();
   });
   $('#wlTabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (!b) return; S.tab = b.dataset.tab; $$('#wlTabs .pill').forEach(x => x.classList.toggle('on', x === b)); renderWatch();
     if (S.tab === 'surge' && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {}); });
@@ -551,7 +785,7 @@ const CFG_FIELDS = [
   ['무조건 제외', [['nearHighPct', '60일 고점에서 이 % 안쪽', 1], ['maxRise7d', '7일 상승률(%) 초과', 1], ['maxRiseToday', '오늘 상승률(%) 초과', 1], ['maxGap20', '20일선 이격(%) 초과', 1], ['minValue24h', '24시간 거래대금(억) 미만', 1e8], ['includeWarning', '투자유의 종목도 포함', 'bool']]],
   ['눌림 매수', [['pbMinDrop', '최근 30일 고점 대비 최소 하락(%)', 1], ['pbMaxDrop', '최대 하락(%)', 1], ['pbNearMa', '20·60일선과의 거리(%) 이내', 1], ['pbVolDry', '5일/20일 거래량 비율 이하', 1]]],
   ['바닥 반등', [['btMinDrop', '1년 고점 대비 최소 하락(%)', 1], ['btLowerPct', '1년 범위 하단 이 % 안', 1], ['btNoNewLowDays', '새 저점 없는 기간(일)', 1], ['btVolBurst', '반등 거래량 배수', 1], ['btTp', '바닥 거래 익절(%) — 손절 없음', 1]]],
-  ['급등 감지 (1초마다)', [['surgeSec', '이 시간(초) 동안의 거래를 봄', 1], ['surgeVol', '평소 같은 시간보다 거래대금 배수', 1], ['surgePct', '그 시간 상승률(%) 이상 (0 = 가격 안 봄)', 1], ['surgeMinValue', '그 시간 최소 거래대금(백만 원)', 1e6], ['surgeKeepMin', '잡힌 뒤 목록 유지(분)', 1], ['surgeAlarm', '소리 알람', 'bool'], ['surgeRepeat', '확인 전까지 반복 간격(초)', 1], ['surgeCombos', '적중률 조합 (익절/손절, 쉼표로)', 'text'], ['surgeTimeoutMin', '적중률 시간 종료(분)', 1]]],
+  ['급등 감지 (1초마다)', [['surgeSec', '이 시간(초) 동안의 거래를 봄', 1], ['surgeVol', '평소 같은 시간보다 거래대금 배수', 1], ['surgePct', '그 시간 상승률(%) 이상 (0 = 가격 안 봄)', 1], ['surgeMinValue', '그 시간 최소 거래대금(백만 원)', 1e6], ['surgeKeepMin', '잡힌 뒤 목록 유지(분)', 1], ['surgeAlarm', '소리 알람', 'bool'], ['surgeRepeat', '확인 전까지 반복 간격(초)', 1], ['surgeCombos', '적중률 조합 (익절/손절, 쉼표로)', 'text'], ['surgeTimeoutMin', '적중률 시간 종료(분)', 1], ['surgeTradeTp', '급등 거래 주문 기본 익절(%)', 1], ['surgeTradeSl', '급등 거래 주문 기본 손절(%)', 1]]],
   ['검증', [['minSamples', '최소 표본 수', 1], ['holdDays', '보유 기간(일)', 1], ['feePct', '왕복 수수료(%)', 1]]]
 ];
 function openCfg(c = allCfg()){
