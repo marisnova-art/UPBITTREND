@@ -280,6 +280,11 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
 dialog .msg{min-height:18px;font-size:var(--f-s);color:var(--warn)}
 
 .mtabs{display:none}
+/* 홈 화면 앱(PWA)에서는 상태바 높이를 못 받아와도 최소 50px은 띄움 */
+@media (max-width: 899px) and (display-mode: standalone){
+  body{padding-top:max(env(safe-area-inset-top), 50px)!important}
+  .app{height:calc(100dvh - max(env(safe-area-inset-top), 50px))!important}
+}
 
 /* ---------- 모바일 (900px 미만): 한 화면씩, 하단 탭 */
 @media (max-width: 899px){
@@ -288,7 +293,10 @@ dialog .msg{min-height:18px;font-size:var(--f-s);color:var(--warn)}
   .rail,.statusbar,.split,.topbar .chips .hide-m,.search{display:none}
   .topbar{padding:calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 6px calc(16px + env(safe-area-inset-left));border:0}
   .surge-bar{top:calc(10px + env(safe-area-inset-top))}
-  .app{height:100dvh}
+  html,body{overflow:hidden;overscroll-behavior:none}
+  body{padding-top:env(safe-area-inset-top);box-sizing:border-box}
+  .app{height:calc(100dvh - env(safe-area-inset-top))}
+  .topbar{padding-top:12px}
   .desk{display:block;padding:0 16px;overflow:auto}
   .desk>.col,.desk>.panel{display:none}
   .center{display:block}
