@@ -21,6 +21,14 @@ const S = {
   tab: 'fav', search: '', sel: null, tf: '1d', stream: null, scanning: null,
   firstSeen: LS.get('quantera:firstSeen', null)
 };
+// 최근 본 종목: 종목을 열 때마다 기록 (최신 순, 100개까지, 이 기기에 저장)
+const RECENT_KEY = 'quantera:recent';
+let recent = LS.get(RECENT_KEY, []) || [];
+function addRecent(m){
+  const q = S.quotes.get(m);
+  recent = [{ m, at: Date.now(), price: q ? q.price : null }, ...recent.filter(x => x.m !== m)].slice(0, 100);
+  LS.set(RECENT_KEY, recent);
+}
 const allCfg = () => ({ ...SURGE_DEFAULTS, ...screenCfg() });
 const surge = createSurge(allCfg);
 const priceOf = sym => { const q = S.quotes.get(upbit.toMarket(sym)); return q ? q.price : null; };
@@ -50,7 +58,7 @@ async function boot(){
   }
   S.watch = new Set(await loadWatchlist());
   recompute(); renderWatch();
-  select(LS.get('quantera:sel', 'KRW-BTC'));
+  select(LS.get('quantera:sel', 'KRW-BTC'), { noRecent: true });
   S.stream = upbit.stream(S.instruments.map(i => i.market), {
     ticker: onTick, orderbook: renderOrderbook, status: setWs
   });
@@ -162,6 +170,13 @@ function bottomTabHtml(){
   const x = gstats().bt2;
   return bottomTradeHtml(x, '바닥 거래 검증', x.coins ? `분석한 ${x.coins}종목 · 최근 ${x.span}일` : '아래 "전체 스캔"을 하면 모든 코인의 과거 바닥 신호로 계산해요.');
 }
+function recentText(m){
+  const x = recent.find(r => r.m === m); if (!x) return '';
+  const q = S.quotes.get(m) || {}, chg = x.price && q.price ? (q.price / x.price - 1) * 100 : null;
+  const when = new Date(x.at), today = new Date().toDateString() === when.toDateString();
+  const t = today ? agoKo(Date.now() - x.at) : `${when.getMonth() + 1}/${when.getDate()} ${String(when.getHours()).padStart(2, '0')}:${String(when.getMinutes()).padStart(2, '0')}`;
+  return `${t} 봄${x.price ? ` · 그때 ${fmtPrice(x.price)}` : ''}${chg != null ? ` → 지금 <span class="${toneOf(chg)}">${fmtPct(chg)}</span>` : ''}`;
+}
 function renderSurgeBadges(){
   for (const row of $$('.wl-row', $('#wlBody'))){
     const has = surge.events.has(row.dataset.m), b = $('.badge.surge', row);
@@ -239,6 +254,7 @@ function listFor(tab){
   else if (tab === 'hold') list = list.filter(i => held.has(i.market));
   else if (tab === 'pullback' || tab === 'bottom') list = list.filter(i => isPick(i.market, tab));
   else if (tab === 'new') list = list.filter(i => isNewListing(i.market));
+  else if (tab === 'recent' && !S.search) return recent.map(x => S.byMarket.get(x.m)).filter(Boolean);
   else if (tab === 'surge' && !S.search) return list.filter(i => surge.events.has(i.market)).sort((a, b) => surge.get(b.market).at - surge.get(a.market).at);
   else if (tab === 'rebuy'){ const rb = new Set(S.ledger.rebuy.map(r => upbit.toMarket(r.symbol))); list = list.filter(i => rb.has(i.market)); }
   if (S.search){ const s = S.search.toLowerCase(); list = S.instruments.filter(i => i.name.toLowerCase().includes(s) || i.market.toLowerCase().includes(s) || (i.nameEn || '').toLowerCase().includes(s)); }
@@ -250,7 +266,7 @@ function renderWatch(){
   $('#wlCount').textContent = list.length;
   const rebuy = new Set(S.ledger.rebuy.map(r => upbit.toMarket(r.symbol)));
   if (!list.length){
-    const msg = { fav: '관심 종목이 없어요. 전체 탭에서 ☆를 눌러 추가하세요.', hold: '보유 종목이 없어요. 로그인하면 기존 보유 종목이 기초 이월로 보여요.', pullback: '지금 조건에 맞는 눌림 매수 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', bottom: '지금 조건에 맞는 바닥 반등 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', new: '최근 30일 안에 새로 상장된 종목이 없어요.', surge: `지금 갑자기 거래가 몰린 코인이 없어요. 앱이 켜져 있는 동안 1초마다 검사해요. (최근 ${allCfg().surgeSec}초 거래대금이 평소의 ${allCfg().surgeVol}배 이상)`, rebuy: '재매수 후보가 없어요. 이익을 내고 판 종목이 그때 매수가보다 싸지면 여기에 떠요.' };
+    const msg = { fav: '관심 종목이 없어요. 전체 탭에서 ☆를 눌러 추가하세요.', hold: '보유 종목이 없어요. 로그인하면 기존 보유 종목이 기초 이월로 보여요.', pullback: '지금 조건에 맞는 눌림 매수 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', bottom: '지금 조건에 맞는 바닥 반등 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', new: '최근 30일 안에 새로 상장된 종목이 없어요.', recent: '아직 본 종목이 없어요. 종목을 열면 여기에 본 순서대로 남아요.', surge: `지금 갑자기 거래가 몰린 코인이 없어요. 앱이 켜져 있는 동안 1초마다 검사해요. (최근 ${allCfg().surgeSec}초 거래대금이 평소의 ${allCfg().surgeVol}배 이상)`, rebuy: '재매수 후보가 없어요. 이익을 내고 판 종목이 그때 매수가보다 싸지면 여기에 떠요.' };
     $('#wlBody').innerHTML = (S.tab === 'surge' && !S.search ? surgeStatsHtml() : '') + (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + `<div class="empty">${S.search ? '검색 결과가 없어요.' : msg[S.tab] || ''}</div>`; return;
   }
   $('#wlBody').innerHTML = (S.tab === 'surge' && !S.search ? surgeStatsHtml() : '') + (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + list.slice(0, 300).map(i => {
@@ -264,7 +280,7 @@ function renderWatch(){
       <span class="bar ${bar}"></span>
       <div style="min-width:0">
         <div class="wl-name"><button class="star${S.watch.has(i.symbol) ? ' on' : ''}" data-star="${i.symbol}" aria-label="관심">${S.watch.has(i.symbol) ? '★' : '☆'}</button><b>${esc(i.name)}</b>${badges}</div>
-        <div class="wl-peter">${S.tab === 'surge' && sv ? `<span class="surge-txt" data-ago="${i.market}">${surgeText(i.market, sv)}</span>` : r && L.stance !== 'blocked' ? esc(L.text || r.peter) :`<span class="mono">${i.market}</span> · ${fmtKrwShort(q.value24h)}`}</div>
+        <div class="wl-peter">${S.tab === 'recent' && !S.search ? recentText(i.market) : S.tab === 'surge' && sv ? `<span class="surge-txt" data-ago="${i.market}">${surgeText(i.market, sv)}</span>` : r && L.stance !== 'blocked' ? esc(L.text || r.peter) :`<span class="mono">${i.market}</span> · ${fmtKrwShort(q.value24h)}`}</div>
       </div>
       <div class="wl-px mono"><div class="p ${toneOf(q.changeRate)}" data-px="${i.market}">${fmtPrice(q.price)}</div><div class="c ${toneOf(q.changeRate)}" data-cr="${i.market}">${fmtPct(q.changeRate)}</div></div>
     </div>`;
@@ -279,10 +295,11 @@ function patchWatchPrices(){
 }
 
 // ---------------------------------------------------------------- 종목 선택
-async function select(market){
+async function select(market, { noRecent = false } = {}){
   if (unseen.has(market)) ackSurge(market);
   if (!S.byMarket.has(market)) market = 'KRW-BTC';
   S.sel = market; LS.set('quantera:sel', market);
+  if (!noRecent){ addRecent(market); if (S.tab === 'recent' && !S.search) renderWatch(); }
   for (const el of $$('.wl-row')) el.classList.toggle('sel', el.dataset.m === market);
   S.stream && S.stream.focus(market);
   renderHead(); renderOrderbook(null); renderOrderForm();
