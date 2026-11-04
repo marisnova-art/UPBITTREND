@@ -45,7 +45,12 @@ a{color:var(--accent)} a:hover{color:#E1FF7A}
 .surge-stats th{color:var(--muted);font-weight:400;text-align:right;padding:2px 4px}
 .surge-stats td{text-align:right;padding:2px 4px}
 .surge-stats th:first-child,.surge-stats td:first-child{text-align:left}
-.surge-stats td.up{color:var(--up)} .surge-stats .small{font-size:11px;line-height:1.4}
+.surge-stats td.up{color:var(--up)}
+.surge-stats .kv2 td{text-align:left;vertical-align:top;padding:3px 4px}
+.surge-stats .kv2 td:first-child{color:var(--muted);white-space:nowrap;width:1%;padding-right:10px}
+#inspBody .surge-stats{margin:12px 0 6px}
+.bt-list{font-size:var(--f-s);margin-bottom:8px}
+.bt-list div{display:grid;grid-template-columns:72px 1fr auto;gap:8px;padding:2px 10px} .surge-stats .small{font-size:11px;line-height:1.4}
 @keyframes qblink{0%,100%{background:transparent}50%{background:rgba(240,68,82,.22)}}
 .wl-row.blink{animation:qblink 1s steps(2,jump-none) infinite}
 #wlTabs .pill.blink{animation:qblink 1s infinite;border-color:var(--up)}

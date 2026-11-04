@@ -4,7 +4,7 @@ import { $, $$, esc, fmtPrice, fmtPct, fmtKrwShort, toneOf, LS } from './util.js
 import * as upbit from './adapters/upbit.js';
 import { analyzeOne, scanAll } from './analysis/scan.js';
 import { STAGE_KO } from './analysis/trend.js';
-import { screenCfg, saveScreenCfg, SCREEN_DEFAULTS, summarize } from './analysis/screen.js';
+import { screenCfg, saveScreenCfg, SCREEN_DEFAULTS, summarize, summarizeBottom } from './analysis/screen.js';
 import { computeLedger, pastBuys } from './analysis/ledger.js';
 import { createSurge, SURGE_DEFAULTS, agoKo } from './analysis/surge.js';
 import { loadNews, newsFor, newsHtml } from './news.js';
@@ -158,6 +158,10 @@ function surgeStatsHtml(){
     <table><thead><tr><th>익절/손절</th><th>건수</th><th>적중</th><th>본전</th><th>1건 평균</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="muted small">잡힌 순간 가격에 샀다고 치고 계산 · 수수료 ${allCfg().surgeFeePct}% 반영 · 손절이 먼저 닿은 걸로 보수적으로 봄 · "본전"보다 적중이 높아야 남아요 · 이 기기에 저장</div></details>`;
 }
+function bottomTabHtml(){
+  const x = gstats().bt2;
+  return bottomTradeHtml(x, '바닥 거래 검증', x.coins ? `분석한 ${x.coins}종목 · 최근 ${x.span}일` : '아래 "전체 스캔"을 하면 모든 코인의 과거 바닥 신호로 계산해요.');
+}
 function renderSurgeBadges(){
   for (const row of $$('.wl-row', $('#wlBody'))){
     const has = surge.events.has(row.dataset.m), b = $('.badge.surge', row);
@@ -179,7 +183,23 @@ function globalStats(){
   // 지금까지 분석한 모든 종목의 과거 신호 결과를 합침 (전체 스캔을 하면 표본이 커짐)
   const all = { pullback: [], bottom: [] };
   for (const r of S.results.values()) if (r.scr) for (const k of ['pullback', 'bottom']) all[k].push(...r.scr.bt[k]);
-  return { pullback: summarize(all.pullback), bottom: summarize(all.bottom) };
+  const bt2 = []; let span = 0, coins = 0;
+  for (const r of S.results.values()) if (r.scr && r.scr.bt2){ bt2.push(...r.scr.bt2.trades); span = Math.max(span, r.scr.bt2.days); coins++; }
+  return { pullback: summarize(all.pullback), bottom: summarize(all.bottom), bt2: { ...summarizeBottom(bt2, span), coins, span } };
+}
+// 바닥 거래(+N% 익절, 손절 없음) 검증 표
+function bottomTradeHtml(x, title, note){
+  const cfg = screenCfg();
+  if (!x || !x.n) return `<details class="surge-stats" open><summary>${title}</summary><div class="muted small" style="margin-top:6px">${note || '아직 과거 바닥 신호가 없어요.'}</div></details>`;
+  const kv = (k, v) => `<tr><td>${k}</td><td>${v}</td></tr>`;
+  return `<details class="surge-stats"${LS.get('quantera:btStatsOpen', true) ? ' open' : ''} data-bt><summary>${title} <span class="muted">${x.n}건${x.perMonth != null ? ` · 월 ${x.perMonth.toFixed(1)}회` : ''}</span></summary>
+    <table class="kv2"><tbody>
+      ${kv(`+${cfg.btTp}% 도달`, `<b class="${x.hit >= 80 ? 'up' : ''}">${x.done}/${x.n} (${x.hit.toFixed(0)}%)</b> · 보통 ${x.medDays ?? '-'}일${x.slow ? ` · 30일 넘게 걸린 것 ${x.slow}건` : ''}`)}
+      ${kv('기다리는 동안 하락', `평균 <span class="down">${fmtPct(x.avgDd)}</span> · 최악 <span class="down">${fmtPct(x.worstDd)}</span> · -10% 넘게 빠진 것 ${x.deep}건`)}
+      ${kv('아직 물려 있음', x.open ? `<b class="warn">${x.open}건</b> · 지금 평균 <span class="${toneOf(x.openAvg)}">${fmtPct(x.openAvg)}</span> · 가장 오래 ${x.openMaxDays}일` : '<span class="muted">없음</span>')}
+      ${kv('끝난 거래 수익 합', `<span class="${toneOf(x.profit)}">${fmtPct(x.profit)}</span> <span class="muted">(1건당 같은 금액 기준)</span>`)}
+    </tbody></table>
+    <div class="muted small">바닥 신호일 종가에 사고 +${cfg.btTp}%에 팖 · 손절 없음 · 한 코인에 한 번에 하나 · 수수료 ${cfg.feePct}% 반영 · 일봉 기준${note ? ' · ' + note : ''}</div></details>`;
 }
 let GS = { pullback: { n: 0 }, bottom: { n: 0 } }, gsDirty = true;
 const gstats = () => { if (gsDirty){ GS = globalStats(); gsDirty = false; } return GS; };
@@ -231,9 +251,9 @@ function renderWatch(){
   const rebuy = new Set(S.ledger.rebuy.map(r => upbit.toMarket(r.symbol)));
   if (!list.length){
     const msg = { fav: '관심 종목이 없어요. 전체 탭에서 ☆를 눌러 추가하세요.', hold: '보유 종목이 없어요. 로그인하면 기존 보유 종목이 기초 이월로 보여요.', pullback: '지금 조건에 맞는 눌림 매수 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', bottom: '지금 조건에 맞는 바닥 반등 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', new: '최근 30일 안에 새로 상장된 종목이 없어요.', surge: `지금 갑자기 거래가 몰린 코인이 없어요. 앱이 켜져 있는 동안 1초마다 검사해요. (최근 ${allCfg().surgeSec}초 거래대금이 평소의 ${allCfg().surgeVol}배 이상)`, rebuy: '재매수 후보가 없어요. 이익을 내고 판 종목이 그때 매수가보다 싸지면 여기에 떠요.' };
-    $('#wlBody').innerHTML = (S.tab === 'surge' && !S.search ? surgeStatsHtml() : '') + `<div class="empty">${S.search ? '검색 결과가 없어요.' : msg[S.tab] || ''}</div>`; return;
+    $('#wlBody').innerHTML = (S.tab === 'surge' && !S.search ? surgeStatsHtml() : '') + (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + `<div class="empty">${S.search ? '검색 결과가 없어요.' : msg[S.tab] || ''}</div>`; return;
   }
-  $('#wlBody').innerHTML = (S.tab === 'surge' && !S.search ? surgeStatsHtml() : '') + list.slice(0, 300).map(i => {
+  $('#wlBody').innerHTML = (S.tab === 'surge' && !S.search ? surgeStatsHtml() : '') + (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + list.slice(0, 300).map(i => {
     const q = S.quotes.get(i.market) || {}, r = S.results.get(i.market);
     const L = live(i.market);
     const bar = L.stance === 'buy_zone' ? 'entry' : ['chase', 'broken', 'failed'].includes(L.stance) ? 'warn' : '';
@@ -342,6 +362,11 @@ function renderInspector(){
       (g.buyLo ? row('#7D7D86', '참고 지지', `${fmtPrice(g.buyLo)} ~ ${fmtPrice(g.buyHi)}`, null) + row('#7D7D86', '참고 저항', fmtPrice(g.sell1), null) : '');
   }
 
+  if (r.scr && r.scr.bt2 && r.scr.bt2.trades.length){
+    const T = r.scr.bt2.trades;
+    guide += bottomTradeHtml(summarizeBottom(T, r.scr.bt2.days), `바닥 거래 (+${cfg.btTp}%, 손절 없음)`, '') +
+      `<div class="bt-list">${T.slice(-6).reverse().map(t => `<div><span class="mono muted">${t.t.slice(2)}</span><span>${t.done ? `<span class="up">+${cfg.btTp}%</span> ${t.days}일` : `<span class="warn">진행 중</span> ${t.days}일 · ${fmtPct(t.ret)}`}</span><span class="down">${fmtPct(t.dd)}</span></div>`).join('')}</div>`;
+  }
   const P = r.profile || {};
   const pr = (k, label) => P[k] ? `<tr><td>${label}</td><td class="mono">${P[k].avg.toFixed(1)}%</td><td class="mono">${P[k].typical.toFixed(1)}%</td><td class="mono">${P[k].max.toFixed(1)}%</td><td class="mono">${P[k].min.toFixed(1)}%</td></tr>` : '';
   const stats = r.insufficient ? '' : `<dl class="kv">
@@ -456,7 +481,7 @@ function bindUi(){
   });
   $('#wlTabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (!b) return; S.tab = b.dataset.tab; $$('#wlTabs .pill').forEach(x => x.classList.toggle('on', x === b)); renderWatch();
     if (S.tab === 'surge' && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {}); });
-  $('#wlBody').addEventListener('toggle', e => { if (e.target.classList && e.target.classList.contains('surge-stats')) LS.set('quantera:surgeStatsOpen', e.target.open); }, true);
+  $('#wlBody').addEventListener('toggle', e => { if (e.target.classList && e.target.classList.contains('surge-stats')) LS.set(e.target.hasAttribute('data-bt') ? 'quantera:btStatsOpen' : 'quantera:surgeStatsOpen', e.target.open); }, true);
   $('#surgeBar').addEventListener('click', e => {
     if (e.target.closest('[data-surge-ack]')) return ackSurge();
     if (e.target.closest('[data-surge-go]')){ S.search = ''; S.tab = 'surge'; $$('#wlTabs .pill').forEach(x => x.classList.toggle('on', x.dataset.tab === 'surge')); setMobile('watch'); renderWatch(); }
@@ -506,7 +531,7 @@ setInterval(() => { if (document.visibilityState === 'visible') loadNews(true).t
 const CFG_FIELDS = [
   ['무조건 제외', [['nearHighPct', '60일 고점에서 이 % 안쪽', 1], ['maxRise7d', '7일 상승률(%) 초과', 1], ['maxRiseToday', '오늘 상승률(%) 초과', 1], ['maxGap20', '20일선 이격(%) 초과', 1], ['minValue24h', '24시간 거래대금(억) 미만', 1e8], ['includeWarning', '투자유의 종목도 포함', 'bool']]],
   ['눌림 매수', [['pbMinDrop', '최근 30일 고점 대비 최소 하락(%)', 1], ['pbMaxDrop', '최대 하락(%)', 1], ['pbNearMa', '20·60일선과의 거리(%) 이내', 1], ['pbVolDry', '5일/20일 거래량 비율 이하', 1]]],
-  ['바닥 반등', [['btMinDrop', '1년 고점 대비 최소 하락(%)', 1], ['btLowerPct', '1년 범위 하단 이 % 안', 1], ['btNoNewLowDays', '새 저점 없는 기간(일)', 1], ['btVolBurst', '반등 거래량 배수', 1]]],
+  ['바닥 반등', [['btMinDrop', '1년 고점 대비 최소 하락(%)', 1], ['btLowerPct', '1년 범위 하단 이 % 안', 1], ['btNoNewLowDays', '새 저점 없는 기간(일)', 1], ['btVolBurst', '반등 거래량 배수', 1], ['btTp', '바닥 거래 익절(%) — 손절 없음', 1]]],
   ['급등 감지 (1초마다)', [['surgeSec', '이 시간(초) 동안의 거래를 봄', 1], ['surgeVol', '평소 같은 시간보다 거래대금 배수', 1], ['surgePct', '그 시간 상승률(%) 이상 (0 = 가격 안 봄)', 1], ['surgeMinValue', '그 시간 최소 거래대금(백만 원)', 1e6], ['surgeKeepMin', '잡힌 뒤 목록 유지(분)', 1], ['surgeAlarm', '소리 알람', 'bool'], ['surgeRepeat', '확인 전까지 반복 간격(초)', 1], ['surgeCombos', '적중률 조합 (익절/손절, 쉼표로)', 'text'], ['surgeTimeoutMin', '적중률 시간 종료(분)', 1]]],
   ['검증', [['minSamples', '최소 표본 수', 1], ['holdDays', '보유 기간(일)', 1], ['feePct', '왕복 수수료(%)', 1]]]
 ];

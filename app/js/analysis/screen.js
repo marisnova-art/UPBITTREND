@@ -3,6 +3,7 @@
 import { LS } from '../util.js';
 
 export const SCREEN_DEFAULTS = {
+  btTp: 2,                 // 바닥 거래: 이 %에 팔고 손절 없이 기다림
   // 무조건 제외
   nearHighPct: 5,          // 60일 고점에서 이만큼(%) 안쪽이면 제외
   maxRise7d: 15,           // 7일 상승률(%)이 이보다 크면 제외
@@ -115,6 +116,42 @@ export function backtest(D, cfg){
   }
   return out;
 }
+// 바닥 거래 검증: 바닥 신호일 종가에 사서 +btTp%에 팜. 손절 없음, 한 코인에 한 번에 한 포지션.
+// 기다리는 동안 가장 많이 빠진 폭(dd)과, 아직 못 빠져나온 거래(done=false)를 같이 기록.
+export function bottomTrades(D, cfg, X = prep(D)){
+  const out = [], tp = 1 + cfg.btTp / 100;
+  for (let i = 120; i < D.length - 1; i++){
+    const s = detectAt(D, X, i, cfg); if (s.type !== 'bottom') continue;
+    const entry = s.ref, target = entry * tp;
+    let lo = entry, exit = null;
+    for (let k = i + 1; k < D.length; k++){
+      lo = Math.min(lo, D[k].l);                       // 같은 날 먼저 빠졌을 수도 있으니 보수적으로 포함
+      if (D[k].h >= target){ exit = k; break; }
+    }
+    const last = exit == null ? D.length - 1 : exit;
+    out.push({ t: D[i].t, entry, days: last - i, dd: (lo / entry - 1) * 100, done: exit != null,
+      ret: exit != null ? cfg.btTp - cfg.feePct : (D[last].c / entry - 1) * 100 - cfg.feePct });
+    if (exit == null) break;
+    i = exit;
+  }
+  return { trades: out, days: Math.max(0, D.length - 121) };
+}
+export function summarizeBottom(list, spanDays){
+  const n = list.length; if (!n) return { n: 0 };
+  const done = list.filter(t => t.done), open = list.filter(t => !t.done);
+  const days = done.map(t => t.days).sort((a, b) => a - b);
+  const med = days.length ? days[Math.floor(days.length / 2)] : null;
+  return {
+    n, done: done.length, hit: done.length / n * 100,
+    medDays: med, slow: done.filter(t => t.days > 30).length,
+    avgDd: list.reduce((a, t) => a + t.dd, 0) / n, worstDd: Math.min(...list.map(t => t.dd)),
+    deep: list.filter(t => t.dd <= -10).length,
+    open: open.length, openAvg: open.length ? open.reduce((a, t) => a + t.ret, 0) / open.length : 0,
+    openMaxDays: open.length ? Math.max(...open.map(t => t.days)) : 0,
+    profit: done.reduce((a, t) => a + t.ret, 0),
+    perMonth: spanDays ? n / (spanDays / 30) : null
+  };
+}
 export function summarize(rets){
   const n = rets.length; if (!n) return { n: 0 };
   const wins = rets.filter(r => r > 0);
@@ -131,5 +168,6 @@ export function screen(inst, quote, D, cfg = screenCfg()){
   const X = prep(D);
   const sig = D.length > 120 ? detectAt(D, X, D.length - 1, cfg) : { type: null, why: ['캔들 부족'] };
   const bt = D.length > 160 ? backtest(D, cfg) : { pullback: [], bottom: [] };
-  return { block, sig, bt, caution: inst.caution || [] };
+  const bt2 = D.length > 160 ? bottomTrades(D, cfg, X) : { trades: [], days: 0 };
+  return { block, sig, bt, bt2, caution: inst.caution || [] };
 }
