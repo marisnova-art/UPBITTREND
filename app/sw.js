@@ -1,6 +1,6 @@
 // QUANTERA 서비스 워커 — 앱 설치(PWA)와 오프라인 첫 화면용. 범위는 /app/ 만 (기존 업비트트랜드와 별개).
 // 시세(업비트)·Supabase·/api/ 는 절대 캐시하지 않습니다. 화면 파일은 네트워크 우선 → 실패 시 캐시.
-const VERSION = 'q-2026-11-04-11';
+const VERSION = 'q-2026-11-04-12';
 const SHELL = 'quantera-shell-' + VERSION;
 const FILES = ['./', './index.html', './manifest.webmanifest', './css/app.css', './icons/icon-192.png', './icons/icon-512.png'];
 

@@ -69,6 +69,7 @@ async function boot(){
   S.stream = upbit.stream(S.instruments.map(i => i.market), {
     ticker: onTick, orderbook: renderOrderbook, status: setWs
   });
+  S.stream.focus(S.sel);   // 처음 연 종목도 호가·체결 실시간 구독 (전에는 다른 종목을 눌러야 구독됐음)
   // 모의투자: 앱이 꺼져 있던 동안 지정가·예약 매도가 닿았는지 캔들로 확인
   paper.catchUp(upbit.getCandles, upbit.toMarket).then(n => { if (n) toast(`앱이 꺼져 있던 동안 모의 주문 ${n}건이 체결됐어요. 거래일지에서 확인하세요.`, 'warn'); });
   // 관심·보유 종목은 열자마자 분석(캐시라 같은 날 재요청 없음)
@@ -490,6 +491,34 @@ function stepPct(v, dir, signed){
 }
 const stepper = (f, v, disabled, sign, ph = '', signed = false) =>
   `<span class="stepper"><button type="button" data-step="${f}" data-dir="-1" ${disabled ? 'disabled' : ''} aria-label="내리기">−</button><span class="sign">${sign}</span><input data-f="${f}" inputmode="decimal" value="${v}" ${disabled ? 'disabled' : ''} placeholder="${ph}"${signed ? ' data-signed' : ''}><span class="unit">%</span><button type="button" data-step="${f}" data-dir="1" ${disabled ? 'disabled' : ''} aria-label="올리기">+</button></span>`;
+function patchLive(root){
+  for (const el of $$('[data-lv]', root)){
+    const c = priceOf(el.dataset.s); if (!c) continue;
+    const k = el.dataset.lv, p = +el.dataset.p, q = +el.dataset.q;
+    let txt, tone = null;
+    if (k === 'vs'){ const v = (c / p - 1) * 100; txt = fmtPct(v); tone = toneOf(v); }
+    else if (k === 'gap') txt = fmtPct((p / c - 1) * 100);
+    else if (k === 'cur') txt = fmtPrice(c);
+    else if (k === 'val') txt = won(c * q);
+    else if (k === 'pnl'){ const pnl = c * q * (1 - FEE_RATE) - +el.dataset.c; txt = `${pnl > 0 ? '+' : ''}${won(pnl)} (${fmtPct((c / p - 1) * 100)})`; tone = toneOf(pnl); }
+    if (el.textContent !== txt){ el.textContent = txt; if (tone != null) el.className = 'mono ' + tone; }
+  }
+}
+function holdHtml(pos, cur){
+  return `보유 <b>${pos.qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</b> · 평단 <b>${fmtPrice(pos.avg)}</b><br>평가손익 <b class="${toneOf(pos.pnl)}">${pos.pnl != null ? (pos.pnl > 0 ? '+' : '') + won(pos.pnl) + '원' : '-'}</b> <span class="${toneOf(pos.pnl)}">${cur ? fmtPct((cur / pos.avg - 1) * 100) : ''}</span>`;
+}
+// 손익 숫자 실시간 갱신 (1초): 입력 중인 칸은 건드리지 않고 숫자만 바꿈
+let liveN = 0;
+setInterval(() => {
+  if (!S.sel || document.hidden) return;
+  recompute(); renderStatus();
+  const sym = upbit.toSymbol(S.sel), hb = $('#ofHold');
+  if (hb){ const pos = S.ledgerPaper.positions.find(p => p.symbol === sym); if (pos) hb.innerHTML = holdHtml(pos, priceOf(sym)); }
+  const mk = $('#ofMkt'), cp = priceOf(sym); if (mk && cp) mk.value = fmtPrice(cp) + ' (현재가)';
+  const pi = $('#orderBox [data-f="price"]'); if (pi && cp) pi.placeholder = fmtPrice(cp);
+  refreshPreview();
+  patchLive($('#pJournal'));
+}, 1000);
 function renderOrderForm(){
   const box = $('#orderBox'); if (!box || !S.sel) return;
   const sym = upbit.toSymbol(S.sel), cur = priceOf(sym), name = (S.byMarket.get(S.sel) || {}).name || S.sel;
@@ -502,7 +531,7 @@ function renderOrderForm(){
   const seg = `<div class="seg"><button class="buy${OF.side === 'buy' ? ' on' : ''}" data-side="buy">매수</button><button class="sell${OF.side === 'sell' ? ' on' : ''}" data-side="sell">매도</button></div>`;
   const type = `<div class="seg2"><button data-type="limit" class="${OF.type === 'limit' ? 'on' : ''}">지정가</button><button data-type="market" class="${OF.type === 'market' ? 'on' : ''}">시장가</button></div>`;
   const priceField = OF.type === 'market'
-    ? `<label class="field"><span>가격</span><input value="${cur ? fmtPrice(cur) + ' (현재가)' : ''}" disabled></label>`
+    ? `<label class="field"><span>가격</span><input id="ofMkt" value="${cur ? fmtPrice(cur) + ' (현재가)' : ''}" disabled></label>`
     : `<label class="field"><span>가격 <button type="button" class="linkbtn" data-curpx data-tip="현재가 넣기">현재가</button></span><input data-f="price" inputmode="decimal" value="${OF.price !== '' ? OF.price : ''}" placeholder="${cur ? fmtPrice(cur) : ''}"></label>`;
   let body;
   if (OF.side === 'buy'){
@@ -519,7 +548,7 @@ function renderOrderForm(){
       <div class="note">체결되면 체결가 기준으로 익절·손절 예약 매도가 자동으로 걸려요.</div>`;
   } else {
     const avail = paper.availableQty(sym);
-    body = (pos ? `<div class="hold-box">보유 <b>${pos.qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</b> · 평단 <b>${fmtPrice(pos.avg)}</b><br>평가손익 <b class="${toneOf(pos.pnl)}">${pos.pnl != null ? (pos.pnl > 0 ? '+' : '') + won(pos.pnl) + '원' : '-'}</b> <span class="${toneOf(pos.pnl)}">${cur ? fmtPct((cur / pos.avg - 1) * 100) : ''}</span></div>` : '<div class="note">이 종목은 모의 보유가 없어요.</div>') +
+    body = (pos ? `<div class="hold-box" id="ofHold">${holdHtml(pos, cur)}</div>` : '<div class="note">이 종목은 모의 보유가 없어요.</div>') +
       `${type}${priceField}
       ${OF.type === 'limit' ? `<label class="field"><span>평단 대비</span>${stepper('sellPct', OF.sellPct, !pos, '', pos ? '예: 2' : '', true)}</label>` : ''}
       <label class="field"><span>수량</span><input data-f="qty" inputmode="decimal" value="${OF.qty}" placeholder="${avail ? '최대 ' + avail.toLocaleString('ko-KR', { maximumFractionDigits: 8 }) : ''}"></label>
@@ -626,13 +655,13 @@ function renderOrders(){
   $('#ordBody').innerHTML = `
     <div class="ot-title">미체결 주문 <span class="muted">${oo.length}건</span><span class="grow"></span>${oo.length ? '<button class="pill" data-cancel-all>전체 취소</button>' : ''}</div>
     ${oo.length ? `<table class="ot"><thead><tr><th class="l">주문 시각</th><th class="l">종목</th><th class="l">구분</th><th>가격</th><th>현재가와 거리</th><th>수량</th><th>금액</th><th class="l">익절·손절</th><th></th></tr></thead><tbody>
-      ${oo.map(o => `<tr><td class="l mono">${t(o.at)}</td><td class="l">${esc(nm(o.symbol))}</td><td class="l ${o.side === 'buy' ? 'up' : 'down'}">${o.side === 'buy' ? '매수' : '매도'} 지정가</td><td class="mono">${fmtPrice(o.price)}</td><td class="mono muted">${gap(o.symbol, o.price)}</td><td class="mono">${(+o.qty).toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</td><td class="mono">${won(o.price * o.qty)}</td><td class="l">${o.tpPct ? '+' + o.tpPct + '%' : ''}${o.tpPct && o.slPct ? ' / ' : ''}${o.slPct ? '-' + o.slPct + '%' : (o.side === 'buy' && o.tpPct ? ' / 손절 없음' : '')}</td><td><button data-amend="${o.id}">정정</button><button data-cancel="${o.id}">취소</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty" style="padding:12px">미체결 주문이 없어요.</div>'}
+      ${oo.map(o => `<tr><td class="l mono">${t(o.at)}</td><td class="l">${esc(nm(o.symbol))}</td><td class="l ${o.side === 'buy' ? 'up' : 'down'}">${o.side === 'buy' ? '매수' : '매도'} 지정가</td><td class="mono">${fmtPrice(o.price)}</td><td class="mono muted" data-lv="gap" data-s="${o.symbol}" data-p="${o.price}">${gap(o.symbol, o.price)}</td><td class="mono">${(+o.qty).toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</td><td class="mono">${won(o.price * o.qty)}</td><td class="l">${o.tpPct ? '+' + o.tpPct + '%' : ''}${o.tpPct && o.slPct ? ' / ' : ''}${o.slPct ? '-' + o.slPct + '%' : (o.side === 'buy' && o.tpPct ? ' / 손절 없음' : '')}</td><td><button data-amend="${o.id}">정정</button><button data-cancel="${o.id}">취소</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty" style="padding:12px">미체결 주문이 없어요.</div>'}
     <div class="ot-title">예약 매도 (익절·손절) <span class="muted">${br.length}건</span></div>
     ${br.length ? `<table class="ot"><thead><tr><th class="l">종목</th><th>수량</th><th>매수가</th><th>익절가</th><th>손절가</th><th>지금 손익</th><th class="l">방식</th><th></th></tr></thead><tbody>
-      ${br.map(b => { const c = priceOf(b.symbol), pl = c ? (c / b.entry - 1) * 100 : null; return `<tr><td class="l">${esc(nm(b.symbol))}</td><td class="mono">${(+b.qty).toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</td><td class="mono">${fmtPrice(b.entry)}</td><td class="mono up">${b.tp ? fmtPrice(b.tp) + ` (+${b.tpPct}%)` : '-'}</td><td class="mono down">${b.sl ? fmtPrice(b.sl) + ` (-${b.slPct}%)` : '없음'}</td><td class="mono ${toneOf(pl)}">${pl != null ? fmtPct(pl) : ''}</td><td class="l">${esc(b.strategy || '')}</td><td><button data-bset="${b.id}">수정</button><button data-boff="${b.id}">끄기</button></td></tr>`; }).join('')}</tbody></table>` : '<div class="empty" style="padding:12px">걸려 있는 예약 매도가 없어요.</div>'}
+      ${br.map(b => { const c = priceOf(b.symbol), pl = c ? (c / b.entry - 1) * 100 : null; return `<tr><td class="l">${esc(nm(b.symbol))}</td><td class="mono">${(+b.qty).toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</td><td class="mono">${fmtPrice(b.entry)}</td><td class="mono up">${b.tp ? fmtPrice(b.tp) + ` (+${b.tpPct}%)` : '-'}</td><td class="mono down">${b.sl ? fmtPrice(b.sl) + ` (-${b.slPct}%)` : '없음'}</td><td class="mono ${toneOf(pl)}" data-lv="vs" data-s="${b.symbol}" data-p="${b.entry}">${pl != null ? fmtPct(pl) : ''}</td><td class="l">${esc(b.strategy || '')}</td><td><button data-bset="${b.id}">수정</button><button data-boff="${b.id}">끄기</button></td></tr>`; }).join('')}</tbody></table>` : '<div class="empty" style="padding:12px">걸려 있는 예약 매도가 없어요.</div>'}
     <div class="ot-title">모의 보유 <span class="muted">${pos.length}종목</span></div>
     ${pos.length ? `<table class="ot"><thead><tr><th class="l">종목</th><th>수량</th><th>평단</th><th>현재가</th><th>평가금액</th><th>평가손익</th><th></th></tr></thead><tbody>
-      ${pos.map(p => { const c = priceOf(p.symbol), has = br.some(b => b.symbol === p.symbol); return `<tr><td class="l">${esc(nm(p.symbol))}</td><td class="mono">${p.qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</td><td class="mono">${fmtPrice(p.avg)}</td><td class="mono">${fmtPrice(c)}</td><td class="mono">${p.value != null ? won(p.value) : ''}</td><td class="mono ${toneOf(p.pnl)}">${p.pnl != null ? (p.pnl > 0 ? '+' : '') + won(p.pnl) + ' (' + fmtPct((c / p.avg - 1) * 100) + ')' : ''}</td><td>${has ? '' : `<button data-badd="${p.symbol}">예약 걸기</button>`}<button data-sell="${p.symbol}">팔기</button></td></tr>`; }).join('')}</tbody></table>` : '<div class="empty" style="padding:12px">모의 보유 종목이 없어요.</div>'}
+      ${pos.map(p => { const c = priceOf(p.symbol), has = br.some(b => b.symbol === p.symbol); return `<tr><td class="l">${esc(nm(p.symbol))}</td><td class="mono">${p.qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</td><td class="mono">${fmtPrice(p.avg)}</td><td class="mono" data-lv="cur" data-s="${p.symbol}">${fmtPrice(c)}</td><td class="mono" data-lv="val" data-s="${p.symbol}" data-q="${p.qty}">${p.value != null ? won(p.value) : ''}</td><td class="mono ${toneOf(p.pnl)}" data-lv="pnl" data-s="${p.symbol}" data-q="${p.qty}" data-c="${p.cost}" data-p="${p.avg}">${p.pnl != null ? (p.pnl > 0 ? '+' : '') + won(p.pnl) + ' (' + fmtPct((c / p.avg - 1) * 100) + ')' : ''}</td><td>${has ? '' : `<button data-badd="${p.symbol}">예약 걸기</button>`}<button data-sell="${p.symbol}">팔기</button></td></tr>`; }).join('')}</tbody></table>` : '<div class="empty" style="padding:12px">모의 보유 종목이 없어요.</div>'}
     <div class="ot-title">모의 계좌 <span class="grow"></span><button class="pill" data-reset>새로 시작</button></div>
     <table class="ot"><tbody><tr><td class="l">시작 금액</td><td class="mono">${won(st.start)}원</td><td class="l">현금</td><td class="mono">${won(st.cash)}원</td><td class="l">총자산</td><td class="mono">${won(total)}원</td><td class="l">수익률</td><td class="mono ${toneOf(total - st.start)}">${fmtPct((total / st.start - 1) * 100)}</td></tr></tbody></table>
     <div class="note" style="padding:8px">앱이 켜져 있는 동안 실시간으로 체결돼요. 꺼져 있던 동안 가격이 닿았는지는 다시 열 때 분봉으로 확인해요. 수수료 0.05% 반영, 부분 체결 없음.</div>`;
@@ -700,7 +729,7 @@ function renderJournalRows(isPaper){
       <td class="mono">${Math.round(r.fee).toLocaleString('ko-KR')}</td>
       <td class="mono ${toneOf(r.realized)}">${r.realized != null ? (r.realized > 0 ? '+' : '') + Math.round(r.realized).toLocaleString('ko-KR') : ''}</td>
       <td class="mono ${toneOf(r.realizedPct)}">${r.realizedPct != null ? fmtPct(r.realizedPct) : ''}</td>
-      <td class="mono ${toneOf(r.vsNow)}">${r.side === 'buy' && r.vsNow != null ? fmtPct(r.vsNow) : ''}</td>
+      <td class="mono ${toneOf(r.vsNow)}"${r.side === 'buy' ? ` data-lv="vs" data-s="${r.symbol}" data-p="${r.price}"` : ''}>${r.side === 'buy' && r.vsNow != null ? fmtPct(r.vsNow) : ''}</td>
       <td class="l">${esc([src[r.source] || r.source, r.strategy].filter(Boolean).join(' · '))}</td>
       <td class="l reason" title="${esc(r.reason || '')}">${esc(r.reason || '')}</td></tr>`).join('')}</tbody></table>`;
 }
