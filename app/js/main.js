@@ -6,6 +6,7 @@ import { analyzeOne, scanAll } from './analysis/scan.js';
 import { STAGE_KO } from './analysis/trend.js';
 import { screenCfg, saveScreenCfg, SCREEN_DEFAULTS, summarize } from './analysis/screen.js';
 import { computeLedger, pastBuys } from './analysis/ledger.js';
+import { createSurge, SURGE_DEFAULTS, agoKo } from './analysis/surge.js';
 import { loadNews, newsFor, newsHtml } from './news.js';
 import { createChart } from './ui/chart.js';
 import { initLayout, apply as applyLayout } from './ui/layout.js';
@@ -20,6 +21,8 @@ const S = {
   tab: 'fav', search: '', sel: null, tf: '1d', stream: null, scanning: null,
   firstSeen: LS.get('quantera:firstSeen', null)
 };
+const allCfg = () => ({ ...SURGE_DEFAULTS, ...screenCfg() });
+const surge = createSurge(allCfg);
 const priceOf = sym => { const q = S.quotes.get(upbit.toMarket(sym)); return q ? q.price : null; };
 
 // ---------------------------------------------------------------- 시작
@@ -80,6 +83,7 @@ async function onAuth(user){
 let rafPending = false;
 function onTick(q){
   S.quotes.set(q.market, q);
+  surge.push(q);
   if (S.sel === q.market){ chart && chart.tick(q.price, q.ts || Date.now()); renderHead(); }
   if (!rafPending){ rafPending = true; setTimeout(() => { rafPending = false; patchWatchPrices(); }, 1000); }
 }
@@ -91,6 +95,76 @@ setInterval(() => {
   if (st !== lastSelStance){ lastSelStance = st; if (S.results.has(S.sel)){ renderInspector(); renderOrderForm(); } }
   if ((S.tab === 'pullback' || S.tab === 'bottom') && !S.search){ const key = listFor(S.tab).map(i => i.market).join(); if (key !== lastEntryKey){ lastEntryKey = key; renderWatch(); } }
 }, 5000);
+// ---------------------------------------------------------------- 급등 감지 + 알람
+// 1초마다 검사. 새로 잡히면 소리 + 위쪽 알림. 확인(종목 클릭 또는 '모두 확인') 전까지 계속 울리고 목록에서 깜빡임.
+const unseen = new Set();
+let lastSurgeKey = '', lastBeep = 0, audioCtx = null;
+const getAudio = () => { try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch(e){} return audioCtx; };
+addEventListener('pointerdown', getAudio, { once: true });   // 브라우저는 한 번 클릭한 뒤에야 소리를 허용
+function beep(){
+  const c = getAudio(); if (!c) return;
+  const t = c.currentTime;
+  [[0, 880], [0.16, 880], [0.32, 1320]].forEach(([d, f]) => {
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = 'square'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.2, t + d + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.13);
+    o.connect(g).connect(c.destination); o.start(t + d); o.stop(t + d + 0.14);
+  });
+}
+function notifySurge(ms){
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const names = ms.map(m => (S.byMarket.get(m) || {}).name || m);
+  try { new Notification('급등 감지', { body: names.join(', ') + ' — 갑자기 거래가 몰리고 있어요', tag: 'quantera-surge', renotify: true, icon: './icons/icon-192.png' }); } catch(e){}
+}
+function ackSurge(m){
+  if (m) unseen.delete(m); else unseen.clear();
+  for (const row of $$('.wl-row.blink', $('#wlBody'))) if (!unseen.has(row.dataset.m)) row.classList.remove('blink');
+  renderSurgeBar();
+}
+function renderSurgeBar(){
+  const bar = $('#surgeBar'); if (!bar) return;
+  const ms = [...unseen].filter(m => surge.events.has(m));
+  if (!ms.length){ bar.classList.add('hidden'); $('#wlTabs [data-tab="surge"]').classList.remove('blink'); return; }
+  const first = (S.byMarket.get(ms[0]) || {}).name || ms[0];
+  bar.innerHTML = `<span class="dot-live"></span><b>급등 ${ms.length}</b><span>${esc(first)}${ms.length > 1 ? ` 외 ${ms.length - 1}` : ''}</span><button class="pill" data-surge-go>보기</button><button class="pill" data-surge-ack>모두 확인</button>`;
+  bar.classList.remove('hidden');
+  $('#wlTabs [data-tab="surge"]').classList.add('blink');
+}
+setInterval(() => {
+  const fresh = surge.check(S.quotes), cfg = allCfg();
+  for (const m of fresh) unseen.add(m);
+  for (const m of [...unseen]) if (!surge.events.has(m)) unseen.delete(m);
+  if (fresh.length){ notifySurge(fresh); renderSurgeBar(); }
+  if (cfg.surgeAlarm && unseen.size && Date.now() - lastBeep >= cfg.surgeRepeat * 1000){ lastBeep = Date.now(); beep(); }
+  const key = [...surge.events.keys()].join() + '|' + surge.log().length + '|' + surge.tracking.size;
+  if (S.tab === 'surge' && !S.search){
+    if (fresh.length || key !== lastSurgeKey) renderWatch();
+    else for (const el of $$('[data-ago]', $('#wlBody'))){ const e = surge.get(el.dataset.ago); if (e) el.textContent = surgeText(el.dataset.ago, e); }
+  } else if (fresh.length || key !== lastSurgeKey) renderSurgeBadges();
+  if (key !== lastSurgeKey) renderSurgeBar();
+  lastSurgeKey = key;
+  const t = $('#wlTabs [data-tab="surge"]'); if (t) t.dataset.n = surge.events.size || '';
+}, 1000);
+function surgeText(m, e){
+  const q = S.quotes.get(m) || {}, since = q.price && e.pAt ? (q.price / e.pAt - 1) * 100 : 0;
+  return `${agoKo(Date.now() - e.at)} · ${allCfg().surgeSec}초 ${fmtPct(e.pct)} · 거래 ${e.ratio.toFixed(1)}배 · 이후 ${fmtPct(since)}`;
+}
+// 급등 탭 위 적중률 표: 잡힌 순간 샀다면 익절/손절 중 어디에 먼저 닿았는지
+function surgeStatsHtml(){
+  const st = surge.stats(), n = surge.log().length, live = surge.tracking.size;
+  const rows = st.length ? st.map(s => `<tr><td>+${s.tp} / -${s.sl}</td><td>${s.n}</td><td class="${s.winRate >= s.need ? 'up' : ''}">${s.winRate.toFixed(0)}%</td><td class="muted">${s.need.toFixed(0)}%</td><td class="${toneOf(s.exp)}">${fmtPct(s.exp)}</td></tr>`).join('')
+    : `<tr><td colspan="5" class="muted">아직 끝난 기록이 없어요. 잡힌 급등이 익절·손절에 닿거나 ${allCfg().surgeTimeoutMin}분이 지나면 쌓여요.</td></tr>`;
+  return `<details class="surge-stats"${LS.get('quantera:surgeStatsOpen', true) ? ' open' : ''}><summary>적중률 기록 <span class="muted">${n}건 완료${live ? ` · ${live}건 추적 중` : ''}</span></summary>
+    <table><thead><tr><th>익절/손절</th><th>건수</th><th>적중</th><th>본전</th><th>1건 평균</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="muted small">잡힌 순간 가격에 샀다고 치고 계산 · 수수료 ${allCfg().surgeFeePct}% 반영 · 손절이 먼저 닿은 걸로 보수적으로 봄 · "본전"보다 적중이 높아야 남아요 · 이 기기에 저장</div></details>`;
+}
+function renderSurgeBadges(){
+  for (const row of $$('.wl-row', $('#wlBody'))){
+    const has = surge.events.has(row.dataset.m), b = $('.badge.surge', row);
+    if (has && !b) $('.wl-name', row).insertAdjacentHTML('beforeend', '<span class="badge surge">급등</span>');
+    else if (!has && b) b.remove();
+  }
+}
 function setWs(s){
   const map = { live: ['live', '실시간'], connecting: ['wait', '연결 중'], reconnecting: ['wait', '재연결 중'], off: ['off', '끊김'] };
   const [c, t] = map[s] || map.off; $('#wsDot').className = 'dot ' + c; $('#wsText').textContent = t;
@@ -145,6 +219,7 @@ function listFor(tab){
   else if (tab === 'hold') list = list.filter(i => held.has(i.market));
   else if (tab === 'pullback' || tab === 'bottom') list = list.filter(i => isPick(i.market, tab));
   else if (tab === 'new') list = list.filter(i => isNewListing(i.market));
+  else if (tab === 'surge' && !S.search) return list.filter(i => surge.events.has(i.market)).sort((a, b) => surge.get(b.market).at - surge.get(a.market).at);
   else if (tab === 'rebuy'){ const rb = new Set(S.ledger.rebuy.map(r => upbit.toMarket(r.symbol))); list = list.filter(i => rb.has(i.market)); }
   if (S.search){ const s = S.search.toLowerCase(); list = S.instruments.filter(i => i.name.toLowerCase().includes(s) || i.market.toLowerCase().includes(s) || (i.nameEn || '').toLowerCase().includes(s)); }
   const val = i => (S.quotes.get(i.market) || {}).value24h || 0;
@@ -155,20 +230,21 @@ function renderWatch(){
   $('#wlCount').textContent = list.length;
   const rebuy = new Set(S.ledger.rebuy.map(r => upbit.toMarket(r.symbol)));
   if (!list.length){
-    const msg = { fav: '관심 종목이 없어요. 전체 탭에서 ☆를 눌러 추가하세요.', hold: '보유 종목이 없어요. 로그인하면 기존 보유 종목이 기초 이월로 보여요.', pullback: '지금 조건에 맞는 눌림 매수 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', bottom: '지금 조건에 맞는 바닥 반등 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', new: '최근 30일 안에 새로 상장된 종목이 없어요.', rebuy: '재매수 후보가 없어요. 이익을 내고 판 종목이 그때 매수가보다 싸지면 여기에 떠요.' };
-    $('#wlBody').innerHTML = `<div class="empty">${S.search ? '검색 결과가 없어요.' : msg[S.tab] || ''}</div>`; return;
+    const msg = { fav: '관심 종목이 없어요. 전체 탭에서 ☆를 눌러 추가하세요.', hold: '보유 종목이 없어요. 로그인하면 기존 보유 종목이 기초 이월로 보여요.', pullback: '지금 조건에 맞는 눌림 매수 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', bottom: '지금 조건에 맞는 바닥 반등 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', new: '최근 30일 안에 새로 상장된 종목이 없어요.', surge: `지금 갑자기 거래가 몰린 코인이 없어요. 앱이 켜져 있는 동안 1초마다 검사해요. (최근 ${allCfg().surgeSec}초 거래대금이 평소의 ${allCfg().surgeVol}배 이상)`, rebuy: '재매수 후보가 없어요. 이익을 내고 판 종목이 그때 매수가보다 싸지면 여기에 떠요.' };
+    $('#wlBody').innerHTML = (S.tab === 'surge' && !S.search ? surgeStatsHtml() : '') + `<div class="empty">${S.search ? '검색 결과가 없어요.' : msg[S.tab] || ''}</div>`; return;
   }
-  $('#wlBody').innerHTML = list.slice(0, 300).map(i => {
+  $('#wlBody').innerHTML = (S.tab === 'surge' && !S.search ? surgeStatsHtml() : '') + list.slice(0, 300).map(i => {
     const q = S.quotes.get(i.market) || {}, r = S.results.get(i.market);
     const L = live(i.market);
     const bar = L.stance === 'buy_zone' ? 'entry' : ['chase', 'broken', 'failed'].includes(L.stance) ? 'warn' : '';
-    const badges = [L.stance === 'buy_zone' ? `<span class="badge accent">${TYPE_KO[L.type]}</span>` : '', rebuy.has(i.market) ? '<span class="badge accent">재매수</span>' : '', isNewListing(i.market) ? '<span class="badge warn">신규</span>' : '',
+    const sv = surge.get(i.market);
+    const badges = [sv ? '<span class="badge surge">급등</span>' : '', L.stance === 'buy_zone' ? `<span class="badge accent">${TYPE_KO[L.type]}</span>` : '', rebuy.has(i.market) ? '<span class="badge accent">재매수</span>' : '', isNewListing(i.market) ? '<span class="badge warn">신규</span>' : '',
       q.suspended ? '<span class="badge warn">거래정지</span>' : '', i.warning ? '<span class="badge warn">유의</span>' : '', (i.caution || []).length ? '<span class="badge line">주의</span>' : ''].join('');
-    return `<div class="wl-row${S.sel === i.market ? ' sel' : ''}" data-m="${i.market}">
+    return `<div class="wl-row${S.sel === i.market ? ' sel' : ''}${S.tab === 'surge' && unseen.has(i.market) ? ' blink' : ''}" data-m="${i.market}">
       <span class="bar ${bar}"></span>
       <div style="min-width:0">
         <div class="wl-name"><button class="star${S.watch.has(i.symbol) ? ' on' : ''}" data-star="${i.symbol}" aria-label="관심">${S.watch.has(i.symbol) ? '★' : '☆'}</button><b>${esc(i.name)}</b>${badges}</div>
-        <div class="wl-peter">${r && L.stance !== 'blocked' ? esc(L.text || r.peter) :`<span class="mono">${i.market}</span> · ${fmtKrwShort(q.value24h)}`}</div>
+        <div class="wl-peter">${S.tab === 'surge' && sv ? `<span class="surge-txt" data-ago="${i.market}">${surgeText(i.market, sv)}</span>` : r && L.stance !== 'blocked' ? esc(L.text || r.peter) :`<span class="mono">${i.market}</span> · ${fmtKrwShort(q.value24h)}`}</div>
       </div>
       <div class="wl-px mono"><div class="p ${toneOf(q.changeRate)}" data-px="${i.market}">${fmtPrice(q.price)}</div><div class="c ${toneOf(q.changeRate)}" data-cr="${i.market}">${fmtPct(q.changeRate)}</div></div>
     </div>`;
@@ -184,6 +260,7 @@ function patchWatchPrices(){
 
 // ---------------------------------------------------------------- 종목 선택
 async function select(market){
+  if (unseen.has(market)) ackSurge(market);
   if (!S.byMarket.has(market)) market = 'KRW-BTC';
   S.sel = market; LS.set('quantera:sel', market);
   for (const el of $$('.wl-row')) el.classList.toggle('sel', el.dataset.m === market);
@@ -377,7 +454,13 @@ function bindUi(){
     $('#jBody').classList.toggle('hidden', news); $('#newsBody').classList.toggle('hidden', !news); $('#jSummary').classList.toggle('hidden', news);
     if (news) renderNews();
   });
-  $('#wlTabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (!b) return; S.tab = b.dataset.tab; $$('#wlTabs .pill').forEach(x => x.classList.toggle('on', x === b)); renderWatch(); });
+  $('#wlTabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (!b) return; S.tab = b.dataset.tab; $$('#wlTabs .pill').forEach(x => x.classList.toggle('on', x === b)); renderWatch();
+    if (S.tab === 'surge' && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {}); });
+  $('#wlBody').addEventListener('toggle', e => { if (e.target.classList && e.target.classList.contains('surge-stats')) LS.set('quantera:surgeStatsOpen', e.target.open); }, true);
+  $('#surgeBar').addEventListener('click', e => {
+    if (e.target.closest('[data-surge-ack]')) return ackSurge();
+    if (e.target.closest('[data-surge-go]')){ S.search = ''; S.tab = 'surge'; $$('#wlTabs .pill').forEach(x => x.classList.toggle('on', x.dataset.tab === 'surge')); setMobile('watch'); renderWatch(); }
+  });
   $('#wlBody').addEventListener('click', async e => {
     const st = e.target.closest('[data-star]');
     if (st){ e.stopPropagation(); const sym = st.dataset.star; const on = !S.watch.has(sym); S.watch = new Set(await setWatch(sym, on)); renderWatch(); return; }
@@ -424,22 +507,25 @@ const CFG_FIELDS = [
   ['무조건 제외', [['nearHighPct', '60일 고점에서 이 % 안쪽', 1], ['maxRise7d', '7일 상승률(%) 초과', 1], ['maxRiseToday', '오늘 상승률(%) 초과', 1], ['maxGap20', '20일선 이격(%) 초과', 1], ['minValue24h', '24시간 거래대금(억) 미만', 1e8], ['includeWarning', '투자유의 종목도 포함', 'bool']]],
   ['눌림 매수', [['pbMinDrop', '최근 30일 고점 대비 최소 하락(%)', 1], ['pbMaxDrop', '최대 하락(%)', 1], ['pbNearMa', '20·60일선과의 거리(%) 이내', 1], ['pbVolDry', '5일/20일 거래량 비율 이하', 1]]],
   ['바닥 반등', [['btMinDrop', '1년 고점 대비 최소 하락(%)', 1], ['btLowerPct', '1년 범위 하단 이 % 안', 1], ['btNoNewLowDays', '새 저점 없는 기간(일)', 1], ['btVolBurst', '반등 거래량 배수', 1]]],
+  ['급등 감지 (1초마다)', [['surgeSec', '이 시간(초) 동안의 거래를 봄', 1], ['surgeVol', '평소 같은 시간보다 거래대금 배수', 1], ['surgePct', '그 시간 상승률(%) 이상 (0 = 가격 안 봄)', 1], ['surgeMinValue', '그 시간 최소 거래대금(백만 원)', 1e6], ['surgeKeepMin', '잡힌 뒤 목록 유지(분)', 1], ['surgeAlarm', '소리 알람', 'bool'], ['surgeRepeat', '확인 전까지 반복 간격(초)', 1], ['surgeCombos', '적중률 조합 (익절/손절, 쉼표로)', 'text'], ['surgeTimeoutMin', '적중률 시간 종료(분)', 1]]],
   ['검증', [['minSamples', '최소 표본 수', 1], ['holdDays', '보유 기간(일)', 1], ['feePct', '왕복 수수료(%)', 1]]]
 ];
-function openCfg(c = screenCfg()){
-  $('#cfgBody').innerHTML = CFG_FIELDS.map(([title, fs]) => `<h4>${title}</h4>` + fs.map(([k, label, unit]) => unit === 'bool'
+function openCfg(c = allCfg()){
+  $('#cfgBody').innerHTML = CFG_FIELDS.map(([title, fs]) => `<h4>${title}</h4>` + fs.map(([k, label, unit]) => unit === 'text'
+    ? `<label>${label}<input type="text" name="${k}" value="${esc(c[k])}"></label>`
+    : unit === 'bool'
     ? `<label>${label}<input type="checkbox" name="${k}" ${c[k] ? 'checked' : ''}></label>`
     : `<label>${label}<input type="number" step="any" name="${k}" value="${+(c[k] / unit).toFixed(4)}"></label>`).join('')).join('');
   $('#cfgDlg').showModal();
 }
 function bindCfg(){
-  $('#cfgReset').addEventListener('click', e => { e.preventDefault(); openCfg({ ...SCREEN_DEFAULTS }); });
+  $('#cfgReset').addEventListener('click', e => { e.preventDefault(); openCfg({ ...SCREEN_DEFAULTS, ...SURGE_DEFAULTS }); });
   $('#cfgForm').addEventListener('submit', async e => {
     if (!e.submitter || e.submitter.value !== 'save') return;
     const c = {};
     for (const [, fs] of CFG_FIELDS) for (const [k, , unit] of fs){
       const el = $(`#cfgBody [name="${k}"]`);
-      c[k] = unit === 'bool' ? el.checked : (isFinite(+el.value) ? +el.value * unit : SCREEN_DEFAULTS[k]);
+      c[k] = unit === 'text' ? el.value : unit === 'bool' ? el.checked : (isFinite(+el.value) ? +el.value * unit : { ...SCREEN_DEFAULTS, ...SURGE_DEFAULTS }[k]);
     }
     saveScreenCfg(c);
     // 기준이 바뀌면 이미 받은 캔들(캐시)로 다시 계산 — 업비트 추가 요청 없음

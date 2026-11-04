@@ -36,6 +36,22 @@ a{color:var(--accent)} a:hover{color:#E1FF7A}
 .pill.ghost{background:transparent}
 .pill:disabled{opacity:.45;cursor:not-allowed}
 .badge{height:20px;padding:0 8px;border-radius:999px;font-size:var(--f-s);display:inline-flex;align-items:center;background:var(--chip-2);color:var(--text);font-weight:600;white-space:nowrap}
+.badge.surge{background:var(--up);color:#fff}
+#wlTabs [data-n]:not([data-n=""])::after{content:attr(data-n);margin-left:4px;font-size:10px;color:var(--up);font-weight:700}
+.surge-txt{color:var(--text-2)}
+.surge-stats{margin:4px 8px 8px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;font-size:var(--f-s)}
+.surge-stats summary{cursor:pointer;font-weight:600}
+.surge-stats table{width:100%;margin:6px 0 4px;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.surge-stats th{color:var(--muted);font-weight:400;text-align:right;padding:2px 4px}
+.surge-stats td{text-align:right;padding:2px 4px}
+.surge-stats th:first-child,.surge-stats td:first-child{text-align:left}
+.surge-stats td.up{color:var(--up)} .surge-stats .small{font-size:11px;line-height:1.4}
+@keyframes qblink{0%,100%{background:transparent}50%{background:rgba(240,68,82,.22)}}
+.wl-row.blink{animation:qblink 1s steps(2,jump-none) infinite}
+#wlTabs .pill.blink{animation:qblink 1s infinite;border-color:var(--up)}
+.surge-bar{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;padding:6px 8px 6px 14px;border-radius:999px;background:#1a0d10;border:1px solid var(--up);box-shadow:0 8px 30px rgba(0,0,0,.5);font-size:var(--f-m);white-space:nowrap}
+.surge-bar b{color:var(--up)} .surge-bar .pill{height:26px}
+.surge-bar .dot-live{width:8px;height:8px;border-radius:50%;background:var(--up);animation:qblink 1s infinite;box-shadow:0 0 8px var(--up)}
 .badge.accent{background:var(--accent);color:var(--bg)} .badge.warn{background:var(--warn);color:var(--bg)} .badge.line{background:transparent;border:1px solid var(--line-2);color:var(--text-2);font-weight:400}
 .dot{width:8px;height:8px;border-radius:4px;display:inline-block;background:var(--muted)}
 .dot.live{background:var(--ok)} .dot.wait{background:var(--warn)} .dot.off{background:var(--up)}

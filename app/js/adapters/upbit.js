@@ -81,7 +81,7 @@ const mapTicker = t => ({
   symbol: toSymbol(t.market), market: t.market,
   price: t.trade_price, open: t.opening_price, high: t.high_price, low: t.low_price, prevClose: t.prev_closing_price,
   change: t.signed_change_price, changeRate: t.signed_change_rate * 100,
-  volume24h: t.acc_trade_volume_24h, value24h: t.acc_trade_price_24h,
+  volume24h: t.acc_trade_volume_24h, value24h: t.acc_trade_price_24h, accDay: t.acc_trade_price,
   high52w: t.highest_52_week_price, low52w: t.lowest_52_week_price,
   ts: t.trade_timestamp || t.timestamp,
   // 거래정지: 업비트가 주는 상태값이 있으면 사용 (없으면 정상으로 봄)
