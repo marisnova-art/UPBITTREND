@@ -9,6 +9,7 @@ import { computeLedger, pastBuys } from './analysis/ledger.js';
 import { createSurge, SURGE_DEFAULTS, agoKo } from './analysis/surge.js';
 import { loadNews, newsFor, newsHtml } from './news.js';
 import { createChart } from './ui/chart.js';
+import { initTips, BAR_TIPS } from './ui/tips.js';
 import { initLayout, apply as applyLayout } from './ui/layout.js';
 import { db, initDb, login, logout, loadWatchlist, setWatch, loadTrades, localLayout, saveLayout, remoteLayout } from './db.js';
 
@@ -37,6 +38,7 @@ const priceOf = sym => { const q = S.quotes.get(upbit.toMarket(sym)); return q ?
 let chart;
 async function boot(){
   initLayout(localLayout(), saveLayout);
+  initTips();
   bindUi();
   await waitFor(() => window.LightweightCharts, 8000);
   chart = createChart($('#tv'), $('#legend'), $('#ohlc'));
@@ -277,7 +279,7 @@ function renderWatch(){
     const badges = [sv ? '<span class="badge surge">급등</span>' : '', L.stance === 'buy_zone' ? `<span class="badge accent">${TYPE_KO[L.type]}</span>` : '', rebuy.has(i.market) ? '<span class="badge accent">재매수</span>' : '', isNewListing(i.market) ? '<span class="badge warn">신규</span>' : '',
       q.suspended ? '<span class="badge warn">거래정지</span>' : '', i.warning ? '<span class="badge warn">유의</span>' : '', (i.caution || []).length ? '<span class="badge line">주의</span>' : ''].join('');
     return `<div class="wl-row${S.sel === i.market ? ' sel' : ''}${S.tab === 'surge' && unseen.has(i.market) ? ' blink' : ''}" data-m="${i.market}">
-      <span class="bar ${bar}"></span>
+      <span class="bar ${bar}" data-tip="${BAR_TIPS[bar]}"></span>
       <div style="min-width:0">
         <div class="wl-name"><button class="star${S.watch.has(i.symbol) ? ' on' : ''}" data-star="${i.symbol}" aria-label="관심">${S.watch.has(i.symbol) ? '★' : '☆'}</button><b>${esc(i.name)}</b>${badges}</div>
         <div class="wl-peter">${S.tab === 'recent' && !S.search ? recentText(i.market) : S.tab === 'surge' && sv ? `<span class="surge-txt" data-ago="${i.market}">${surgeText(i.market, sv)}</span>` : r && L.stance !== 'blocked' ? esc(L.text || r.peter) :`<span class="mono">${i.market}</span> · ${fmtKrwShort(q.value24h)}`}</div>

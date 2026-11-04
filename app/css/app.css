@@ -36,6 +36,11 @@ a{color:var(--accent)} a:hover{color:#E1FF7A}
 .pill.ghost{background:transparent}
 .pill:disabled{opacity:.45;cursor:not-allowed}
 .badge{height:20px;padding:0 8px;border-radius:999px;font-size:var(--f-s);display:inline-flex;align-items:center;background:var(--chip-2);color:var(--text);font-weight:600;white-space:nowrap}
+.qtip{position:fixed;z-index:100;max-width:300px;padding:8px 10px;border-radius:10px;background:#1c1c20;border:1px solid var(--line-2);color:var(--text);font-size:12px;line-height:1.5;white-space:pre-line;pointer-events:none;opacity:0;transition:opacity .12s;box-shadow:0 8px 24px rgba(0,0,0,.5);font-weight:400;text-align:left}
+.qtip.on{opacity:1}
+.help{display:inline-grid;place-items:center;width:16px;height:16px;margin-left:6px;border-radius:50%;border:1px solid var(--line-2);color:var(--muted);font-size:10px;cursor:help}
+.help:hover{color:var(--text);border-color:var(--muted)}
+.wl-row .bar[data-tip]{cursor:help}
 .badge.surge{background:var(--up);color:#fff}
 #wlTabs [data-n]:not([data-n=""])::after{content:attr(data-n);margin-left:4px;font-size:10px;color:var(--up);font-weight:700}
 .surge-txt{color:var(--text-2)}
