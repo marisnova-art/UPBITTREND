@@ -80,9 +80,37 @@ function onTick(q){
   if (S.sel === q.market){ chart && chart.tick(q.price, q.ts || Date.now()); renderHead(); }
   if (!rafPending){ rafPending = true; setTimeout(() => { rafPending = false; patchWatchPrices(); }, 1000); }
 }
+// 현재가가 움직여 판단(매수 구간 / 추격 주의 / 지지 이탈)이 바뀌면 목록·분석을 다시 그림
+let lastSelStance = null, lastEntryKey = '';
+setInterval(() => {
+  if (!S.sel) return;
+  const st = live(S.sel).stance;
+  if (st !== lastSelStance){ lastSelStance = st; if (S.results.has(S.sel)){ renderInspector(); renderOrderForm(); } }
+  if (S.tab === 'entry' && !S.search){ const key = listFor('entry').map(i => i.market).join(); if (key !== lastEntryKey){ lastEntryKey = key; renderWatch(); } }
+}, 5000);
 function setWs(s){
   const map = { live: ['live', '실시간'], connecting: ['wait', '연결 중'], reconnecting: ['wait', '재연결 중'], off: ['off', '끊김'] };
   const [c, t] = map[s] || map.off; $('#wsDot').className = 'dot ' + c; $('#wsText').textContent = t;
+}
+
+// ---------------------------------------------------------------- 현재가 기준 판단
+// 분석은 어제 확정 일봉 기준이라, 오늘 급등해 이미 매수 구간 위로 올라간 종목은 현재가로 다시 거릅니다.
+const CHASE_ABOVE_PCT = 1.5;   // 매수 구간 상단보다 이만큼 위면 '추격 주의'
+const CHASE_DAY_PCT = 7;       // 오늘 이만큼 오르면 '추격 주의'
+function live(market){
+  const r = S.results.get(market), q = S.quotes.get(market) || {}, g = r && r.guide;
+  if (!r || !g || g.stance === 'none') return { stance: 'none' };
+  if (g.stance === 'avoid') return { stance: 'avoid' };
+  const p = q.price; if (!p) return { stance: g.stance };
+  const abovePct = (p / g.buyHi - 1) * 100, dayPct = q.changeRate || 0;
+  if (g.stop && p < g.stop) return { stance: 'broken', abovePct, dayPct, text: `손절 기준 ${fmtPrice(g.stop)} 아래로 내려왔어요. 지지가 깨졌으니 관망해요.` };
+  if (abovePct > CHASE_ABOVE_PCT || dayPct >= CHASE_DAY_PCT)
+    return { stance: 'chase', abovePct, dayPct, text: abovePct > CHASE_ABOVE_PCT
+      ? `${dayPct >= CHASE_DAY_PCT ? `오늘 ${fmtPct(dayPct, 1)} 올라 ` : ''}매수 구간 상단보다 ${fmtPct(abovePct, 1)} 위예요. 추격하지 말고 눌림을 기다려요.`
+      : `오늘 ${fmtPct(dayPct, 1)} 급등했어요. 하루 더 지켜보고 판단해요.` };
+  const inZone = p >= g.buyLo * 0.99 && p <= g.buyHi * (1 + CHASE_ABOVE_PCT / 100);
+  if (inZone && r.trendScore >= 55 && (r.status === 'ENTRY ZONE' || g.stance === 'buy_zone')) return { stance: 'buy_zone', abovePct, dayPct };
+  return { stance: 'watch', abovePct, dayPct };
 }
 
 // ---------------------------------------------------------------- 관심 목록
@@ -91,7 +119,7 @@ function listFor(tab){
   const held = new Set(S.ledger.positions.map(p => upbit.toMarket(p.symbol)));
   if (tab === 'fav') list = list.filter(i => S.watch.has(i.symbol));
   else if (tab === 'hold') list = list.filter(i => held.has(i.market));
-  else if (tab === 'entry') list = list.filter(i => { const r = S.results.get(i.market); return r && (r.status === 'ENTRY ZONE' || (r.guide && r.guide.stance === 'buy_zone')); });
+  else if (tab === 'entry') list = list.filter(i => live(i.market).stance === 'buy_zone');
   else if (tab === 'new') list = list.filter(i => isNewListing(i.market));
   else if (tab === 'rebuy'){ const rb = new Set(S.ledger.rebuy.map(r => upbit.toMarket(r.symbol))); list = list.filter(i => rb.has(i.market)); }
   if (S.search){ const s = S.search.toLowerCase(); list = S.instruments.filter(i => i.name.toLowerCase().includes(s) || i.market.toLowerCase().includes(s) || (i.nameEn || '').toLowerCase().includes(s)); }
@@ -108,13 +136,14 @@ function renderWatch(){
   }
   $('#wlBody').innerHTML = list.slice(0, 300).map(i => {
     const q = S.quotes.get(i.market) || {}, r = S.results.get(i.market);
-    const bar = r && r.guide && r.guide.stance === 'buy_zone' ? 'entry' : (r && (r.status === 'EXTENDED' || r.stage === 'DOWN')) ? 'warn' : '';
+    const L = live(i.market);
+    const bar = L.stance === 'buy_zone' ? 'entry' : (L.stance === 'chase' || L.stance === 'broken' || L.stance === 'avoid' || (r && r.status === 'EXTENDED')) ? 'warn' : '';
     const badges = [rebuy.has(i.market) ? '<span class="badge accent">재매수</span>' : '', isNewListing(i.market) ? '<span class="badge warn">신규</span>' : '', i.warning ? '<span class="badge line">유의</span>' : ''].join('');
     return `<div class="wl-row${S.sel === i.market ? ' sel' : ''}" data-m="${i.market}">
       <span class="bar ${bar}"></span>
       <div style="min-width:0">
         <div class="wl-name"><button class="star${S.watch.has(i.symbol) ? ' on' : ''}" data-star="${i.symbol}" aria-label="관심">${S.watch.has(i.symbol) ? '★' : '☆'}</button><b>${esc(i.name)}</b>${badges}</div>
-        <div class="wl-peter">${r ? esc(r.peter) : `<span class="mono">${i.market}</span> · ${fmtKrwShort(q.value24h)}`}</div>
+        <div class="wl-peter">${r ? esc(L.text || r.peter) :`<span class="mono">${i.market}</span> · ${fmtKrwShort(q.value24h)}`}</div>
       </div>
       <div class="wl-px mono"><div class="p ${toneOf(q.changeRate)}" data-px="${i.market}">${fmtPrice(q.price)}</div><div class="c ${toneOf(q.changeRate)}" data-cr="${i.market}">${fmtPct(q.changeRate)}</div></div>
     </div>`;
@@ -180,12 +209,14 @@ function renderInspector(){
   $('#inspBasis').textContent = r.dailyDate ? `확정 일봉 ${r.dailyDate}` : '';
   const g = r.guide || {};
   const cur = q.price;
-  const stanceTxt = { buy_zone: '<span class="badge accent">매수 구간</span>', watch: '<span class="badge line">대기</span>', avoid: '<span class="badge warn">관망</span>', none: '<span class="badge line">판단 보류</span>' }[g.stance || 'none'];
+  const L = live(S.sel);
+  const stanceTxt = { buy_zone: '<span class="badge accent">매수 구간</span>', watch: '<span class="badge line">대기</span>', chase: '<span class="badge warn">추격 주의</span>', broken: '<span class="badge warn">지지 이탈</span>', avoid: '<span class="badge warn">관망</span>', none: '<span class="badge line">판단 보류</span>' }[L.stance || 'none'];
+  const liveNote = L.text ? `<div class="peter" style="margin-bottom:8px;color:var(--warn)">${esc(L.text)}</div>` : '';
   const row = (color, label, price, pct) => `<div class="guide-row"><span class="dot" style="background:${color}"></span><span>${label}</span><span class="mono">${price}</span><span class="pct mono ${pct == null ? 'muted' : pct >= 0 ? 'up' : 'warn'}">${pct == null ? '' : fmtPct(pct, 1)}</span></div>`;
   let guide;
   if (g.stance === 'none') guide = `<div class="peter">${esc(r.peter)}</div>`;
   else if (g.stance === 'avoid') guide = `<div class="peter">하락 추세라 지금은 매수 가이드를 내지 않아요. 상승 전환이 확인되면 다시 계산해요.</div>` + row('#F5A524', '참고 손절선', fmtPrice(g.stop), null);
-  else guide = [
+  else guide = liveNote + [
     row('#C6F432', '매수 구간', `${fmtPrice(g.buyLo)} ~ ${fmtPrice(g.buyHi)}`, cur && g.buyHi ? (cur / g.buyHi - 1) * 100 : null),
     row('#EDEDEF', '1차 매도', fmtPrice(g.sell1), g.sell1Pct),
     row('#EDEDEF', '2차 매도', fmtPrice(g.sell2), g.sell2Pct),
@@ -228,7 +259,7 @@ function renderOrderbook(ob){
 }
 function renderOrderForm(){
   const r = S.results.get(S.sel), g = r && r.guide;
-  const price = g && g.stance === 'buy_zone' ? g.buyHi : (S.quotes.get(S.sel) || {}).price;
+  const price = g && live(S.sel).stance === 'buy_zone' ? g.buyHi : (S.quotes.get(S.sel) || {}).price;
   $('#orderBox').innerHTML = `
     <div class="seg"><button class="buy on" disabled>매수</button><button class="sell" disabled>매도</button></div>
     <label class="field"><span>가격</span><input value="${price ? fmtPrice(price) : ''}" disabled></label>
