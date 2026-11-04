@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#050506">
+<title>QUANTERA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./css/app.css">
+<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js" defer></script>
+<script type="module" src="./js/main.js"></script>
+</head>
+<body data-m="home">
+<div class="app">
+  <header class="topbar">
+    <div class="logo"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C6F432" stroke-width="2.4" aria-hidden="true"><path d="M4 17l5-6 4 4 7-9"/></svg></i>QUANTERA</div>
+    <input class="search" id="search" type="search" placeholder="종목 검색 (이름 · 코드 · 초성 아님)" autocomplete="off">
+    <div class="grow"></div>
+    <div class="chips">
+      <span class="hide-m" id="exchangeChip">업비트 · 원화</span>
+      <span><span class="dot" id="wsDot"></span> <span id="wsText">연결 중</span></span>
+      <button class="pill ghost" id="loginBtn">로그인</button>
+    </div>
+  </header>
+
+  <nav class="rail" aria-label="메뉴">
+    <button class="on" data-view="trade" title="트레이딩"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16M8 15l4-5 3 3 5-6"/></svg>트레이딩</button>
+    <button data-view="scan" title="스캐너"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4-4"/></svg>스캐너</button>
+    <button disabled title="PHASE 2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 4h11l3 3v13H5z"/><path d="M9 10h6M9 14h6"/></svg>종목 위키</button>
+    <button data-view="rebuy" title="재매수 후보"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12a8 8 0 0114-5l2 2M20 12a8 8 0 01-14 5l-2-2"/><path d="M20 4v5h-5M4 20v-5h5"/></svg>재매수</button>
+    <button data-view="journal" title="거래일지"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18H6zM9 8h6M9 12h6"/></svg>거래일지</button>
+    <button disabled title="PHASE 4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="4"/></svg>전략</button>
+    <button disabled title="PHASE 2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>자산</button>
+    <button data-view="settings" title="설정"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>설정</button>
+  </nav>
+
+  <main class="desk" id="desk">
+    <!-- 관심 목록 -->
+    <section class="panel" id="pWatch" data-panel="watch">
+      <header><h2>종목</h2><div class="grow"></div><span class="muted mono" id="wlCount"></span><button class="iconbtn collapse" data-collapse="watch" aria-label="접기">‹</button></header>
+      <span class="vlabel">종목</span>
+      <div class="tabs" role="tablist" id="wlTabs">
+        <button class="pill on" data-tab="fav">관심</button>
+        <button class="pill" data-tab="hold">보유</button>
+        <button class="pill" data-tab="entry">매수 검토</button>
+        <button class="pill" data-tab="all">전체</button>
+        <button class="pill" data-tab="new">신규</button>
+      </div>
+      <div class="body" id="wlBody"></div>
+      <div class="scanbar"><button class="pill" id="scanBtn">전체 스캔</button><div class="progress"><i id="scanProg"></i></div><span id="scanText">대기</span></div>
+    </section>
+    <div class="split" data-split="watch"></div>
+
+    <!-- 가운데: 차트 + 거래일지 -->
+    <div class="center" id="colCenter">
+      <section class="panel" id="pChart">
+        <header>
+          <div class="chart-head">
+            <h2 id="chName">-</h2><span class="muted mono" id="chCode"></span>
+            <span class="px mono" id="chPrice">-</span><span class="mono" id="chChg"></span>
+            <span id="chBadges"></span>
+          </div>
+          <div class="grow"></div>
+          <div class="tabs" id="tfTabs" style="border:0;padding:0"></div>
+        </header>
+        <div class="chart-wrap" id="chartWrap">
+          <div class="legend" id="legend"></div>
+          <div class="tv" id="tv"></div>
+        </div>
+      </section>
+      <div class="split h" data-split="journal"></div>
+      <section class="panel" id="pJournal" data-panel="journal">
+        <header><h2>거래일지</h2><span class="muted" id="jSummary"></span><div class="grow"></div><button class="iconbtn collapse" data-collapse="journal" aria-label="접기">⌄</button></header>
+        <div class="body" id="jBody"></div>
+      </section>
+    </div>
+    <div class="split" data-split="book"></div>
+
+    <!-- 호가 + 주문 -->
+    <section class="panel" id="pBook" data-panel="book">
+      <header><h2>호가</h2><div class="grow"></div><button class="iconbtn collapse" data-collapse="book" aria-label="접기">›</button></header>
+      <span class="vlabel">호가 · 주문</span>
+      <div class="body ob" id="obBody"></div>
+      <div class="order" id="orderBox"></div>
+    </section>
+    <div class="split" data-split="insp"></div>
+
+    <!-- 분석 인스펙터 -->
+    <section class="panel" id="pInsp" data-panel="insp">
+      <header><h2>피터 분석</h2><div class="grow"></div><span class="muted" id="inspBasis"></span><button class="iconbtn collapse" data-collapse="insp" aria-label="접기">›</button></header>
+      <span class="vlabel">피터 분석</span>
+      <div class="body" id="inspBody"></div>
+    </section>
+
+    <!-- 모바일 전용: 알림 -->
+    <section class="panel" id="pAlerts">
+      <header><h2>알림</h2></header>
+      <div class="body" id="alertBody"><div class="empty">실시간 알림(재매수·매도가 도달·손절 접근·신규 상장)은 PHASE 2에 붙어요.</div></div>
+      <div class="sec" style="border:0"><button class="estop" style="width:100%;height:48px" disabled>긴급 정지 · 자동매매 연결 후 사용</button></div>
+    </section>
+  </main>
+
+  <footer class="statusbar">
+    <span>총자산 <b class="mono" id="sbAssets">-</b></span>
+    <span>평가손익 <b class="mono" id="sbPnl">-</b></span>
+    <span class="muted">자동매매 <b>OFF</b></span>
+    <div class="grow"></div>
+    <span class="muted mono" id="sbReq"></span>
+    <span><span class="dot" id="sbDbDot"></span> <span id="sbDb">기록 저장소</span></span>
+    <button class="estop" disabled title="자동매매 연결 후 사용">긴급 정지</button>
+  </footer>
+
+  <nav class="mtabs" aria-label="하단 메뉴">
+    <button class="on" data-m="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11l8-7 8 7v9H4z"/></svg>홈</button>
+    <button data-m="chart"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16M8 15l4-5 3 3 5-6"/></svg>종목</button>
+    <button data-m="alerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4z"/></svg>알림</button>
+    <button data-m="journal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18H6zM9 8h6M9 12h6"/></svg>일지</button>
+  </nav>
+</div>
+
+<dialog id="loginDlg">
+  <form method="dialog" id="loginForm">
+    <h2>로그인</h2>
+    <p>업비트트랜드와 같은 계정이에요. 로그인하면 관심 종목·거래일지·화면 배치가 기기 간에 맞춰져요.</p>
+    <input type="email" id="lgEmail" placeholder="이메일" autocomplete="username" required>
+    <input type="password" id="lgPw" placeholder="비밀번호" autocomplete="current-password" required>
+    <div class="msg" id="lgMsg"></div>
+    <div class="row"><button class="pill ghost" value="cancel" formnovalidate>닫기</button><button class="pill accent" id="lgGo" value="go">로그인</button></div>
+  </form>
+</dialog>
+</body>
+</html>
