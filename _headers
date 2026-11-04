@@ -17,3 +17,10 @@
 
 /app/*
   Cache-Control: no-cache
+
+/app/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+  Service-Worker-Allowed: /app/
+
+/app/manifest.webmanifest
+  Content-Type: application/manifest+json; charset=utf-8

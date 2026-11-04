@@ -83,7 +83,9 @@ const mapTicker = t => ({
   change: t.signed_change_price, changeRate: t.signed_change_rate * 100,
   volume24h: t.acc_trade_volume_24h, value24h: t.acc_trade_price_24h,
   high52w: t.highest_52_week_price, low52w: t.lowest_52_week_price,
-  ts: t.trade_timestamp || t.timestamp
+  ts: t.trade_timestamp || t.timestamp,
+  // 거래정지: 업비트가 주는 상태값이 있으면 사용 (없으면 정상으로 봄)
+  suspended: t.is_trading_suspended === true || (t.market_state != null && t.market_state !== 'ACTIVE')
 });
 export async function getQuotes(markets){
   if (!markets){

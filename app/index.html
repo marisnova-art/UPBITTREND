@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#050506">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" type="image/png" href="./icons/favicon-64.png">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="QUANTERA">
 <title>QUANTERA</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -20,6 +27,7 @@
     <div class="chips">
       <span class="hide-m" id="exchangeChip">업비트 · 원화</span>
       <span><span class="dot" id="wsDot"></span> <span id="wsText">연결 중</span></span>
+      <button class="pill accent hidden" id="installBtn">앱 설치</button>
       <button class="pill ghost" id="loginBtn">로그인</button>
     </div>
   </header>
@@ -43,7 +51,8 @@
       <div class="tabs" role="tablist" id="wlTabs">
         <button class="pill on" data-tab="fav">관심</button>
         <button class="pill" data-tab="hold">보유</button>
-        <button class="pill" data-tab="entry">매수 검토</button>
+        <button class="pill" data-tab="pullback">눌림 매수</button>
+        <button class="pill" data-tab="bottom">바닥 반등</button>
         <button class="pill" data-tab="all">전체</button>
         <button class="pill" data-tab="new">신규</button>
       </div>
@@ -118,6 +127,15 @@
     <button data-m="journal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18H6zM9 8h6M9 12h6"/></svg>일지</button>
   </nav>
 </div>
+
+<dialog id="cfgDlg" style="width:min(520px,calc(100vw - 32px))">
+  <form method="dialog" id="cfgForm">
+    <h2>매수 검토 기준</h2>
+    <p>숫자를 바꾸면 바로 다시 계산해요. 이 기기에 저장돼요.</p>
+    <div id="cfgBody" class="cfg"></div>
+    <div class="row"><button class="pill ghost" value="reset" id="cfgReset" formnovalidate>기본값</button><div style="flex:1"></div><button class="pill ghost" value="cancel" formnovalidate>닫기</button><button class="pill accent" value="save">저장</button></div>
+  </form>
+</dialog>
 
 <dialog id="loginDlg">
   <form method="dialog" id="loginForm">

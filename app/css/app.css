@@ -167,6 +167,13 @@ details.sec[open] summary::after{content:'–'}
 .statusbar .grow{flex:1}
 .estop{height:28px;padding:0 14px;border-radius:999px;border:1px solid var(--up);background:rgba(240,68,82,.12);color:#FF7A84;font-weight:700;font-size:var(--f-s)}
 
+/* 기준 설정 */
+.cfg{max-height:60vh;overflow:auto;display:flex;flex-direction:column;gap:4px}
+.cfg h4{margin:12px 0 4px;font-size:var(--f-s);color:var(--accent);font-weight:600}
+.cfg label{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:var(--f-s);color:var(--text-2)}
+.cfg input[type=number]{width:110px;height:32px;margin:0;text-align:right;font-family:var(--mono)}
+.cfg input[type=checkbox]{width:18px;height:18px;margin:0}
+
 /* 로그인 */
 dialog{border:1px solid var(--line-2);border-radius:20px;background:var(--panel);color:var(--text);padding:20px;width:min(380px,calc(100vw - 32px))}
 dialog::backdrop{background:rgba(0,0,0,.6)}

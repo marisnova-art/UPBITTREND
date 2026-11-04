@@ -3,7 +3,7 @@ export const CONFIG = {
   appName: 'QUANTERA',
   api: { base: 'https://api.upbit.com/v1', proxyBase: '/api/upbit', mode: 'auto', minGapMs: 130, maxGapMs: 1600, timeoutMs: 10000, retries: 4 },
   ws: { url: 'wss://api.upbit.com/websocket/v1', reconnectMs: 3000 },
-  candles: { daily: 200, weekly: 104, monthly: 60 },
+  candles: { daily: 400, weekly: 104, monthly: 60 }, // 일봉 400개: 바닥 반등(1년 고점) 판단과 검증용
   minBars: { daily: 130, weekly: 40, monthly: 12 },
   location: { perAtrAbove: 22, minForEntryZone: 60 },
   overheat: { extendedP: 6.5, statusP: 5 },

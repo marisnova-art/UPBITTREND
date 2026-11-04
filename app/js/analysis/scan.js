@@ -3,6 +3,7 @@
 import { CONFIG } from '../config.js';
 import { clamp, utcDay } from '../util.js';
 import { A } from './trend.js';
+import { screen } from './screen.js';
 import * as upbit from '../adapters/upbit.js';
 
 const dayDiff = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 86400000);
@@ -76,15 +77,15 @@ function patchPeriod(pc, daily, keyFn){
 
 // 일봉: 오늘 이미 받은 것은 재요청하지 않고, 날짜가 바뀌면 빠진 만큼만 받습니다.
 export async function loadDaily(market, quote){
-  const key = 'D:' + market, cached = await cacheGet(key), today = utcDay();
+  const key = 'D400:' + market, cached = await cacheGet(key), today = utcDay();
   let candles;
   if (cached && cached.day === today && cached.c.length) candles = cached.c;
   else {
     let count = CONFIG.candles.daily, incremental = false;
-    if (cached && cached.c.length >= CONFIG.minBars.daily){ const diff = dayDiff(cached.c[cached.c.length - 1].t, today); if (diff >= 0 && diff < 150){ count = Math.min(CONFIG.candles.daily, diff + 3); incremental = true; } }
+    if (cached && (cached.full || cached.c.length >= CONFIG.candles.daily - 5)){ const diff = dayDiff(cached.c[cached.c.length - 1].t, today); if (diff >= 0 && diff < 150){ count = Math.min(CONFIG.candles.daily, diff + 3); incremental = true; } }
     const fresh = await upbit.getCandles(market, '1d', { count });
     candles = incremental ? mergeCandles(cached.c, fresh, CONFIG.candles.daily) : fresh;
-    cachePut(key, { t: Date.now(), day: today, c: candles });
+    cachePut(key, { t: Date.now(), day: today, c: candles, full: incremental ? cached.full : fresh.length < count });
   }
   return patchDailyWithQuote(candles, quote);
 }
@@ -114,24 +115,29 @@ export async function analyzeOne(inst, quote, basis = 'confirmed'){
   const ctx = { fracW: weekFrac(ref), fracM: monthFrac(ref), tradeValue: quote ? quote.value24h : null, price: quote ? quote.price : null, change: quote ? quote.changeRate : null, warning: inst.warning, basis };
   let D = await loadDaily(inst.market, quote);
   if (confirmed) D = D.filter(c => c.t < today);
-  if (D.length < CONFIG.minBars.daily) return withPeter(A.analyze(inst.market, inst.name, null, null, D, ctx), D);
-  const W = await loadPeriod(inst.market, 'W', D);
-  const M = await loadPeriod(inst.market, 'M', D);
-  const res = A.analyze(inst.market, inst.name, M, W, D, ctx);
+  const D200 = D.slice(-200); // 기존 추세 분석은 예전과 같은 200개로
+  if (D200.length < CONFIG.minBars.daily) return withPeter(A.analyze(inst.market, inst.name, null, null, D200, ctx), D, inst, quote);
+  const W = await loadPeriod(inst.market, 'W', D200);
+  const M = await loadPeriod(inst.market, 'M', D200);
+  const res = A.analyze(inst.market, inst.name, M, W, D200, ctx);
   delete res._int;
-  return withPeter(res, D);
+  return withPeter(res, D, inst, quote);
 }
 
 // 피터 한 줄 의견 (규칙 기반, AI 호출 없음). 신규 상장처럼 캔들이 부족하면 신뢰도 낮음으로 표시.
-function withPeter(res, D){
+function withPeter(res, D, inst, quote){
   const v = res.insufficient ? null : A.verdict(res);
   res.listedDays = D.length;
-  res.profile = rangeProfile(D);
+  res.profile = rangeProfile(D.slice(-200));
+  res.scr = screen(inst, quote, D);       // 매수 검토 v2 (눌림 매수 / 바닥 반등 + 검증)
   res.guide = makeGuide(res);
   res.isNew = D.length < 30;
   res.peter = res.insufficient
     ? (res.isNew ? `신규 상장 ${D.length}일차. 데이터가 부족해 신뢰도가 낮아요.` : '데이터가 부족해 판단을 보류해요.')
     : v.t;
+  const sg = res.scr.sig;
+  if (sg.type) res.peter = (sg.type === 'pullback' ? '눌림 매수 신호 — ' : '바닥 반등 신호 — ') + sg.why.slice(0, 2).join(', ');
+  else if (sg.excluded) res.peter = '고점 구간이라 매수 검토에서 제외 — ' + sg.excluded[0];
   res.peterTone = res.insufficient ? 'muted' : (res.status === 'ENTRY ZONE' ? 'accent' : res.stage === 'DOWN' || res.status === 'EXTENDED' ? 'warn' : 'muted');
   return res;
 }
