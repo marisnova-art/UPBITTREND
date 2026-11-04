@@ -144,21 +144,19 @@
   </form>
 </dialog>
 
-<dialog id="upDlg" style="width:min(480px,calc(100vw - 32px))">
+<dialog id="upDlg" style="width:min(500px,calc(100vw - 32px))">
   <form method="dialog" id="upForm">
     <h2>업비트 실제 거래 가져오기</h2>
-    <p>업비트에서 체결된 주문을 거래일지(실제 기록)에 추가해요. 이미 가져온 주문은 다시 넣지 않아요.<br>
-      <b>조회 전용 키</b>만 쓰세요: 업비트 &gt; 마이페이지 &gt; Open API 관리에서 <b>자산조회·주문조회</b>만 켜고, 주문하기·출금은 끄세요.
-      허용 IP에는 이 기기의 공인 IP를 넣어야 해요<span id="upIp"></span>.<br>
-      키는 <b>이 기기에만</b> 저장되고 서버로 보내지 않아요.</p>
-    <input id="upAccess" placeholder="Access Key" autocomplete="off" spellcheck="false">
-    <input id="upSecret" type="password" placeholder="Secret Key" autocomplete="off" spellcheck="false">
-    <label class="up-row"><span>기간</span><select id="upSpan">
-      <option value="since">지난번 가져온 뒤부터</option><option value="7">최근 7일</option><option value="30">최근 30일</option>
-      <option value="90">최근 90일</option><option value="365">최근 1년</option></select></label>
+    <p>업비트는 웹페이지에서 바로 오는 개인 API 요청을 막아요. 그래서 <b>PC 도우미</b>가 업비트에서 거래내역을 받아 파일로 저장하고, 그 파일을 여기에 올리는 방식이에요. 키와 기록은 PC 밖으로 나가지 않아요.</p>
+    <ol class="up-steps">
+      <li><b>키 만들기</b> · 업비트 &gt; 마이페이지 &gt; Open API 관리에서 <b>자산조회·주문조회만</b> 켜요(주문하기·출금은 끄기). 허용 IP에는 도우미를 돌릴 PC의 IP를 넣어요<span id="upIp"></span>.</li>
+      <li><b>도우미 받기</b> · <a href="./tools/quantera-upbit.bat" download="quantera-upbit.bat" class="linkbtn">quantera-upbit.bat</a> (Windows) 을 받아 더블클릭해요. 처음 한 번 키를 넣고, 며칠치를 가져올지 정해요. "Windows의 PC 보호" 창이 뜨면 추가 정보 &gt; 실행을 눌러요.</li>
+      <li><b>파일 올리기</b> · 만들어진 <span class="mono">quantera-upbit-날짜.json</span> 을 아래에서 골라요. 이미 가져온 주문은 다시 넣지 않아요.</li>
+    </ol>
+    <label class="up-file"><input type="file" id="upFile" accept=".json,application/json"><span id="upFileName">파일 고르기</span></label>
     <label class="up-row"><input type="checkbox" id="upCarry" checked><span>업비트 잔고와 기록 수량이 다르면 차이만큼 "기초 이월"로 맞추기</span></label>
     <div class="msg" id="upMsg"></div>
-    <div class="row"><button class="pill ghost" value="forget" id="upForget" formnovalidate>키 지우기</button><div style="flex:1"></div><button class="pill ghost" value="cancel" formnovalidate>닫기</button><button class="pill accent" value="go" id="upGo">가져오기</button></div>
+    <div class="row"><div style="flex:1"></div><button class="pill ghost" value="cancel" formnovalidate>닫기</button><button class="pill accent" value="go" id="upGo">가져오기</button></div>
   </form>
 </dialog>
 

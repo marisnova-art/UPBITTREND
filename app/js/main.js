@@ -13,7 +13,7 @@ import { initTips, BAR_TIPS } from './ui/tips.js';
 import { initLayout, apply as applyLayout } from './ui/layout.js';
 import { db, initDb, login, logout, loadWatchlist, setWatch, loadTrades, importTrades, loadNotes, addNote, localLayout, saveLayout, remoteLayout, paperRemote, resetPrefsCache } from './db.js';
 import { createPaper } from './paper.js';
-import { keys as upKeys, importMeta, fetchFilled, toRow, accounts as upAccounts } from './upbitPrivate.js';
+import { importMeta, toRow } from './upbitPrivate.js';
 import { FEE_RATE } from './analysis/ledger.js';
 
 const STATUS_KO = { 'WAIT': '대기', 'WATCH': '관찰', 'ENTRY ZONE': '매수 검토', 'BREAKOUT WATCH': '돌파 대기', 'EXTENDED': '추격 주의', 'INSUFFICIENT DATA': '데이터 부족' };
@@ -881,60 +881,57 @@ function bindUi(){
 // ---------------------------------------------------------------- 업비트 실제 거래 가져오기
 function bindImport(){
   const dlg = $('#upDlg'), msg = t => $('#upMsg').textContent = t;
+  let file = null;
   $('#upImportBtn').addEventListener('click', () => {
     if (!db.user){ toast('업비트 가져오기는 로그인 후에 쓸 수 있어요.'); $('#loginDlg').showModal(); return; }
-    const k = upKeys.get() || {}, meta = importMeta.get();
-    $('#upAccess').value = k.access || ''; $('#upSecret').value = k.secret || '';
-    $('#upSpan').value = meta.last ? 'since' : '30';
-    $('#upSpan').options[0].disabled = !meta.last;
-    $('#upSpan').options[0].textContent = meta.last ? `지난번 가져온 뒤부터 (${new Date(meta.last).toLocaleDateString('ko-KR')})` : '지난번 가져온 뒤부터 (처음이에요)';
+    const meta = importMeta.get();
     msg(meta.last ? `마지막 가져오기: ${new Date(meta.last).toLocaleString('ko-KR')} · ${meta.added || 0}건 추가` : '');
     dlg.showModal();
     if (!$('#upIp').textContent) fetch('https://api.ipify.org?format=json').then(r => r.json()).then(j => { $('#upIp').textContent = ` (지금 이 기기: ${j.ip})`; }).catch(() => {});
   });
-  $('#upForm').addEventListener('submit', async e => {
-    const v = e.submitter && e.submitter.value;
-    if (v === 'cancel') return;
-    e.preventDefault();
-    if (v === 'forget'){ upKeys.clear(); $('#upAccess').value = $('#upSecret').value = ''; msg('이 기기에서 키를 지웠어요.'); return; }
-    const a = $('#upAccess').value.trim(), sec = $('#upSecret').value.trim();
-    if (!a || !sec){ msg('Access Key와 Secret Key를 넣어 주세요.'); return; }
-    upKeys.set(a, sec);
-    const btn = $('#upGo'); btn.disabled = true;
+  $('#upFile').addEventListener('change', async e => {
+    const f = e.target.files[0]; file = null; if (!f) return;
     try{
-      msg('키 확인 중…');
-      const bal = await upAccounts();
-      const meta = importMeta.get(), span = $('#upSpan').value, now = Date.now();
-      const from = span === 'since' && meta.last ? meta.last - 3600e3 : now - (+span || 30) * 864e5;
-      const orders = await fetchFilled(from, now, msg);
-      const rows = orders.map(o => toRow(o, upbit.toSymbol));
-      msg('거래일지에 저장 중…');
-      const r = await importTrades(rows);
-      S.trades = await loadTrades(); recompute();
-      let carried = 0, over = 0;
-      if ($('#upCarry').checked){
-        const have = new Map(S.ledgerReal.positions.map(p => [p.symbol, p.qty]));
-        const day = new Date(from).toISOString().slice(0, 10);
-        const carry = [];
-        for (const b of bal){
-          if (b.currency === 'KRW' || b.unit_currency !== 'KRW') continue;
-          const sym = upbit.toSymbol('KRW-' + b.currency), actual = +b.balance + +b.locked, rec = have.get(sym) || 0;
-          const px = +b.avg_buy_price || priceOf(sym) || 0, diff = actual - rec;
-          if (!px) continue;
-          if (diff * px > 5000) carry.push({ trade_no: `C-${b.currency}-${Date.now().toString(36).slice(-5)}`, external_id: `carry:${b.currency}:${day}:${diff.toFixed(8)}`, source: 'carry_over',
-            symbol: sym, side: 'buy', price: px, qty: diff, fee: 0, executed_at: new Date(from - 1000).toISOString(), reason: '업비트 잔고 맞춤 (가져오기 전 보유분, 업비트 평단)' });
-          else if (-diff * px > 5000) over++;
-        }
-        if (carry.length){ await importTrades(carry); carried = carry.length; S.trades = await loadTrades(); }
-      }
-      importMeta.set({ last: now, added: r.added });
-      if (S.acct !== 'real') setAcct('real'); else { renderJournal(); renderStatus(); }
-      const skippedMk = orders.skipped || 0;
-      msg(`끝났어요. 체결 주문 ${orders.length + skippedMk}건 중 새로 ${r.added}건 추가${r.skipped ? `, 이미 있던 ${r.skipped}건은 건너뜀` : ''}${skippedMk ? `, 원화 마켓이 아닌 ${skippedMk}건 제외` : ''}${carried ? `, 기초 이월 ${carried}종목 추가` : ''}${over ? `. 기록이 잔고보다 많은 종목 ${over}개가 있어요(출금·이전 기록 확인)` : ''}.`);
-      toast(`업비트 거래 ${r.added}건을 가져왔어요.`, 'up');
-    }catch(err){ msg(err.message || String(err)); }
+      const j = JSON.parse((await f.text()).replace(/^﻿/, ''));
+      if (j.format !== 'quantera-upbit-v1' || !Array.isArray(j.orders)) throw new Error();
+      file = j; $('#upFileName').textContent = `${f.name} · 주문 ${j.orders.length}건 · ${new Date(j.from).toLocaleDateString('ko-KR')} ~ ${new Date(j.to).toLocaleDateString('ko-KR')}`;
+      msg('');
+    }catch(err){ $('#upFileName').textContent = '파일 고르기'; msg('QUANTERA 도우미가 만든 파일이 아니에요.'); }
+  });
+  $('#upForm').addEventListener('submit', async e => {
+    if (e.submitter && e.submitter.value === 'cancel') return;
+    e.preventDefault();
+    if (!file){ msg('먼저 도우미가 만든 파일을 골라 주세요.'); return; }
+    const btn = $('#upGo'); btn.disabled = true;
+    try { msg(await applyImport(file.accounts || [], file.orders.filter(o => String(o.market).startsWith('KRW-')), file.from, file.to)); }
+    catch(err){ msg(err.message || String(err)); }
     finally{ btn.disabled = false; }
   });
+}
+// 업비트 주문 목록 → 거래일지(실제). 같은 주문은 다시 넣지 않음. 잔고와 다르면 차이만큼 기초 이월
+async function applyImport(bal, orders, from, now){
+  const rows = orders.filter(o => +o.executed_volume > 0).map(o => toRow(o, upbit.toSymbol));
+  const r = await importTrades(rows);
+  S.trades = await loadTrades(); recompute();
+  let carried = 0, over = 0;
+  if ($('#upCarry').checked && bal.length){
+    const have = new Map(S.ledgerReal.positions.map(p => [p.symbol, p.qty]));
+    const day = new Date(from).toISOString().slice(0, 10), carry = [];
+    for (const b of bal){
+      if (b.currency === 'KRW' || b.unit_currency !== 'KRW') continue;
+      const sym = upbit.toSymbol('KRW-' + b.currency), actual = +b.balance + +b.locked, rec = have.get(sym) || 0;
+      const px = +b.avg_buy_price || priceOf(sym) || 0, diff = actual - rec;
+      if (!px) continue;
+      if (diff * px > 5000) carry.push({ trade_no: `C-${b.currency}-${Date.now().toString(36).slice(-5)}`, external_id: `carry:${b.currency}:${day}:${diff.toFixed(8)}`, source: 'carry_over',
+        symbol: sym, side: 'buy', price: px, qty: diff, fee: 0, executed_at: new Date(from - 1000).toISOString(), reason: '업비트 잔고 맞춤 (가져오기 전 보유분, 업비트 평단)' });
+      else if (-diff * px > 5000) over++;
+    }
+    if (carry.length){ await importTrades(carry); carried = carry.length; S.trades = await loadTrades(); }
+  }
+  importMeta.set({ last: now, added: r.added });
+  if (S.acct !== 'real') setAcct('real'); else { renderJournal(); renderStatus(); }
+  toast(`업비트 거래 ${r.added}건을 가져왔어요.`, 'up');
+  return `끝났어요. 체결 주문 ${rows.length}건 중 새로 ${r.added}건 추가${r.skipped ? `, 이미 있던 ${r.skipped}건은 건너뜀` : ''}${carried ? `, 기초 이월 ${carried}종목 추가` : ''}${over ? `. 기록이 잔고보다 많은 종목 ${over}개가 있어요(출금·이전 기록 확인)` : ''}.`;
 }
 
 // ---------------------------------------------------------------- 업비트 소식

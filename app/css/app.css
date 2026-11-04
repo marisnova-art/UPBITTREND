@@ -291,6 +291,10 @@ dialog select{height:36px;border-radius:12px;border:1px solid var(--line-2);back
 .wiki-notes{display:flex;flex-direction:column;gap:8px;margin-top:8px}
 .wiki-notes>div{border-left:2px solid var(--line-2);padding-left:10px}
 .wiki-notes p{margin:2px 0 0;font-size:var(--f-s);white-space:pre-wrap;line-height:1.5}
+.up-steps{margin:0 0 12px;padding-left:18px;font-size:var(--f-s);color:var(--text-2);line-height:1.6;display:flex;flex-direction:column;gap:6px}
+.up-file{display:flex;align-items:center;justify-content:center;height:44px;border:1px dashed var(--line-2);border-radius:12px;cursor:pointer;font-size:var(--f-s);color:var(--text-2);margin-bottom:6px}
+.up-file:hover{border-color:var(--accent);color:var(--text)}
+.up-file input{display:none}
 .up-row{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:var(--f-s);color:var(--text-2)}
 .up-row input[type=checkbox]{width:auto;height:auto;margin:0}
 .up-row>span:first-child{min-width:36px}
