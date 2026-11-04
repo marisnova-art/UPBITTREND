@@ -80,8 +80,9 @@
       </section>
       <div class="split h" data-split="journal"></div>
       <section class="panel" id="pJournal" data-panel="journal">
-        <header><h2>거래일지</h2><span class="muted" id="jSummary"></span><div class="grow"></div><button class="iconbtn collapse" data-collapse="journal" aria-label="접기">⌄</button></header>
+        <header><div class="tabs" id="jTabs" style="border:0;padding:0"><button class="pill on" data-j="journal">거래일지</button><button class="pill" data-j="news">업비트 소식</button></div><span class="muted" id="jSummary"></span><div class="grow"></div><button class="iconbtn collapse" data-collapse="journal" aria-label="접기">⌄</button></header>
         <div class="body" id="jBody"></div>
+        <div class="body hidden" id="newsBody"><div class="empty">불러오는 중…</div></div>
       </section>
     </div>
     <div class="split" data-split="book"></div>
@@ -104,8 +105,8 @@
 
     <!-- 모바일 전용: 알림 -->
     <section class="panel" id="pAlerts">
-      <header><h2>알림</h2></header>
-      <div class="body" id="alertBody"><div class="empty">실시간 알림(재매수·매도가 도달·손절 접근·신규 상장)은 PHASE 2에 붙어요.</div></div>
+      <header><h2>업비트 소식</h2><div class="grow"></div><span class="muted" style="font-size:12px">가격 알림은 다음 단계</span></header>
+      <div class="body" id="alertBody"><div class="empty">불러오는 중…</div></div>
       <div class="sec" style="border:0"><button class="estop" style="width:100%;height:48px" disabled>긴급 정지 · 자동매매 연결 후 사용</button></div>
     </section>
   </main>

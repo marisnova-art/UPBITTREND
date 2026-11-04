@@ -167,6 +167,14 @@ details.sec[open] summary::after{content:'–'}
 .statusbar .grow{flex:1}
 .estop{height:28px;padding:0 14px;border-radius:999px;border:1px solid var(--up);background:rgba(240,68,82,.12);color:#FF7A84;font-weight:700;font-size:var(--f-s)}
 
+/* 업비트 소식 */
+.news{list-style:none;margin:0;padding:0}
+.news li a{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line);color:var(--text);text-decoration:none;font-size:var(--f-s)}
+.news li a:hover{background:var(--panel-2)}
+.news .tt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sec .news li a{padding:8px 0}
+@media (max-width: 899px){ .news .tt{white-space:normal} .news li a{grid-template-columns:auto minmax(0,1fr)} .news li a .mono{grid-column:2} }
+
 /* 기준 설정 */
 .cfg{max-height:60vh;overflow:auto;display:flex;flex-direction:column;gap:4px}
 .cfg h4{margin:12px 0 4px;font-size:var(--f-s);color:var(--accent);font-weight:600}

@@ -6,6 +6,7 @@ import { analyzeOne, scanAll } from './analysis/scan.js';
 import { STAGE_KO } from './analysis/trend.js';
 import { screenCfg, saveScreenCfg, SCREEN_DEFAULTS, summarize } from './analysis/screen.js';
 import { computeLedger, pastBuys } from './analysis/ledger.js';
+import { loadNews, newsFor, newsHtml } from './news.js';
 import { createChart } from './ui/chart.js';
 import { initLayout, apply as applyLayout } from './ui/layout.js';
 import { db, initDb, login, logout, loadWatchlist, setWatch, loadTrades, localLayout, saveLayout, remoteLayout } from './db.js';
@@ -52,6 +53,7 @@ async function boot(){
   });
   // 관심·보유 종목은 열자마자 분석(캐시라 같은 날 재요청 없음)
   analyzeList([...S.watch].map(upbit.toMarket));
+  renderNews();
   setInterval(() => $('#sbReq').textContent = `요청 ${upbit.netStats().requests}회`, 2000);
 }
 const waitFor = (fn, ms) => new Promise(res => { const t0 = Date.now(); const k = () => fn() || Date.now() - t0 > ms ? res() : setTimeout(k, 50); k(); });
@@ -274,6 +276,7 @@ function renderInspector(){
       <dt>7일 · 30일</dt><dd class="mono"><span class="${toneOf(r.r7)}">${fmtPct(r.r7, 1)}</span> · <span class="${toneOf(r.r30)}">${fmtPct(r.r30, 1)}</span></dd>
       ${g.setups ? `<dt>같은 자리 과거</dt><dd>${g.setups}번 중 7일 안 +20% ${Math.round((g.hitRate || 0) * 100)}% · 중앙값 ${fmtPct(g.median, 1)}</dd>` : ''}
     </dl>`;
+  setTimeout(() => loadNews().then(renderInspNews), 0);
   $('#inspBody').innerHTML = `
     <div class="sec"><h3>매매 가이드 <span class="grow"></span>${stanceTxt}</h3>${guide}</div>
     <div class="sec"><div class="peter"><b>피터</b>${esc(r.peter)}</div></div>
@@ -283,6 +286,7 @@ function renderInspector(){
       <table class="prof"><thead><tr><th></th><th>평균</th><th>보통</th><th>최대</th><th>최소</th></tr></thead><tbody>${pr('1d', '일봉') + pr('1w', '주봉')}</tbody></table>
       <div class="muted" style="font-size:12px;margin-top:6px">5분·1시간·월봉 변동폭은 수집 서버가 붙으면 채워져요.</div></div>
     <details class="sec"><summary>AI 써머리</summary><div class="muted" style="font-size:12px;margin-top:8px">요약만 AI로 만들어요. 다음 단계에서 연결해요.</div></details>
+    <div class="sec"><h3>업비트 소식</h3><div id="inspNews"><div class="muted" style="font-size:12px">불러오는 중…</div></div></div>
     <details class="sec"><summary>종목 위키</summary><div class="muted" style="font-size:12px;margin-top:8px">이 종목의 모든 매매 기록과 메모가 쌓여요. ${S.ledger.rows.filter(x => upbit.toMarket(x.symbol) === S.sel).length}건 기록됨.</div></details>`;
 }
 
@@ -366,6 +370,13 @@ async function toggleScan(){
 // ---------------------------------------------------------------- 이벤트
 function bindUi(){
   bindCfg();
+  $('#jTabs').addEventListener('click', e => {
+    const b = e.target.closest('[data-j]'); if (!b) return;
+    $$('#jTabs .pill').forEach(x => x.classList.toggle('on', x === b));
+    const news = b.dataset.j === 'news';
+    $('#jBody').classList.toggle('hidden', news); $('#newsBody').classList.toggle('hidden', !news); $('#jSummary').classList.toggle('hidden', news);
+    if (news) renderNews();
+  });
   $('#wlTabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (!b) return; S.tab = b.dataset.tab; $$('#wlTabs .pill').forEach(x => x.classList.toggle('on', x === b)); renderWatch(); });
   $('#wlBody').addEventListener('click', async e => {
     const st = e.target.closest('[data-star]');
@@ -393,6 +404,21 @@ function bindUi(){
     catch(err){ $('#lgMsg').textContent = err.message; }
   });
 }
+// ---------------------------------------------------------------- 업비트 소식
+async function renderNews(){
+  const j = await loadNews();
+  const srcs = j.sources || [], failed = srcs.filter(s => !s.ok).length;
+  const note = (j.error || (srcs.length && failed === srcs.length)) ? '업비트 소식을 불러오지 못했어요. 잠시 후 다시 시도해요.' : '최근 소식이 없어요.';
+  const html = newsHtml(j.items || [], esc, { empty: note, limit: 40 });
+  $('#newsBody').innerHTML = html; $('#alertBody').innerHTML = html;
+  renderInspNews(j);
+}
+function renderInspNews(j){
+  const el = $('#inspNews'); if (!el || !j || !el.isConnected) return;
+  el.innerHTML = newsHtml(newsFor(j.items || [], S.byMarket.get(S.sel)), esc, { empty: '최근 이 종목 관련 공지·공시가 없어요.', limit: 6 });
+}
+setInterval(() => { if (document.visibilityState === 'visible') loadNews(true).then(renderNews); }, 300000);
+
 // ---------------------------------------------------------------- 매수 검토 기준 설정
 const CFG_FIELDS = [
   ['무조건 제외', [['nearHighPct', '60일 고점에서 이 % 안쪽', 1], ['maxRise7d', '7일 상승률(%) 초과', 1], ['maxRiseToday', '오늘 상승률(%) 초과', 1], ['maxGap20', '20일선 이격(%) 초과', 1], ['minValue24h', '24시간 거래대금(억) 미만', 1e8], ['includeWarning', '투자유의 종목도 포함', 'bool']]],
