@@ -910,15 +910,8 @@ function bindUi(){
   let st; $('#search').addEventListener('input', e => { clearTimeout(st); st = setTimeout(() => { S.search = e.target.value.trim(); renderWatch(); }, 150); });
   $('#scanBtn').addEventListener('click', toggleScan);
   $$('.mtabs button').forEach(b => b.addEventListener('click', () => setMobile(b.dataset.m)));
-  $$('.rail [data-view]').forEach(b => b.addEventListener('click', () => {
-    $$('.rail button').forEach(x => x.classList.toggle('on', x === b));
-    const v = b.dataset.view;
-    if (v === 'settings'){ openCfg(); return; }
-    if (v === 'rebuy' || v === 'scan'){ S.tab = v === 'rebuy' ? 'rebuy' : 'pullback'; $$('#wlTabs .pill').forEach(x => x.classList.toggle('on', x.dataset.tab === S.tab)); renderWatch(); }
-    if (v === 'journal') $('#pJournal').scrollIntoView({ behavior: 'smooth' });
-    if (v === 'wiki'){ const w = $('#wikiSec'); if (w){ w.open = true; LS.set('quantera:wikiOpen', true); w.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }
-    if (v === 'assets'){ $('#jTabs [data-j="orders"]').click(); $('#pJournal').scrollIntoView({ behavior: 'smooth' }); }
-  }));
+  $$('.rail [data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+  addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.dataset.view && !document.querySelector('dialog[open]')) setView('trade'); });
   $('#loginBtn').addEventListener('click', async () => { if (db.user){ await logout(); return; } $('#lgMsg').textContent = ''; $('#loginDlg').showModal(); });
   $('#loginForm').addEventListener('submit', async e => {
     if (e.submitter && e.submitter.value === 'cancel') return;
@@ -928,6 +921,24 @@ function bindUi(){
     catch(err){ $('#lgMsg').textContent = err.message; }
   });
 }
+// 왼쪽 메뉴: PC에서는 고른 내용을 화면 전체로 크게 (트레이딩 = 기본 화면, Esc로 돌아옴)
+function setView(v){
+  if (v === 'settings'){ openCfg(); return; }
+  $$('.rail [data-view]').forEach(x => x.classList.toggle('on', x.dataset.view === v));
+  if (v === 'trade') delete document.body.dataset.view; else document.body.dataset.view = v;
+  const pickTab = t => { S.tab = t; $$('#wlTabs .pill').forEach(x => x.classList.toggle('on', x.dataset.tab === t)); renderWatch(); };
+  if (v === 'scan') pickTab('pullback');
+  if (v === 'rebuy') pickTab('rebuy');
+  if (v === 'journal') $('#jTabs [data-j="journal"]').click();
+  if (v === 'assets') $('#jTabs [data-j="orders"]').click();
+  if (v === 'wiki'){ const w = $('#wikiSec'); if (w){ w.open = true; LS.set('quantera:wikiOpen', true); requestAnimationFrame(() => w.scrollIntoView({ block: 'start' })); } }
+  if (matchMedia('(max-width: 899px)').matches){
+    if (v === 'journal' || v === 'assets') setMobile('journal');
+    else if (v === 'wiki') setMobile('chart'); else if (v !== 'trade') setMobile('home');
+  }
+  if (chart) requestAnimationFrame(() => chart.refit());
+}
+
 // ---------------------------------------------------------------- 업비트 실제 거래 가져오기
 function bindImport(){
   const dlg = $('#upDlg'), msg = t => $('#upMsg').textContent = t;

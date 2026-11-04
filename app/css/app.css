@@ -311,6 +311,21 @@ dialog .msg{min-height:18px;font-size:var(--f-s);color:var(--warn)}
   .app{height:calc(100dvh - max(env(safe-area-inset-top), 54px))!important}
 }
 
+/* ---------- 왼쪽 메뉴 화면 (PC): 고른 칸을 화면 전체로 */
+@media (min-width: 900px){
+  body[data-view] .desk{grid-template-columns:minmax(0,1fr)}
+  body[data-view] .desk>*{display:none!important}
+  body[data-view="scan"] #pWatch,body[data-view="rebuy"] #pWatch{display:flex!important;max-width:1400px;width:100%;justify-self:center}
+  body[data-view="journal"] #colCenter,body[data-view="assets"] #colCenter{display:grid!important;grid-template-rows:0 0 minmax(0,1fr)}
+  body[data-view="journal"] #pChart,body[data-view="assets"] #pChart,body[data-view="journal"] #colCenter>.split,body[data-view="assets"] #colCenter>.split{visibility:hidden;overflow:hidden}
+  body[data-view="journal"] #colCenter,body[data-view="assets"] #colCenter{max-width:1700px;width:100%;justify-self:center}
+  body[data-view="wiki"] .desk{grid-template-columns:minmax(0,1fr) 8px minmax(560px,760px)}
+  body[data-view="wiki"] #colCenter{display:grid!important;grid-template-rows:minmax(0,1fr) 0 0}
+  body[data-view="wiki"] #pJournal,body[data-view="wiki"] #colCenter>.split{visibility:hidden;overflow:hidden}
+  body[data-view="wiki"] #pInsp{display:flex!important;grid-column:3}
+  body[data-view] .panel.collapsed .body,body[data-view] .panel.collapsed .tabs,body[data-view] .panel.collapsed .scanbar{display:block}
+  body[data-view] .panel .collapse{display:none}
+}
 /* ---------- 모바일 (900px 미만): 한 화면씩, 하단 탭 */
 @media (max-width: 899px){
   :root{--f-s:12px;--f-m:15px;--f-l:18px;--f-xl:24px}
