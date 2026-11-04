@@ -180,6 +180,13 @@ a{color:var(--accent)} a:hover{color:#E1FF7A}
 .field select{border:0;background:transparent;color:var(--text);font-size:var(--f-s);text-align:right;outline:none;max-width:65%}
 .field .unit{color:var(--muted);font-size:12px;margin-left:-4px}
 .field input:disabled{color:var(--muted)}
+.stepper{display:flex;align-items:center;gap:2px;margin-left:auto}
+.stepper input{width:56px!important;text-align:right}
+.stepper button{width:24px;height:24px;border-radius:50%;border:1px solid var(--line-2);background:transparent;color:var(--text-2);font-size:14px;line-height:1;display:grid;place-items:center}
+.stepper button:hover:not(:disabled){color:var(--text);border-color:var(--muted)}
+.stepper button:disabled{opacity:.35}
+.stepper .sign{color:var(--muted);font-family:var(--mono)}
+.stepper .unit{margin:0 4px 0 2px}
 .quick{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
 .quick button{height:24px;border-radius:999px;border:1px solid var(--line-2);background:transparent;color:var(--text-2);font-size:12px}
 .quick button:hover{color:var(--text);border-color:var(--muted)}

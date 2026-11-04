@@ -480,6 +480,16 @@ function sellPreview(pos){
   const net = q * p * (1 - FEE_RATE) - pos.avg * q, pct = (p / pos.avg - 1) * 100;
   return `<div><span>받을 금액</span><b class="mono">${won(q * p * (1 - FEE_RATE))}원</b></div><div><span>예상 손익 (평단 대비 ${fmtPct(pct)})</span><b class="${toneOf(net)}">${net > 0 ? '+' : ''}${won(net)}원</b></div>`;
 }
+// 매도 % 단계: 2% 단위로 10%까지, 그 뒤 5% 단위 (−/+ 버튼, 키보드 ↑↓)
+const PCT_STEPS = [0, 2, 4, 6, 8, 10, ...Array.from({ length: 18 }, (_, i) => 15 + i * 5)];
+function stepPct(v, dir, signed){
+  const x = isFinite(+v) && v !== '' ? +v : 0;
+  if (signed && x < 0 || signed && x === 0 && dir < 0){ const a = -stepPct(-x, -dir, false); return a; }   // 평단 대비는 마이너스도 같은 단계
+  if (dir > 0) return PCT_STEPS.find(s => s > x + 1e-9) ?? PCT_STEPS[PCT_STEPS.length - 1];
+  return [...PCT_STEPS].reverse().find(s => s < x - 1e-9) ?? 0;
+}
+const stepper = (f, v, disabled, sign, ph = '', signed = false) =>
+  `<span class="stepper"><button type="button" data-step="${f}" data-dir="-1" ${disabled ? 'disabled' : ''} aria-label="내리기">−</button><span class="sign">${sign}</span><input data-f="${f}" inputmode="decimal" value="${v}" ${disabled ? 'disabled' : ''} placeholder="${ph}"${signed ? ' data-signed' : ''}><span class="unit">%</span><button type="button" data-step="${f}" data-dir="1" ${disabled ? 'disabled' : ''} aria-label="올리기">+</button></span>`;
 function renderOrderForm(){
   const box = $('#orderBox'); if (!box || !S.sel) return;
   const sym = upbit.toSymbol(S.sel), cur = priceOf(sym), name = (S.byMarket.get(S.sel) || {}).name || S.sel;
@@ -499,9 +509,9 @@ function renderOrderForm(){
     body = `<label class="field"><span>방식</span><select data-f="strategy">${Object.entries(STRATS).map(([k, v]) => `<option value="${k}"${OF.strategy === k ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
       ${type}${priceField}
       <label class="field"><span>금액</span><input data-f="amount" inputmode="numeric" value="${OF.amount}" placeholder="원"></label>
-      <div class="quick">${[10, 25, 50, 100].map(x => `<button type="button" data-amt="${x}">${x === 100 ? '최대' : x + '%'}</button>`).join('')}</div>
-      <div class="row2"><label class="field"><span>익절</span><input data-f="tpPct" inputmode="decimal" value="${OF.tpPct ?? ''}"><span class="unit">%</span></label>
-        <label class="field"><span>손절</span><input data-f="slPct" inputmode="decimal" value="${OF.slNone ? '' : (OF.slPct ?? '')}" ${OF.slNone ? 'disabled placeholder="없음"' : ''}><span class="unit">%</span></label></div>
+      <div class="quick">${[25, 50, 75, 100].map(x => `<button type="button" data-amt="${x}">${x === 100 ? '최대' : x + '%'}</button>`).join('')}</div>
+      <label class="field"><span>익절</span>${stepper('tpPct', OF.tpPct ?? '', false, '+')}</label>
+      <label class="field"><span>손절</span>${stepper('slPct', OF.slNone ? '' : (OF.slPct ?? ''), OF.slNone, '-', '없음')}</label>
       <label class="chk"><input type="checkbox" data-f="slNone" ${OF.slNone ? 'checked' : ''}> 손절 없음 (내려가도 기다림)</label>
       <div class="pv" id="ofPv">${buyPreview()}</div>
       ${OF.err ? `<div class="err">${esc(OF.err)}</div>` : ''}
@@ -511,7 +521,7 @@ function renderOrderForm(){
     const avail = paper.availableQty(sym);
     body = (pos ? `<div class="hold-box">보유 <b>${pos.qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</b> · 평단 <b>${fmtPrice(pos.avg)}</b><br>평가손익 <b class="${toneOf(pos.pnl)}">${pos.pnl != null ? (pos.pnl > 0 ? '+' : '') + won(pos.pnl) + '원' : '-'}</b> <span class="${toneOf(pos.pnl)}">${cur ? fmtPct((cur / pos.avg - 1) * 100) : ''}</span></div>` : '<div class="note">이 종목은 모의 보유가 없어요.</div>') +
       `${type}${priceField}
-      ${OF.type === 'limit' ? `<label class="field"><span>평단 대비</span><input data-f="sellPct" inputmode="decimal" value="${OF.sellPct}" placeholder="${pos ? '예: 2' : ''}" ${pos ? '' : 'disabled'}><span class="unit">%</span></label>` : ''}
+      ${OF.type === 'limit' ? `<label class="field"><span>평단 대비</span>${stepper('sellPct', OF.sellPct, !pos, '', pos ? '예: 2' : '', true)}</label>` : ''}
       <label class="field"><span>수량</span><input data-f="qty" inputmode="decimal" value="${OF.qty}" placeholder="${avail ? '최대 ' + avail.toLocaleString('ko-KR', { maximumFractionDigits: 8 }) : ''}"></label>
       <div class="quick">${[25, 50, 75, 100].map(x => `<button type="button" data-qp="${x}" ${avail ? '' : 'disabled'}>${x === 100 ? '전량' : x + '%'}</button>`).join('')}</div>
       <div class="pv" id="ofPv">${sellPreview(pos)}</div>
@@ -539,6 +549,12 @@ function bindOrder(){
     if (f === 'tpPct') LS.set('quantera:ofTp', num(OF.tpPct)); if (f === 'slPct') LS.set('quantera:ofSl', num(OF.slPct));
     refreshPreview();
   });
+  box.addEventListener('keydown', e => {
+    const f = e.target.dataset && e.target.dataset.f;
+    if (!['tpPct', 'slPct', 'sellPct'].includes(f) || !['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+    e.preventDefault(); e.target.value = OF[f] = stepPct(OF[f], e.key === 'ArrowUp' ? 1 : -1, f === 'sellPct');
+    e.target.dispatchEvent(new Event('input', { bubbles: true }));
+  });
   box.addEventListener('change', e => {
     const f = e.target.dataset.f;
     if (f === 'strategy'){ OF.strategy = e.target.value; LS.set('quantera:ofStrategy', OF.strategy); OF.err = ''; applyStrategy(); renderOrderForm(); }
@@ -547,6 +563,12 @@ function bindOrder(){
   box.addEventListener('click', e => {
     const t = e.target.closest('button'); if (!t) return;
     const sym = upbit.toSymbol(S.sel), cur = priceOf(sym);
+    if (t.dataset.step){
+      const f = t.dataset.step, inp = $(`[data-f="${f}"]`, box);
+      const v = stepPct(OF[f], +t.dataset.dir, f === 'sellPct');
+      OF[f] = v; if (inp){ inp.value = v; inp.dispatchEvent(new Event('input', { bubbles: true })); }
+      return;
+    }
     if (t.dataset.acct){ setAcct(t.dataset.acct); return; }
     if (t.dataset.side){ OF.side = t.dataset.side; OF.err = ''; OF.price = ''; OF.sellPct = ''; renderOrderForm(); return; }
     if (t.dataset.type){ OF.type = t.dataset.type; OF.err = ''; renderOrderForm(); return; }
