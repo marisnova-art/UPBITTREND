@@ -26,7 +26,7 @@ async function boot(){
   initLayout(localLayout(), saveLayout);
   bindUi();
   await waitFor(() => window.LightweightCharts, 8000);
-  chart = createChart($('#tv'), $('#legend'));
+  chart = createChart($('#tv'), $('#legend'), $('#ohlc'));
   renderTf();
 
   initDb().catch(() => {});
@@ -323,6 +323,7 @@ function bindUi(){
 function setMobile(m){
   document.body.dataset.m = m;
   $$('.mtabs button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
+  if (m === 'chart' && chart) requestAnimationFrame(() => chart.refit());
 }
 
 boot();

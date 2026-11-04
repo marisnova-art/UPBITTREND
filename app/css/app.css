@@ -98,7 +98,21 @@ a{color:var(--accent)} a:hover{color:#E1FF7A}
 .chart-wrap{position:relative;flex:1;min-height:0}
 .chart-wrap .tv{position:absolute;inset:0}
 .attrib{position:absolute;left:10px;bottom:6px;z-index:3;font-size:11px;color:var(--muted);text-decoration:none}
-.legend{position:absolute;left:12px;top:8px;z-index:3;display:flex;gap:10px;font-size:var(--f-s);color:var(--text-2);pointer-events:none;flex-wrap:wrap}
+.chart-info{position:absolute;left:12px;right:90px;top:8px;z-index:3;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.ohlc{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:var(--f-s);align-items:baseline}
+.ohlc .t{color:var(--muted)}
+.ohlc em{font-style:normal;color:var(--muted);margin-right:5px;font-family:'IBM Plex Sans KR',sans-serif}
+.ohlc b{font-weight:500}
+.ctip{position:absolute;z-index:5;min-width:220px;padding:10px 12px;border-radius:14px;background:rgba(14,14,16,.94);border:1px solid var(--line-2);box-shadow:0 8px 24px rgba(0,0,0,.5);font-size:var(--f-s);pointer-events:none;backdrop-filter:blur(6px)}
+.ctip.pinned{pointer-events:auto;border-color:var(--accent-line)}
+.ctip .h{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:6px;color:var(--text-2);font-family:var(--mono)}
+.ctip .hint{color:var(--muted);font-family:'IBM Plex Sans KR',sans-serif}
+.ctip button{border:0;background:var(--chip-2);color:var(--text);width:24px;height:24px;border-radius:12px;font-size:12px}
+.ctip .r{display:flex;justify-content:space-between;gap:16px;height:22px;align-items:center}
+.ctip .r>span{color:var(--muted)}
+.ctip .r b{font-family:var(--mono);font-weight:500}
+.ctip .r i{font-style:normal;margin-left:8px;color:var(--muted)}
+.legend{display:flex;gap:10px;font-size:var(--f-s);color:var(--text-2);pointer-events:none;flex-wrap:wrap}
 .legend span::before{content:'';display:inline-block;width:10px;height:2px;margin-right:5px;vertical-align:middle;background:currentColor}
 
 /* 호가·주문 */
@@ -195,5 +209,8 @@ dialog .msg{min-height:18px;font-size:var(--f-s);color:var(--warn)}
   .mtabs svg{width:22px;height:22px}
   .wl-row{padding:12px 12px 12px 0}
   .guide-row{height:44px}
+  .ohlc,.legend{display:none}
+  .ctip{min-width:200px}
+  .guide-row>span:nth-child(3){font-size:13px}
 }
 @media (min-width: 900px){ #pAlerts{display:none} }
