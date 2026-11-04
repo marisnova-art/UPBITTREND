@@ -122,6 +122,11 @@ a{color:var(--accent)} a:hover{color:#E1FF7A}
 .ctip .r b{font-family:var(--mono);font-weight:500}
 .ctip .r i{font-style:normal;margin-left:8px;color:var(--muted)}
 .legend{display:flex;gap:10px;font-size:var(--f-s);color:var(--text-2);pointer-events:none;flex-wrap:wrap}
+.lbl-toggle{pointer-events:auto;height:22px;padding:0 10px;border-radius:999px;border:1px solid var(--line-2);background:rgba(20,20,23,.85);color:var(--text-2);font-size:11px}
+.lbl-toggle:hover{color:var(--text);border-color:var(--muted)}
+.lbl-toggle.on{color:var(--accent);border-color:var(--accent-line)}
+.plabels{position:absolute;inset:0;pointer-events:none;z-index:2;overflow:hidden}
+.plabels span{position:absolute;transform:translateY(-100%);padding:0 2px 2px;font-size:11px;font-weight:600;opacity:.55;white-space:nowrap;text-shadow:0 0 3px #050506}
 .legend span::before{content:'';display:inline-block;width:10px;height:2px;margin-right:5px;vertical-align:middle;background:currentColor}
 
 /* 호가·주문 */
@@ -233,7 +238,8 @@ dialog .msg{min-height:18px;font-size:var(--f-s);color:var(--warn)}
   .mtabs svg{width:22px;height:22px}
   .wl-row{padding:12px 12px 12px 0}
   .guide-row{height:44px}
-  .ohlc,.legend{display:none}
+  .ohlc{display:none}
+  .legend span{display:none}
   .ctip{min-width:200px}
   .guide-row>span:nth-child(3){font-size:13px}
 }
