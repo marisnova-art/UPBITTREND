@@ -125,3 +125,35 @@ export const paperRemote = {
   }
 };
 export function resetPrefsCache(){ prefsCache = null; }
+
+// ---------- 업비트 가져오기: 이미 올린 주문(external_id)은 건너뜀
+export async function importTrades(rows){
+  if (!online()) throw new Error('로그인이 필요해요.');
+  const have = new Set();
+  for (let from = 0; ; from += 1000){
+    const r = await q(() => db.client.from('q_trades').select('external_id').eq('source', 'upbit_import').not('external_id', 'is', null).range(from, from + 999));
+    (r || []).forEach(x => have.add(x.external_id));
+    if (!r || r.length < 1000) break;
+  }
+  const fresh = rows.filter(x => !x.external_id || !have.has(x.external_id));
+  for (let i = 0; i < fresh.length; i += 200) await q(() => db.client.from('q_trades').insert(fresh.slice(i, i + 200)));
+  return { added: fresh.length, skipped: rows.length - fresh.length };
+}
+
+// ---------- 종목 위키 메모 (쌓기만 함)
+const NOTES_KEY = 'quantera:notes';
+export async function loadNotes(symbol){
+  const local = (LS.get(NOTES_KEY, {})[symbol] || []);
+  if (!online()) return local;
+  try { return await q(() => db.client.from('q_instrument_notes').select('id,body,created_at').eq('symbol', symbol).order('created_at', { ascending: false }).limit(200)); }
+  catch(e){ return local; }
+}
+export async function addNote(symbol, body){
+  const row = { body, created_at: new Date().toISOString() };
+  if (online()){
+    try { await q(() => db.client.from('q_instrument_notes').insert({ symbol, body })); return true; }
+    catch(e){ console.warn('메모 저장 실패', e.message); }
+  }
+  const all = LS.get(NOTES_KEY, {}); all[symbol] = [row, ...(all[symbol] || [])].slice(0, 200); LS.set(NOTES_KEY, all);
+  return true;
+}

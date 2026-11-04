@@ -11,8 +11,9 @@ import { loadNews, newsFor, newsHtml } from './news.js';
 import { createChart } from './ui/chart.js';
 import { initTips, BAR_TIPS } from './ui/tips.js';
 import { initLayout, apply as applyLayout } from './ui/layout.js';
-import { db, initDb, login, logout, loadWatchlist, setWatch, loadTrades, localLayout, saveLayout, remoteLayout, paperRemote, resetPrefsCache } from './db.js';
+import { db, initDb, login, logout, loadWatchlist, setWatch, loadTrades, importTrades, loadNotes, addNote, localLayout, saveLayout, remoteLayout, paperRemote, resetPrefsCache } from './db.js';
 import { createPaper } from './paper.js';
+import { keys as upKeys, importMeta, fetchFilled, toRow, accounts as upAccounts } from './upbitPrivate.js';
 import { FEE_RATE } from './analysis/ledger.js';
 
 const STATUS_KO = { 'WAIT': '대기', 'WATCH': '관찰', 'ENTRY ZONE': '매수 검토', 'BREAKOUT WATCH': '돌파 대기', 'EXTENDED': '추격 주의', 'INSUFFICIENT DATA': '데이터 부족' };
@@ -419,6 +420,7 @@ function renderInspector(){
       ${g.setups ? `<dt>같은 자리 과거</dt><dd>${g.setups}번 중 7일 안 +20% ${Math.round((g.hitRate || 0) * 100)}% · 중앙값 ${fmtPct(g.median, 1)}</dd>` : ''}
     </dl>`;
   setTimeout(() => loadNews().then(renderInspNews), 0);
+  const draft = $('#wikiNote') && S.wikiFor === S.sel ? $('#wikiNote').value : ''; S.wikiFor = S.sel;
   $('#inspBody').innerHTML = `
     <div class="sec"><h3>매매 가이드 <span class="grow"></span>${stanceTxt}</h3>${guide}</div>
     <div class="sec"><div class="peter"><b>피터</b>${esc(r.peter)}</div></div>
@@ -427,9 +429,67 @@ function renderInspector(){
     <div class="sec"><h3>변동폭 프로필 <span class="grow"></span><span class="muted" style="font-size:12px;font-weight:400">최근 ${P.lookback || 90}일</span></h3>
       <table class="prof"><thead><tr><th></th><th>평균</th><th>보통</th><th>최대</th><th>최소</th></tr></thead><tbody>${pr('1d', '일봉') + pr('1w', '주봉')}</tbody></table>
       <div class="muted" style="font-size:12px;margin-top:6px">5분·1시간·월봉 변동폭은 수집 서버가 붙으면 채워져요.</div></div>
-    <details class="sec"><summary>AI 써머리</summary><div class="muted" style="font-size:12px;margin-top:8px">요약만 AI로 만들어요. 다음 단계에서 연결해요.</div></details>
     <div class="sec"><h3>업비트 소식</h3><div id="inspNews"><div class="muted" style="font-size:12px">불러오는 중…</div></div></div>
-    <details class="sec"><summary>종목 위키</summary><div class="muted" style="font-size:12px;margin-top:8px">이 종목의 모든 매매 기록과 메모가 쌓여요. ${S.ledger.rows.filter(x => upbit.toMarket(x.symbol) === S.sel).length}건 기록됨.</div></details>`;
+    <details class="sec wiki" id="wikiSec" ${LS.get('quantera:wikiOpen', true) ? 'open' : ''}><summary>종목 위키 <span class="muted" style="font-weight:400">${esc(nameOf(S.sel))}</span></summary>${wikiHtml(r)}</details>`;
+  if (draft) $('#wikiNote').value = draft;
+  fillNotes();
+}
+
+// ---------------------------------------------------------------- 종목 위키: 한눈에 요약 · 내 거래 · 메모(쌓기만)
+const nameOf = m => (S.byMarket.get(m) || {}).name || m;
+const dShort = t => new Date(t).toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' });
+function wikiFacts(r){
+  const sym = upbit.toSymbol(S.sel), cur = priceOf(sym), cfg = screenCfg(), out = [];
+  const L = live(S.sel);
+  const stance = { buy_zone: '지금 매수 검토 구간이에요', watch: '지금은 매수 신호가 없어요', chase: '많이 올라 추격 주의 구간이에요', broken: '지지선을 이탈했어요', failed: '과거 신호 검증에서 탈락했어요', blocked: '제외 조건에 걸려 있어요', avoid: '하락 추세라 관망 중이에요' }[L.stance];
+  out.push([stance || '판단 보류', r && r.stage ? `추세: ${STAGE_KO[r.stage] || r.stage}` : '']);
+  if (r && r.scr && r.scr.bt2 && r.scr.bt2.trades.length){
+    const b = summarizeBottom(r.scr.bt2.trades, r.scr.bt2.days);
+    out.push([`바닥 거래(+${cfg.btTp}%) 과거 ${b.n}번 중 ${b.hit}번 도달`, b.medDays != null ? `보통 ${b.medDays}일 · 기다리는 동안 최대 ${fmtPct(b.worstDd)}` : '']);
+  } else out.push(['바닥 신호가 과거에 없었어요', '']);
+  const sg = surge.log().filter(x => x.m === S.sel);
+  if (sg.length) out.push([`급등 감지 ${sg.length}번 (이 기기에서 켜 둔 동안)`, `마지막 ${agoKo(Date.now() - sg[sg.length - 1].at)} 전`]);
+  for (const [lab, led] of [['실제', S.ledgerReal], ['모의', S.ledgerPaper]]){
+    const rows = led.rows.filter(x => x.symbol === sym); if (!rows.length) continue;
+    const buys = rows.filter(x => x.side === 'buy').length, sells = rows.length - buys;
+    const real = rows.reduce((a, x) => a + (x.realized || 0), 0), pos = led.positions.find(x => x.symbol === sym);
+    const last = rows[rows.length - 1];
+    out.push([`${lab}: 매수 ${buys} · 매도 ${sells}${sells ? ` · 실현 ${real > 0 ? '+' : ''}${won(real)}원` : ''}`,
+      (pos ? `보유 중 · 평단 ${fmtPrice(pos.avg)}${cur ? ' (' + fmtPct((cur / pos.avg - 1) * 100) + ')' : ''} · ` : '') + `마지막 ${dShort(last.executed_at)} ${last.side === 'buy' ? '매수' : '매도'} ${fmtPrice(last.price)}`]);
+  }
+  const rb = S.ledgerReal.rebuy && S.ledgerReal.rebuy.find(x => x.symbol === sym);
+  if (rb) out.push(['재매수 기회: 이익 내고 판 뒤 그때 매수가보다 낮아졌어요', '']);
+  return out;
+}
+function wikiHtml(r){
+  const sym = upbit.toSymbol(S.sel);
+  const src = { carry_over: '이월', manual: '수동', paper: '모의', upbit_import: '업비트', real: '실거래' };
+  const mine = [...S.ledgerReal.rows, ...S.ledgerPaper.rows].filter(x => x.symbol === sym).sort((a, b) => new Date(b.executed_at) - new Date(a.executed_at));
+  return `<div class="wiki-sum">${wikiFacts(r).map(([a, b]) => `<div><b>${esc(a)}</b>${b ? `<span class="muted">${esc(b)}</span>` : ''}</div>`).join('')}</div>
+    <h4>내 거래 <span class="muted">${mine.length}건</span></h4>
+    ${mine.length ? `<div class="bt-list wiki-trades">${mine.slice(0, 12).map(x => `<div><span class="mono muted">${dShort(x.executed_at)}</span><span><span class="${x.side === 'buy' ? 'up' : 'down'}">${x.side === 'buy' ? '매수' : '매도'}</span> <span class="mono">${fmtPrice(x.price)}</span> <span class="badge line">${src[x.source] || x.source}</span></span><span class="mono ${toneOf(x.realized)}">${x.realized != null ? fmtPct(x.realizedPct) : ''}</span></div>`).join('')}</div>` : '<div class="muted" style="font-size:12px">아직 이 종목 거래가 없어요.</div>'}
+    <h4>메모 <span class="muted">쌓기만 해요 (지우지 않음)</span></h4>
+    <div class="wiki-add"><textarea id="wikiNote" rows="2" placeholder="왜 샀는지, 무엇을 봤는지, 다음엔 어떻게 할지"></textarea><button class="pill accent sm" id="wikiSave">남기기</button></div>
+    <div id="wikiNotes" class="wiki-notes"><div class="muted" style="font-size:12px">불러오는 중…</div></div>`;
+}
+const notesCache = new Map();
+async function fillNotes(force){
+  const m = S.sel, sym = upbit.toSymbol(m);
+  if (force || !notesCache.has(sym)) notesCache.set(sym, await loadNotes(sym));
+  const el = $('#wikiNotes'); if (!el || S.sel !== m) return;
+  const list = notesCache.get(sym) || [];
+  el.innerHTML = list.length ? list.map(n => `<div><span class="mono muted">${new Date(n.created_at).toLocaleString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}</span><p>${esc(n.body)}</p></div>`).join('') : '<div class="muted" style="font-size:12px">아직 메모가 없어요.</div>';
+}
+function bindWiki(){
+  $('#inspBody').addEventListener('toggle', e => { if (e.target.id === 'wikiSec') LS.set('quantera:wikiOpen', e.target.open); }, true);
+  $('#inspBody').addEventListener('click', async e => {
+    if (e.target.id !== 'wikiSave') return;
+    const ta = $('#wikiNote'), body = ta.value.trim(); if (!body) return;
+    e.target.disabled = true;
+    await addNote(upbit.toSymbol(S.sel), body);
+    ta.value = ''; e.target.disabled = false;
+    await fillNotes(true);
+  });
 }
 
 // ---------------------------------------------------------------- 호가·주문
@@ -776,6 +836,8 @@ async function toggleScan(){
 function bindUi(){
   bindCfg();
   bindOrder();
+  bindImport();
+  bindWiki();
   $('#jTabs').addEventListener('click', e => {
     const b = e.target.closest('[data-j]'); if (!b) return;
     $$('#jTabs .pill').forEach(x => x.classList.toggle('on', x === b));
@@ -816,6 +878,65 @@ function bindUi(){
     catch(err){ $('#lgMsg').textContent = err.message; }
   });
 }
+// ---------------------------------------------------------------- 업비트 실제 거래 가져오기
+function bindImport(){
+  const dlg = $('#upDlg'), msg = t => $('#upMsg').textContent = t;
+  $('#upImportBtn').addEventListener('click', () => {
+    if (!db.user){ toast('업비트 가져오기는 로그인 후에 쓸 수 있어요.'); $('#loginDlg').showModal(); return; }
+    const k = upKeys.get() || {}, meta = importMeta.get();
+    $('#upAccess').value = k.access || ''; $('#upSecret').value = k.secret || '';
+    $('#upSpan').value = meta.last ? 'since' : '30';
+    $('#upSpan').options[0].disabled = !meta.last;
+    $('#upSpan').options[0].textContent = meta.last ? `지난번 가져온 뒤부터 (${new Date(meta.last).toLocaleDateString('ko-KR')})` : '지난번 가져온 뒤부터 (처음이에요)';
+    msg(meta.last ? `마지막 가져오기: ${new Date(meta.last).toLocaleString('ko-KR')} · ${meta.added || 0}건 추가` : '');
+    dlg.showModal();
+    if (!$('#upIp').textContent) fetch('https://api.ipify.org?format=json').then(r => r.json()).then(j => { $('#upIp').textContent = ` (지금 이 기기: ${j.ip})`; }).catch(() => {});
+  });
+  $('#upForm').addEventListener('submit', async e => {
+    const v = e.submitter && e.submitter.value;
+    if (v === 'cancel') return;
+    e.preventDefault();
+    if (v === 'forget'){ upKeys.clear(); $('#upAccess').value = $('#upSecret').value = ''; msg('이 기기에서 키를 지웠어요.'); return; }
+    const a = $('#upAccess').value.trim(), sec = $('#upSecret').value.trim();
+    if (!a || !sec){ msg('Access Key와 Secret Key를 넣어 주세요.'); return; }
+    upKeys.set(a, sec);
+    const btn = $('#upGo'); btn.disabled = true;
+    try{
+      msg('키 확인 중…');
+      const bal = await upAccounts();
+      const meta = importMeta.get(), span = $('#upSpan').value, now = Date.now();
+      const from = span === 'since' && meta.last ? meta.last - 3600e3 : now - (+span || 30) * 864e5;
+      const orders = await fetchFilled(from, now, msg);
+      const rows = orders.map(o => toRow(o, upbit.toSymbol));
+      msg('거래일지에 저장 중…');
+      const r = await importTrades(rows);
+      S.trades = await loadTrades(); recompute();
+      let carried = 0, over = 0;
+      if ($('#upCarry').checked){
+        const have = new Map(S.ledgerReal.positions.map(p => [p.symbol, p.qty]));
+        const day = new Date(from).toISOString().slice(0, 10);
+        const carry = [];
+        for (const b of bal){
+          if (b.currency === 'KRW' || b.unit_currency !== 'KRW') continue;
+          const sym = upbit.toSymbol('KRW-' + b.currency), actual = +b.balance + +b.locked, rec = have.get(sym) || 0;
+          const px = +b.avg_buy_price || priceOf(sym) || 0, diff = actual - rec;
+          if (!px) continue;
+          if (diff * px > 5000) carry.push({ trade_no: `C-${b.currency}-${Date.now().toString(36).slice(-5)}`, external_id: `carry:${b.currency}:${day}:${diff.toFixed(8)}`, source: 'carry_over',
+            symbol: sym, side: 'buy', price: px, qty: diff, fee: 0, executed_at: new Date(from - 1000).toISOString(), reason: '업비트 잔고 맞춤 (가져오기 전 보유분, 업비트 평단)' });
+          else if (-diff * px > 5000) over++;
+        }
+        if (carry.length){ await importTrades(carry); carried = carry.length; S.trades = await loadTrades(); }
+      }
+      importMeta.set({ last: now, added: r.added });
+      if (S.acct !== 'real') setAcct('real'); else { renderJournal(); renderStatus(); }
+      const skippedMk = orders.skipped || 0;
+      msg(`끝났어요. 체결 주문 ${orders.length + skippedMk}건 중 새로 ${r.added}건 추가${r.skipped ? `, 이미 있던 ${r.skipped}건은 건너뜀` : ''}${skippedMk ? `, 원화 마켓이 아닌 ${skippedMk}건 제외` : ''}${carried ? `, 기초 이월 ${carried}종목 추가` : ''}${over ? `. 기록이 잔고보다 많은 종목 ${over}개가 있어요(출금·이전 기록 확인)` : ''}.`);
+      toast(`업비트 거래 ${r.added}건을 가져왔어요.`, 'up');
+    }catch(err){ msg(err.message || String(err)); }
+    finally{ btn.disabled = false; }
+  });
+}
+
 // ---------------------------------------------------------------- 업비트 소식
 async function renderNews(){
   const j = await loadNews();

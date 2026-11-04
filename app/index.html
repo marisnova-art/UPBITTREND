@@ -83,7 +83,7 @@
       </section>
       <div class="split h" data-split="journal"></div>
       <section class="panel" id="pJournal" data-panel="journal">
-        <header><div class="tabs" id="jTabs" style="border:0;padding:0"><button class="pill on" data-j="journal">거래일지</button><button class="pill" data-j="orders">주문</button><button class="pill" data-j="news">업비트 소식</button></div><span class="muted" id="jSummary"></span><div class="grow"></div><button class="iconbtn collapse" data-collapse="journal" aria-label="접기">⌄</button></header>
+        <header><div class="tabs" id="jTabs" style="border:0;padding:0"><button class="pill on" data-j="journal">거래일지</button><button class="pill" data-j="orders">주문</button><button class="pill" data-j="news">업비트 소식</button></div><span class="muted" id="jSummary"></span><div class="grow"></div><button class="pill ghost sm" id="upImportBtn" data-tip="업비트 실제 체결을 거래일지로 가져와요 (조회 전용 키)">업비트 가져오기</button><button class="iconbtn collapse" data-collapse="journal" aria-label="접기">⌄</button></header>
         <div class="body" id="jBody"></div>
         <div class="body hidden" id="ordBody"></div>
         <div class="body hidden" id="newsBody"><div class="empty">불러오는 중…</div></div>
@@ -141,6 +141,24 @@
     <p>숫자를 바꾸면 바로 다시 계산해요. 이 기기에 저장돼요.</p>
     <div id="cfgBody" class="cfg"></div>
     <div class="row"><button class="pill ghost" value="reset" id="cfgReset" formnovalidate>기본값</button><div style="flex:1"></div><button class="pill ghost" value="cancel" formnovalidate>닫기</button><button class="pill accent" value="save">저장</button></div>
+  </form>
+</dialog>
+
+<dialog id="upDlg" style="width:min(480px,calc(100vw - 32px))">
+  <form method="dialog" id="upForm">
+    <h2>업비트 실제 거래 가져오기</h2>
+    <p>업비트에서 체결된 주문을 거래일지(실제 기록)에 추가해요. 이미 가져온 주문은 다시 넣지 않아요.<br>
+      <b>조회 전용 키</b>만 쓰세요: 업비트 &gt; 마이페이지 &gt; Open API 관리에서 <b>자산조회·주문조회</b>만 켜고, 주문하기·출금은 끄세요.
+      허용 IP에는 이 기기의 공인 IP를 넣어야 해요<span id="upIp"></span>.<br>
+      키는 <b>이 기기에만</b> 저장되고 서버로 보내지 않아요.</p>
+    <input id="upAccess" placeholder="Access Key" autocomplete="off" spellcheck="false">
+    <input id="upSecret" type="password" placeholder="Secret Key" autocomplete="off" spellcheck="false">
+    <label class="up-row"><span>기간</span><select id="upSpan">
+      <option value="since">지난번 가져온 뒤부터</option><option value="7">최근 7일</option><option value="30">최근 30일</option>
+      <option value="90">최근 90일</option><option value="365">최근 1년</option></select></label>
+    <label class="up-row"><input type="checkbox" id="upCarry" checked><span>업비트 잔고와 기록 수량이 다르면 차이만큼 "기초 이월"로 맞추기</span></label>
+    <div class="msg" id="upMsg"></div>
+    <div class="row"><button class="pill ghost" value="forget" id="upForget" formnovalidate>키 지우기</button><div style="flex:1"></div><button class="pill ghost" value="cancel" formnovalidate>닫기</button><button class="pill accent" value="go" id="upGo">가져오기</button></div>
   </form>
 </dialog>
 
