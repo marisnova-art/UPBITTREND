@@ -161,12 +161,12 @@ export function createPaper({ priceOf, remote }){
     // 로그인 후: 서버에 있는 모의 기록·상태와 합치기
     merge(remoteState, remoteTrades){
       if (remoteState && (remoteState.savedAt || 0) > (st.savedAt || 0)) st = remoteState;
-      if (remoteTrades && remoteTrades.length){
-        const have = new Set(remoteTrades.map(t => t.trade_no));
-        const local = trades.filter(t => !have.has(t.trade_no));
-        trades = [...remoteTrades.map(t => ({ ...t, synced: true })), ...local].sort((a, b) => Date.parse(a.executed_at) - Date.parse(b.executed_at));
-        for (const t of local) remote && remote.addTrade(t).then(ok => { if (ok){ t.synced = true; LS.set(TKEY, trades); } });
-      }
+      // 체결 기록은 양쪽을 합침 (서버에 없는 이 기기 기록은 올림 — 로그인 전에 한 모의 거래도 포함)
+      const rt = remoteTrades || [];
+      const have = new Set(rt.map(t => t.trade_no));
+      const local = trades.filter(t => !have.has(t.trade_no));
+      trades = [...rt.map(t => ({ ...t, synced: true })), ...local].sort((a, b) => Date.parse(a.executed_at) - Date.parse(b.executed_at));
+      for (const t of local) remote && remote.addTrade(t).then(ok => { if (ok){ t.synced = true; LS.set(TKEY, trades); } });
       save();
     },
   };

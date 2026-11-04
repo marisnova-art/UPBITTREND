@@ -52,6 +52,12 @@ async function boot(){
 
   initDb().catch(() => {});
   db.events.on('auth', onAuth);
+  // 다른 기기에서 한 모의 거래를 앱으로 돌아올 때 맞춤
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'visible' || !db.user) return;
+    resetPrefsCache(); const pr = await paperRemote.load(); if (!pr) return;
+    paper.merge(pr.state, pr.trades); recompute(); renderStatus(); renderOrderForm(); if (isOrdersOpen()) renderOrders(); renderJournal();
+  });
   db.events.on('tables', ok => { $('#sbDbDot').className = 'dot ' + (ok ? 'live' : 'wait'); $('#sbDb').textContent = ok ? '기록 저장소 연결' : '기록 테이블 준비 전 · 이 기기에만 저장'; });
 
   try{
@@ -705,6 +711,17 @@ function setAcct(a){
   if (isOrdersOpen()) renderOrders();
 }
 const isOrdersOpen = () => !$('#ordBody').classList.contains('hidden');
+// 폰에서는 표를 카드로 보여 주려고 칸마다 머리글 이름을 붙임
+function labelTables(root){
+  for (const t of $$('table.ot, table.jt', root)){
+    const heads = $$('thead th', t).map(th => th.textContent.trim());
+    if (!heads.length) continue;
+    for (const tr of $$('tbody tr', t)) [...tr.children].forEach((td, i) => {
+      const h = heads[i] || ''; td.dataset.label = h;
+      if (h === '종목') td.classList.add('lead'); if (!h) td.classList.add('act');
+    });
+  }
+}
 // 거래일지 패널의 "주문" 탭: 미체결 · 예약 매도 · 모의 보유 · 계좌
 function renderOrders(){
   const nm = s => (S.byMarket.get(upbit.toMarket(s)) || {}).name || s;
@@ -723,8 +740,9 @@ function renderOrders(){
     ${pos.length ? `<table class="ot"><thead><tr><th class="l">종목</th><th>수량</th><th>평단</th><th>현재가</th><th>평가금액</th><th>평가손익</th><th></th></tr></thead><tbody>
       ${pos.map(p => { const c = priceOf(p.symbol), has = br.some(b => b.symbol === p.symbol); return `<tr><td class="l">${esc(nm(p.symbol))}</td><td class="mono">${p.qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</td><td class="mono">${fmtPrice(p.avg)}</td><td class="mono" data-lv="cur" data-s="${p.symbol}">${fmtPrice(c)}</td><td class="mono" data-lv="val" data-s="${p.symbol}" data-q="${p.qty}">${p.value != null ? won(p.value) : ''}</td><td class="mono ${toneOf(p.pnl)}" data-lv="pnl" data-s="${p.symbol}" data-q="${p.qty}" data-c="${p.cost}" data-p="${p.avg}">${p.pnl != null ? (p.pnl > 0 ? '+' : '') + won(p.pnl) + ' (' + fmtPct((c / p.avg - 1) * 100) + ')' : ''}</td><td>${has ? '' : `<button data-badd="${p.symbol}">예약 걸기</button>`}<button data-sell="${p.symbol}">팔기</button></td></tr>`; }).join('')}</tbody></table>` : '<div class="empty" style="padding:12px">모의 보유 종목이 없어요.</div>'}
     <div class="ot-title">모의 계좌 <span class="grow"></span><button class="pill" data-reset>새로 시작</button></div>
-    <table class="ot"><tbody><tr><td class="l">시작 금액</td><td class="mono">${won(st.start)}원</td><td class="l">현금</td><td class="mono">${won(st.cash)}원</td><td class="l">총자산</td><td class="mono">${won(total)}원</td><td class="l">수익률</td><td class="mono ${toneOf(total - st.start)}">${fmtPct((total / st.start - 1) * 100)}</td></tr></tbody></table>
+    <table class="ot acct"><tbody><tr><td class="l">시작 금액</td><td class="mono">${won(st.start)}원</td><td class="l">현금</td><td class="mono">${won(st.cash)}원</td><td class="l">총자산</td><td class="mono">${won(total)}원</td><td class="l">수익률</td><td class="mono ${toneOf(total - st.start)}">${fmtPct((total / st.start - 1) * 100)}</td></tr></tbody></table>
     <div class="note" style="padding:8px">앱이 켜져 있는 동안 실시간으로 체결돼요. 꺼져 있던 동안 가격이 닿았는지는 다시 열 때 분봉으로 확인해요. 수수료 0.05% 반영, 부분 체결 없음.</div>`;
+  labelTables($('#ordBody'));
 }
 // 화면 알림
 function toast(msg, tone = ''){
@@ -792,6 +810,7 @@ function renderJournalRows(isPaper){
       <td class="mono ${toneOf(r.vsNow)}"${r.side === 'buy' ? ` data-lv="vs" data-s="${r.symbol}" data-p="${r.price}"` : ''}>${r.side === 'buy' && r.vsNow != null ? fmtPct(r.vsNow) : ''}</td>
       <td class="l">${esc([src[r.source] || r.source, r.strategy].filter(Boolean).join(' · '))}</td>
       <td class="l reason" title="${esc(r.reason || '')}">${esc(r.reason || '')}</td></tr>`).join('')}</tbody></table>`;
+  labelTables($('#jBody'));
 }
 // 하단 바: 계좌 구분 + 총자산 + 평가손익
 function renderStatus(){

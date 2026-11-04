@@ -342,6 +342,34 @@ dialog .msg{min-height:18px;font-size:var(--f-s);color:var(--warn)}
   body[data-m="chart"] #pInsp .body{overflow:visible}
   body[data-m="alerts"] #pAlerts{display:flex}
   body[data-m="journal"] #colCenter,body[data-m="journal"] #pJournal{display:flex;height:100%}
+  /* ---- 폰 최적화: 탭은 한 줄 가로 스크롤, 표는 카드 */
+  .tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs .pill{flex:0 0 auto}
+  body[data-m="chart"] #pChart{height:min(58vh,520px)}
+  #pJournal>header{flex-wrap:wrap;height:auto;row-gap:6px;padding:10px 12px}
+  #pJournal>header #jTabs{flex:1 1 auto;min-width:0}
+  #pJournal>header #jSummary{order:3;width:100%;font-size:var(--f-s)}
+  #pJournal>header .grow{display:none}
+  #upImportBtn{flex:0 0 auto}
+  .jt,.ot{white-space:normal}
+  .jt thead,.ot thead{display:none}
+  .jt tbody,.ot tbody{display:flex;flex-direction:column;gap:8px;padding:4px 0}
+  .jt tr,.ot tr{display:grid;grid-template-columns:1fr 1fr;column-gap:14px;row-gap:4px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--panel-2)}
+  .jt td,.ot td{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:0;border:0;text-align:right;min-width:0;font-size:var(--f-s)}
+  .jt td::before,.ot td::before{content:attr(data-label);color:var(--muted);font-family:'IBM Plex Sans KR',system-ui,sans-serif;font-weight:400;flex:0 0 auto}
+  .jt td.lead,.ot td.lead{grid-column:1/-1;order:-1;font-size:var(--f-m);font-weight:600;justify-content:flex-start;padding-bottom:4px}
+  .jt td.lead::before,.ot td.lead::before,.ot td.act::before{display:none}
+  .ot td.act{grid-column:1/-1;justify-content:flex-end;padding-top:6px}
+  .ot td.act button{height:32px;padding:0 14px}
+  .jt td:empty,.ot td:empty{display:none}
+  .jt td.reason{grid-column:1/-1;max-width:none;white-space:normal}
+  .jt tr:hover td{background:transparent}
+  .ot.acct tr{grid-template-columns:auto 1fr}
+  .ot.acct td{display:block}
+  .ot.acct td.l{color:var(--muted);text-align:left}
+  .ot-title{padding:14px 2px 6px}
+  #jBody,#ordBody{padding:0 2px}
   .mtabs{display:grid;grid-template-columns:repeat(4,1fr);height:calc(64px + env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
   .mtabs button{border:0;background:transparent;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:var(--f-s)}
   .mtabs button.on{color:var(--accent);font-weight:600}
