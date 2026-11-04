@@ -916,6 +916,8 @@ function bindUi(){
     if (v === 'settings'){ openCfg(); return; }
     if (v === 'rebuy' || v === 'scan'){ S.tab = v === 'rebuy' ? 'rebuy' : 'pullback'; $$('#wlTabs .pill').forEach(x => x.classList.toggle('on', x.dataset.tab === S.tab)); renderWatch(); }
     if (v === 'journal') $('#pJournal').scrollIntoView({ behavior: 'smooth' });
+    if (v === 'wiki'){ const w = $('#wikiSec'); if (w){ w.open = true; LS.set('quantera:wikiOpen', true); w.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }
+    if (v === 'assets'){ $('#jTabs [data-j="orders"]').click(); $('#pJournal').scrollIntoView({ behavior: 'smooth' }); }
   }));
   $('#loginBtn').addEventListener('click', async () => { if (db.user){ await logout(); return; } $('#lgMsg').textContent = ''; $('#loginDlg').showModal(); });
   $('#loginForm').addEventListener('submit', async e => {
