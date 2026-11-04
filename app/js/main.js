@@ -126,6 +126,31 @@ setInterval(() => {
 // ---------------------------------------------------------------- 급등 감지 + 알람
 // 1초마다 검사. 새로 잡히면 소리 + 위쪽 알림. 확인(종목 클릭 또는 '모두 확인') 전까지 계속 울리고 목록에서 깜빡임.
 const unseen = new Set();
+// 급등 알림 잠시 끄기: 감지·목록·적중률 기록은 계속, 소리·팝업·바탕화면 알림만 멈춤
+const MUTE_KEY = 'quantera:surgeMute';
+const muteUntil = () => { const v = LS.get(MUTE_KEY, 0) || 0; if (v > 0 && v < Date.now()){ LS.set(MUTE_KEY, 0); return 0; } return v; };   // -1 = 직접 켤 때까지
+const surgeMuted = () => muteUntil() !== 0;
+function setSurgeMute(min){
+  LS.set(MUTE_KEY, min === 0 ? 0 : min < 0 ? -1 : Date.now() + min * 60000);
+  if (min !== 0) unseen.clear();
+  renderSurgeBar(); renderMuteBtns(); if (S.tab === 'surge') renderWatch();
+  toast(min === 0 ? '급등 알림을 다시 켰어요.' : min < 0 ? '급등 알림을 껐어요. 감지와 목록은 계속돼요.' : `급등 알림을 ${min >= 60 ? min / 60 + '시간' : min + '분'} 동안 껐어요.`);
+}
+function muteText(){
+  const v = muteUntil(); if (!v) return '';
+  if (v < 0) return '꺼짐';
+  const d = new Date(v); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}까지 꺼짐`;
+}
+function muteCtlHtml(){
+  const m = surgeMuted();
+  return `<div class="mute-ctl"><span class="${m ? 'muted' : 'up'}">● 급등 알림 ${m ? muteText() : '켜짐'}</span><span class="grow"></span>${m
+    ? '<button class="pill sm" data-mute="0">다시 켜기</button>'
+    : '<button class="pill sm" data-mute="30">30분 끄기</button><button class="pill sm" data-mute="60">1시간</button><button class="pill sm" data-mute="-1">끄기</button>'}</div>`;
+}
+function renderMuteBtns(){
+  const t = $('#wlTabs [data-tab="surge"]'); if (t) t.classList.toggle('muted-tab', surgeMuted());
+  const c = $('.mute-ctl'); if (c) c.outerHTML = muteCtlHtml();
+}
 let lastSurgeKey = '', lastBeep = 0, audioCtx = null;
 const getAudio = () => { try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch(e){} return audioCtx; };
 addEventListener('pointerdown', getAudio, { once: true });   // 브라우저는 한 번 클릭한 뒤에야 소리를 허용
@@ -140,7 +165,7 @@ function beep(){
   });
 }
 function notifySurge(ms){
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (surgeMuted() || !('Notification' in window) || Notification.permission !== 'granted') return;
   const names = ms.map(m => (S.byMarket.get(m) || {}).name || m);
   try { new Notification('급등 감지', { body: names.join(', ') + ' — 갑자기 거래가 몰리고 있어요', tag: 'quantera-surge', renotify: true, icon: './icons/icon-192.png' }); } catch(e){}
 }
@@ -151,19 +176,21 @@ function ackSurge(m){
 }
 function renderSurgeBar(){
   const bar = $('#surgeBar'); if (!bar) return;
-  const ms = [...unseen].filter(m => surge.events.has(m));
+  const ms = surgeMuted() ? [] : [...unseen].filter(m => surge.events.has(m));
   if (!ms.length){ bar.classList.add('hidden'); $('#wlTabs [data-tab="surge"]').classList.remove('blink'); return; }
   const first = (S.byMarket.get(ms[0]) || {}).name || ms[0];
-  bar.innerHTML = `<span class="dot-live"></span><b>급등 ${ms.length}</b><span>${esc(first)}${ms.length > 1 ? ` 외 ${ms.length - 1}` : ''}</span><button class="pill" data-surge-go>보기</button><button class="pill" data-surge-ack>모두 확인</button>`;
+  bar.innerHTML = `<span class="dot-live"></span><b>급등 ${ms.length}</b><span>${esc(first)}${ms.length > 1 ? ` 외 ${ms.length - 1}` : ''}</span><button class="pill" data-surge-go>보기</button><button class="pill" data-surge-ack>모두 확인</button><button class="pill" data-mute="30" title="30분 동안 소리·팝업 끄기">30분 끄기</button>`;
   bar.classList.remove('hidden');
   $('#wlTabs [data-tab="surge"]').classList.add('blink');
 }
 setInterval(() => {
   const fresh = surge.check(S.quotes), cfg = allCfg();
-  for (const m of fresh) unseen.add(m);
+  const wasMuted = surgeMuted.last; surgeMuted.last = surgeMuted();
+  if (wasMuted && !surgeMuted.last) renderMuteBtns();   // 끈 시간이 끝나면 다시 켜짐 표시
+  if (!surgeMuted.last) for (const m of fresh) unseen.add(m);
   for (const m of [...unseen]) if (!surge.events.has(m)) unseen.delete(m);
   if (fresh.length){ notifySurge(fresh); renderSurgeBar(); }
-  if (cfg.surgeAlarm && unseen.size && Date.now() - lastBeep >= cfg.surgeRepeat * 1000){ lastBeep = Date.now(); beep(); }
+  if (cfg.surgeAlarm && !surgeMuted.last && unseen.size && Date.now() - lastBeep >= cfg.surgeRepeat * 1000){ lastBeep = Date.now(); beep(); }
   const key = [...surge.events.keys()].join() + '|' + surge.log().length + '|' + surge.tracking.size;
   if (S.tab === 'surge' && !S.search){
     if (fresh.length || key !== lastSurgeKey) renderWatch();
@@ -287,9 +314,9 @@ function renderWatch(){
   const rebuy = new Set(S.ledger.rebuy.map(r => upbit.toMarket(r.symbol)));
   if (!list.length){
     const msg = { fav: '관심 종목이 없어요. 전체 탭에서 ☆를 눌러 추가하세요.', hold: '보유 종목이 없어요. 로그인하면 기존 보유 종목이 기초 이월로 보여요.', pullback: '지금 조건에 맞는 눌림 매수 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', bottom: '지금 조건에 맞는 바닥 반등 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', new: '최근 30일 안에 새로 상장된 종목이 없어요.', recent: '아직 본 종목이 없어요. 종목을 열면 여기에 본 순서대로 남아요.', surge: `지금 갑자기 거래가 몰린 코인이 없어요. 앱이 켜져 있는 동안 1초마다 검사해요. (최근 ${allCfg().surgeSec}초 거래대금이 평소의 ${allCfg().surgeVol}배 이상)`, rebuy: '재매수 후보가 없어요. 이익을 내고 판 종목이 그때 매수가보다 싸지면 여기에 떠요.' };
-    $('#wlBody').innerHTML = (S.tab === 'surge' && !S.search ? surgeStatsHtml() : '') + (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + `<div class="empty">${S.search ? '검색 결과가 없어요.' : msg[S.tab] || ''}</div>`; return;
+    $('#wlBody').innerHTML = (S.tab === 'surge' && !S.search ? muteCtlHtml() + surgeStatsHtml() : '') + (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + `<div class="empty">${S.search ? '검색 결과가 없어요.' : msg[S.tab] || ''}</div>`; return;
   }
-  $('#wlBody').innerHTML = (S.tab === 'surge' && !S.search ? surgeStatsHtml() : '') + (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + list.slice(0, 300).map(i => {
+  $('#wlBody').innerHTML = (S.tab === 'surge' && !S.search ? muteCtlHtml() + surgeStatsHtml() : '') + (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + list.slice(0, 300).map(i => {
     const q = S.quotes.get(i.market) || {}, r = S.results.get(i.market);
     const L = live(i.market);
     const bar = L.stance === 'buy_zone' ? 'entry' : ['chase', 'broken', 'failed'].includes(L.stance) ? 'warn' : '';
@@ -856,6 +883,8 @@ function bindUi(){
   bindCfg();
   bindOrder();
   bindImport();
+  document.addEventListener('click', e => { const b = e.target.closest('[data-mute]'); if (!b) return; e.stopPropagation(); setSurgeMute(+b.dataset.mute); }, true);
+  renderMuteBtns();
   bindWiki();
   $('#jTabs').addEventListener('click', e => {
     const b = e.target.closest('[data-j]'); if (!b) return;

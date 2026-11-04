@@ -295,6 +295,9 @@ dialog select{height:36px;border-radius:12px;border:1px solid var(--line-2);back
 .up-file{display:flex;align-items:center;justify-content:center;height:44px;border:1px dashed var(--line-2);border-radius:12px;cursor:pointer;font-size:var(--f-s);color:var(--text-2);margin-bottom:6px}
 .up-file:hover{border-color:var(--accent);color:var(--text)}
 .up-file input{display:none}
+.mute-ctl{display:flex;align-items:center;gap:6px;padding:8px 12px;font-size:var(--f-s);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.mute-ctl .grow{flex:1}
+#wlTabs .pill.muted-tab::after{content:' 끔'!important;color:var(--muted)!important;font-size:10px}
 .up-row{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:var(--f-s);color:var(--text-2)}
 .up-row input[type=checkbox]{width:auto;height:auto;margin:0}
 .up-row>span:first-child{min-width:36px}
