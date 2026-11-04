@@ -11,6 +11,15 @@
   color-scheme: dark;
 }
 *{box-sizing:border-box}
+/* 스크롤바: 얇고 눈에 띄지 않게 (마우스를 올릴 때만 살짝 보임) */
+*{scrollbar-width:thin;scrollbar-color:transparent transparent}
+*:hover{scrollbar-color:#2A2A30 transparent}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:transparent;border-radius:3px}
+*:hover::-webkit-scrollbar-thumb{background:#2A2A30}
+::-webkit-scrollbar-thumb:hover{background:#3A3A42}
+::-webkit-scrollbar-corner{background:transparent}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:'IBM Plex Sans KR',system-ui,sans-serif;font-size:var(--f-m);-webkit-font-smoothing:antialiased}
 button,input,select{font:inherit;color:inherit}
 button{cursor:pointer}

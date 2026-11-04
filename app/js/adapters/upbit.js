@@ -106,6 +106,7 @@ const toCandle = c => ({
 });
 // count가 200을 넘으면 'to'로 이어 받아 붙입니다(오래된 → 최신 순으로 반환).
 export async function getCandles(market, tf = '1d', { count = 200, to = null } = {}){
+  if (tf === '1y') return toYears(await getCandles(market, '1M', { count: 200, to }));
   const path = TF_PATH[tf]; if (!path) throw new Error('지원하지 않는 시간 단위: ' + tf);
   let out = [], cursor = to;
   while (out.length < count){
@@ -120,6 +121,18 @@ export async function getCandles(market, tf = '1d', { count = 200, to = null } =
   // 같은 시각 중복 제거 + 오래된 → 최신 정렬 (차트 라이브러리 요구사항)
   const seen = new Map(); for (const c of out.map(toCandle)) seen.set(c.time, c);
   return [...seen.values()].sort((a, b) => a.time - b.time);
+}
+
+// 연봉: 월봉을 해(UTC 기준 1월)별로 합침. 업비트 원화 마켓은 2017년부터라 월봉 200개면 충분.
+function toYears(months){
+  const m = new Map();
+  for (const c of months){
+    const y = new Date(c.time * 1000).getUTCFullYear();
+    const g = m.get(y);
+    if (!g) m.set(y, { time: Date.UTC(y, 0, 1) / 1000, t: y + '-01-01', o: c.o, h: c.h, l: c.l, c: c.c, v: c.v, value: c.value || 0 });
+    else { g.h = Math.max(g.h, c.h); g.l = Math.min(g.l, c.l); g.c = c.c; g.v += c.v; g.value += c.value || 0; }
+  }
+  return [...m.values()].sort((a, b) => a.time - b.time);
 }
 
 // ---------- 호가

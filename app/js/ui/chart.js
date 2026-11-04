@@ -4,7 +4,8 @@ import { A } from '../analysis/trend.js';
 
 const C = { up: '#F04452', down: '#4C8DFF', grid: '#141417', text: '#9A9AA3', accent: '#C6F432', warn: '#F5A524', white: '#EDEDEF', ma20: '#C9C9CF', ma60: '#7D7D86' };
 const KST = 9 * 3600; // 분·시간봉은 한국 시간으로 보이게
-const TF_SEC = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '1d': 86400, '1w': 604800 };
+const LONG = new Set(['1d', '1w', '1M', '1y']); // 날짜 단위 봉 (한국 시간 보정 안 함)
+const TF_SEC = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '1d': 86400, '1w': 604800, '1M': 2592000, '1y': 31536000 };
 
 export function createChart(el, legendEl, infoEl){
   const LW = window.LightweightCharts;
@@ -34,7 +35,7 @@ export function createChart(el, legendEl, infoEl){
     return arr.map((x, i) => m[i] == null ? null : { time: x.time, value: m[i] }).filter(Boolean);
   }
   function setData(rows, timeframe){
-    tf = timeframe; off = (tf === '1d' || tf === '1w') ? 0 : KST;
+    tf = timeframe; off = LONG.has(tf) ? 0 : KST;
     data = rows.map(x => ({ ...x, time: x.time + off }));
     candles.setData(data.map(x => ({ time: x.time, open: x.o, high: x.h, low: x.l, close: x.c })));
     vol.setData(data.map(x => ({ time: x.time, value: x.v, color: x.c >= x.o ? 'rgba(240,68,82,.35)' : 'rgba(76,141,255,.35)' })));
@@ -48,6 +49,7 @@ export function createChart(el, legendEl, infoEl){
   function refit(){
     if (!data.length) return;
     const w = el.clientWidth || 800;
+    if (tf === '1M' || tf === '1y'){ chart.timeScale().fitContent(); return; } // 월·연봉은 전체
     const n = Math.min(data.length, Math.max(40, Math.round(w / 9)), tf === '1d' ? 120 : 160);
     chart.timeScale().setVisibleLogicalRange({ from: data.length - n, to: data.length + 3 });
   }
@@ -58,6 +60,8 @@ export function createChart(el, legendEl, infoEl){
     let t = Math.floor(tsMs / 1000);
     if (tf === '1d') t = Math.floor(t / 86400) * 86400;
     else if (tf === '1w'){ const d = Math.floor(t / 86400); const dow = (d + 3) % 7; t = (d - dow) * 86400; }
+    else if (tf === '1M'){ const d = new Date(t * 1000); t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) / 1000; }
+    else if (tf === '1y'){ const d = new Date(t * 1000); t = Date.UTC(d.getUTCFullYear(), 0, 1) / 1000; }
     else t = Math.floor(t / sec) * sec;
     t += off;
     const last = data[data.length - 1];
@@ -78,7 +82,9 @@ export function createChart(el, legendEl, infoEl){
   function timeLabel(t){
     const d = new Date(t * 1000), p = n => String(n).padStart(2, '0');
     const day = `${d.getUTCFullYear()}.${p(d.getUTCMonth() + 1)}.${p(d.getUTCDate())}`;
-    return (tf === '1d' || tf === '1w') ? day : `${day} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+    if (tf === '1y') return `${d.getUTCFullYear()}년`;
+    if (tf === '1M') return `${d.getUTCFullYear()}.${p(d.getUTCMonth() + 1)}`;
+    return LONG.has(tf) ? day : `${day} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
   }
   function fmtVol(v){ return v >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : v >= 1e3 ? (v / 1e3).toFixed(2) + 'K' : v.toFixed(v < 10 ? 4 : 2); }
   function krw(v){ return v >= 1e12 ? (v / 1e12).toFixed(2) + '조' : v >= 1e8 ? Math.round(v / 1e8).toLocaleString('ko-KR') + '억' : v >= 1e4 ? Math.round(v / 1e4).toLocaleString('ko-KR') + '만' : Math.round(v).toLocaleString('ko-KR'); }

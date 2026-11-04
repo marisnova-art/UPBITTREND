@@ -20,6 +20,8 @@ export const CONFIG = {
     { id: '15m', label: '15분', path: 'minutes/15' },
     { id: '1h', label: '1시간', path: 'minutes/60' },
     { id: '1d', label: '일', path: 'days' },
-    { id: '1w', label: '주', path: 'weeks' }
+    { id: '1w', label: '주', path: 'weeks' },
+    { id: '1M', label: '월', path: 'months' },
+    { id: '1y', label: '년', path: 'months' }   // 연봉은 월봉을 합쳐서 만듦
   ]
 };

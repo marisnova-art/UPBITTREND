@@ -161,14 +161,14 @@ function renderWatch(){
   $('#wlBody').innerHTML = list.slice(0, 300).map(i => {
     const q = S.quotes.get(i.market) || {}, r = S.results.get(i.market);
     const L = live(i.market);
-    const bar = L.stance === 'buy_zone' ? 'entry' : ['chase', 'broken', 'avoid', 'blocked', 'failed'].includes(L.stance) ? 'warn' : '';
+    const bar = L.stance === 'buy_zone' ? 'entry' : ['chase', 'broken', 'failed'].includes(L.stance) ? 'warn' : '';
     const badges = [L.stance === 'buy_zone' ? `<span class="badge accent">${TYPE_KO[L.type]}</span>` : '', rebuy.has(i.market) ? '<span class="badge accent">재매수</span>' : '', isNewListing(i.market) ? '<span class="badge warn">신규</span>' : '',
       q.suspended ? '<span class="badge warn">거래정지</span>' : '', i.warning ? '<span class="badge warn">유의</span>' : '', (i.caution || []).length ? '<span class="badge line">주의</span>' : ''].join('');
     return `<div class="wl-row${S.sel === i.market ? ' sel' : ''}" data-m="${i.market}">
       <span class="bar ${bar}"></span>
       <div style="min-width:0">
         <div class="wl-name"><button class="star${S.watch.has(i.symbol) ? ' on' : ''}" data-star="${i.symbol}" aria-label="관심">${S.watch.has(i.symbol) ? '★' : '☆'}</button><b>${esc(i.name)}</b>${badges}</div>
-        <div class="wl-peter">${r ? esc(L.text || r.peter) :`<span class="mono">${i.market}</span> · ${fmtKrwShort(q.value24h)}`}</div>
+        <div class="wl-peter">${r && L.stance !== 'blocked' ? esc(L.text || r.peter) :`<span class="mono">${i.market}</span> · ${fmtKrwShort(q.value24h)}`}</div>
       </div>
       <div class="wl-px mono"><div class="p ${toneOf(q.changeRate)}" data-px="${i.market}">${fmtPrice(q.price)}</div><div class="c ${toneOf(q.changeRate)}" data-cr="${i.market}">${fmtPct(q.changeRate)}</div></div>
     </div>`;
@@ -203,7 +203,7 @@ let chartTok = 0;
 async function loadChart(){
   const tok = ++chartTok, m = S.sel, tf = S.tf;
   try{
-    const rows = await upbit.getCandles(m, tf, { count: tf === '1d' ? 300 : 400 });
+    const rows = await upbit.getCandles(m, tf, { count: tf === '1d' ? 300 : tf === '1M' ? 200 : 400 });
     if (tok !== chartTok) return;
     chart.setData(rows, tf); applyGuideToChart();
   }catch(e){ /* 차트 실패는 조용히 */ }
