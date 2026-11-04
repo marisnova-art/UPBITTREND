@@ -125,8 +125,6 @@ a{color:var(--accent)} a:hover{color:#E1FF7A}
 .lbl-toggle{pointer-events:auto;height:22px;padding:0 10px;border-radius:999px;border:1px solid var(--line-2);background:rgba(20,20,23,.85);color:var(--text-2);font-size:11px}
 .lbl-toggle:hover{color:var(--text);border-color:var(--muted)}
 .lbl-toggle.on{color:var(--accent);border-color:var(--accent-line)}
-.plabels{position:absolute;inset:0;pointer-events:none;z-index:2;overflow:hidden}
-.plabels span{position:absolute;transform:translateY(-100%);padding:0 2px 2px;font-size:11px;font-weight:600;opacity:.55;white-space:nowrap;text-shadow:0 0 3px #050506}
 .legend span::before{content:'';display:inline-block;width:10px;height:2px;margin-right:5px;vertical-align:middle;background:currentColor}
 
 /* 호가·주문 */

@@ -140,7 +140,7 @@ export function createChart(el, legendEl, infoEl){
     pinned = { i, x: p.point.x, y: p.point.y };   // 다른 봉을 누르면 그 봉으로 옮겨 고정
     renderTip(i, p.point.x, p.point.y, true);
   });
-  // 선 이름(1차 매도 등) 켜기/끄기: 끄면 선과 오른쪽 가격 숫자는 남고 글자만 숨김 → 최근 봉이 가려지지 않음
+  // 선 이름(1차 매도 등) 켜기/끄기: 끄면 선과 오른쪽 가격 숫자는 남고 이름 글자만 숨김
   const LBL_KEY = 'quantera:chartLabels';
   let showLabels = (() => { try { const v = localStorage.getItem(LBL_KEY); return v == null ? !matchMedia('(max-width: 899px)').matches : v === '1'; } catch(e){ return true; } })();
   let lastGuide = [null, []];
@@ -150,29 +150,12 @@ export function createChart(el, legendEl, infoEl){
     try { localStorage.setItem(LBL_KEY, showLabels ? '1' : '0'); } catch(err){}
     setGuide(...lastGuide);
   });
-  // 라벨은 차트 위에 반투명 글자로 직접 그림(라이브러리 기본 라벨은 불투명 상자라 봉을 가림)
-  const lblLayer = document.createElement('div'); lblLayer.className = 'plabels';
-  el.parentElement.appendChild(lblLayer);
-  let lblDefs = [];
-  function placeLabels(){
-    if (!showLabels || !lblDefs.length){ lblLayer.innerHTML = ''; return; }
-    const right = (chart.priceScale('right').width() || 70) + 6, H = el.clientHeight;
-    lblLayer.innerHTML = lblDefs.map(d => {
-      const y = candles.priceToCoordinate(d.price);
-      if (y == null || y < 8 || y > H - 8) return '';
-      return `<span style="top:${Math.round(y)}px;right:${right}px;color:${d.color}">${d.title}</span>`;
-    }).join('');
-  }
-  chart.timeScale().subscribeVisibleLogicalRangeChange(() => requestAnimationFrame(placeLabels));
-  new ResizeObserver(() => requestAnimationFrame(placeLabels)).observe(el);
-  setInterval(() => { if (showLabels && lblDefs.length) placeLabels(); }, 700); // 가격축을 직접 끌어 늘렸을 때 대비
   function setGuide(g, pastBuys = []){
     lastGuide = [g, pastBuys];
-    lines.forEach(l => candles.removePriceLine(l)); lines = []; lblDefs = [];
+    lines.forEach(l => candles.removePriceLine(l)); lines = [];
     const add = (price, title, color, style = 2, width = 1) => {
       if (!(price && isFinite(price))) return;
-      lines.push(candles.createPriceLine({ price, color, lineWidth: width, lineStyle: style, axisLabelVisible: true, title: '' }));
-      lblDefs.push({ price, title, color });
+      lines.push(candles.createPriceLine({ price, color, lineWidth: width, lineStyle: style, axisLabelVisible: true, title: showLabels ? title : '' }));
     };
     const legend = [];
     if (g && g.stance !== 'avoid'){
@@ -185,7 +168,6 @@ export function createChart(el, legendEl, infoEl){
     legend.push(['20선', C.ma20], ['60선', C.ma60]);
     if (legendEl) legendEl.innerHTML = legend.map(([t, c]) => `<span style="color:${c}">${t}</span>`).join('') +
       (lines.length ? `<button class="lbl-toggle${showLabels ? ' on' : ''}" data-lbl aria-pressed="${showLabels}">라벨 ${showLabels ? 'ON' : 'OFF'}</button>` : '');
-    requestAnimationFrame(placeLabels);
   }
   return { setData, tick, setGuide, refit, chart };
 }
