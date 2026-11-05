@@ -36,7 +36,7 @@ const maxH = (D, a, b) => { let v = -Infinity; for (let k = Math.max(0, a); k <=
 const minL = (D, a, b) => { let v = Infinity, at = -1; for (let k = Math.max(0, a); k <= b; k++) if (D[k].l < v){ v = D[k].l; at = k; } return { v, at }; };
 const avgV = (D, a, b) => { let s = 0, n = 0; for (let k = Math.max(0, a); k <= b; k++){ s += D[k].v; n++; } return n ? s / n : 0; };
 
-function prep(D){
+export function prep(D){
   const C = D.map(x => x.c);
   return { C, ma20: sma(C, 20), ma60: sma(C, 60), ma120: sma(C, 120), atr: atr(D) };
 }

@@ -29,7 +29,7 @@
       <button data-view="wiki" title="고른 종목의 위키 (오른쪽 분석 칸 아래)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 4h11l3 3v13H5z"/><path d="M9 10h6M9 14h6"/></svg>종목 위키</button>
       <button data-view="rebuy" title="재매수 후보"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12a8 8 0 0114-5l2 2M20 12a8 8 0 01-14 5l-2-2"/><path d="M20 4v5h-5M4 20v-5h5"/></svg>재매수</button>
       <button data-view="journal" title="거래일지"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18H6zM9 8h6M9 12h6"/></svg>거래일지</button>
-      <button disabled title="전략 설정·자동매매 — 준비 중 (PHASE 4~5)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="4"/></svg>전략</button>
+      <button data-view="strat" title="전략 검증 — 바닥 거래·눌림 매수를 과거 데이터로 돌려 보기, 급등 거래 적중률"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="4"/></svg>전략</button>
       <button data-view="assets" title="모의 계좌 · 보유 · 주문"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>자산</button>
       <button data-view="settings" title="설정"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>설정</button>
     </nav>
@@ -120,6 +120,11 @@
       <div class="body" id="inspBody"></div>
     </section>
 
+    <section class="panel" id="pStrat">
+      <header><h2>전략 검증</h2><div class="grow"></div><span class="muted">과거 일봉으로 같은 규칙을 돌려 봐요 · Esc로 돌아가기</span></header>
+      <div class="body" id="stratBody"></div>
+    </section>
+
     <!-- 폰 전용: 매매 화면 아래 칸 (호가 · 분석 · 소식 · 일별) -->
     <div class="m-only" id="mTrade"><div class="mtt" id="mtTabs"><button data-mt="book" class="on">호가</button><button data-mt="insp">분석</button><button data-mt="news">소식</button><button data-mt="day">일별</button></div></div>
     <section class="panel m-only" id="mNewsP"><div class="body" id="mNews"></div></section>
@@ -197,6 +202,8 @@
     <div id="mJBody"></div>
   </section>
 
+  <section class="m-page" data-p="strat"><div id="mStrat"></div></section>
+
   <!-- 업비트 소식 -->
   <section class="m-page" data-p="news"><div id="mNewsAll"><div class="empty">불러오는 중…</div></div></section>
 
@@ -216,6 +223,7 @@
       <button data-go="list" data-tab="recent">최근 본 종목</button>
       <button data-go="list" data-tab="rebuy">재매수 후보</button>
       <button data-act="scan">전체 스캔 다시 하기</button>
+      <button data-go="strat">전략 검증 <span class="muted">바닥·눌림·급등</span></button>
     </div>
     <div class="m-menu-g"><div class="m-menu-t">기록</div>
       <button data-go="journal">거래일지</button>

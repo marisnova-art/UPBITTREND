@@ -132,6 +132,8 @@ export function createPaper({ priceOf, remote }){
       st.brackets.push({ id: uid('b'), symbol, qty, entry, at: Date.now(), tpPct: tpPct || null, slPct: slPct || null,
         tp: tpPct > 0 ? entry * (1 + tpPct / 100) : null, sl: slPct > 0 ? entry * (1 - slPct / 100) : null, strategy, active: true });
       save(); },
+    // 모의 자금 추가: 현금과 시작 금액을 같이 늘림 (수익률이 부풀지 않게). 기록은 deposits에 쌓음
+    deposit(amount){ if (!(amount > 0)) return; st.cash += amount; st.start += amount; (st.deposits = st.deposits || []).push({ at: Date.now(), amount }); save(); },
     halt(on){ st.halted = on; if (on){ for (const o of st.orders) if (o.status === 'open') o.status = 'cancelled'; for (const b of st.brackets) if (b.active){ b.active = false; b.note = '긴급 정지'; } } save(); },
     // 모의 데이터 전부 삭제: 잔고·주문·예약·체결 기록을 이 기기에서 지우고, 지운 시각 이전 기록은 다시 안 보이게
     wipe(){ trades = []; st = { ...fresh(), resetAt: Date.now(), wipedAt: Date.now() }; st.savedAt = Date.now(); lastLocal = st.savedAt; LS.set(KEY, st); LS.set(TKEY, trades); ev.emit('change'); return st; },
