@@ -93,6 +93,7 @@ if (-not $AUTO){
   Write-Host '  2  파일로 저장하기 (직접 올리기용)'
   Write-Host ('  3  실시간 자동 올리기 ' + $(if (TaskOn) { '끄기' } else { '켜기 (PC 켜면 뒤에서 30초마다)' }))
   Write-Host '  4  저장된 키·연결 코드 지우기'
+  Write-Host '  5  연결 점검 (업비트 응답을 그대로 보여 줌)'
   $pick = (Read-Host '번호').Trim()
   if ($pick -eq '2'){ $mode = 'file' }
   elseif ($pick -eq '3'){
@@ -101,9 +102,10 @@ if (-not $AUTO){
     TaskInstall; Write-Host '실시간 자동 올리기를 켰어요. PC가 켜져 있는 동안 뒤에서 30초마다 새 체결을 올려요.' -ForegroundColor Green
     return
   }
+  elseif ($pick -eq '5'){ $script:diag = $true }
   elseif ($pick -eq '4'){ Remove-Item $keyFile, $codeFile, $stateFile -ErrorAction SilentlyContinue; TaskRemove; Write-Host '지웠어요. 다시 실행하면 처음부터 설정해요.'; return }
   if ($mode -eq 'push' -and -not $code){ $mode = 'file' }
-  if ($mode -eq 'push' -and -not (TaskOn) -and $pick -ne '3'){
+  if ($mode -eq 'push' -and -not (TaskOn) -and $pick -ne '3' -and -not $script:diag){
     if ((Read-Host '앞으로는 거래하면 저절로(30초 안에) 올라가게 켤까요? (y/n)') -match '^[yY]'){ TaskInstall; Write-Host '실시간 자동 올리기를 켰어요. 창을 닫아도 뒤에서 계속 돌아요.' -ForegroundColor Green }
   }
 } else {
@@ -115,7 +117,7 @@ if (-not $AUTO){
 
 # ---------- 기간: 지난번 이후 (하루 겹쳐서 받음, 중복은 서버가 건너뜀). 처음엔 묻거나 30일
 $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-if ($mode -eq 'file' -or -not $lastTo){
+if (($mode -eq 'file' -or -not $lastTo) -and -not $script:diag){
   if ($AUTO){ $days = 30 } else {
     $days = Read-Host '며칠치를 가져올까요? (엔터 = 30일, 최대 365)'
     if (-not ($days -as [int])){ $days = 30 }; $days = [Math]::Min([int]$days, 365)
@@ -140,8 +142,8 @@ function Call($path, $query){
       if ($msg -match 'no_authorization_ip'){ $ip = ''; try { $ip = (Invoke-RestMethod -Uri 'https://api.ipify.org' -TimeoutSec 5) } catch {}; throw "허용되지 않은 IP예요. 업비트 Open API 관리에서 이 PC의 공인 IP($ip)를 키의 허용 IP에 넣어 주세요." }
       if ($msg -match 'nonce_used'){ Start-Sleep -Milliseconds 300; continue }
       if ($msg -match 'out_of_scope'){ throw "키 권한이 부족해요. 자산조회·주문조회를 켜 주세요." }
-      if ($msg -match 'invalid_access_key'){ throw "Access Key가 맞지 않아요. 도우미를 실행해 4번(지우기) 후 다시 넣어 주세요." }
-      if ($msg -match 'jwt_verification'){ throw "Secret Key가 맞지 않아요. 도우미를 실행해 4번(지우기) 후 다시 넣어 주세요." }
+      if ($msg -match 'invalid_access_key'){ throw "Access Key가 맞지 않아요 ($path). 도우미 5번(연결 점검)으로 확인해 주세요. 업비트 응답: $msg" }
+      if ($msg -match 'jwt_verification'){ throw "Secret Key가 맞지 않아요 ($path). 도우미 5번(연결 점검)으로 확인해 주세요. 업비트 응답: $msg" }
       if ($msg -match 'expired_access_key'){ throw "업비트 키가 만료됐어요. 업비트에서 새로 발급해 주세요." }
       throw "업비트 오류: $msg $($_.Exception.Message)"
     }
@@ -230,6 +232,30 @@ function SyncOnce($from, $now){
   }
 }
 
+if ($script:diag){
+  Write-Host ''
+  Write-Host '--- 연결 점검 ---' -ForegroundColor Cyan
+  Write-Host ("저장된 Access Key: {0}… ({1}자, 보통 40자){2}" -f $access.Substring(0, [Math]::Min(6, $access.Length)), $access.Length, $(if ($access -match '\s') { ' · 빈칸이 섞여 있어요!' } else { '' }))
+  Write-Host ("저장된 Secret Key: {0}자 (보통 40자)" -f $secret.Length)
+  $ip = ''; try { $ip = (Invoke-RestMethod -Uri 'https://api.ipify.org' -TimeoutSec 5) } catch {}
+  Write-Host "이 PC의 공인 IP: $ip  (업비트 키의 허용 IP와 같아야 해요)"
+  Write-Host ("PowerShell {0} · Windows {1}" -f $PSVersionTable.PSVersion, [Environment]::OSVersion.Version)
+  foreach ($t in @(@('accounts', ''), @('orders/closed', 'state=done&limit=1'))){
+    $p = @{ access_key = $access; nonce = [guid]::NewGuid().ToString() }
+    if ($t[1]){ $p.query_hash = (($sha.ComputeHash($U8.GetBytes($t[1])) | ForEach-Object { $_.ToString('x2') }) -join ''); $p.query_hash_alg = 'SHA512' }
+    $h = (B64u $U8.GetBytes('{"alg":"HS512","typ":"JWT"}')) + '.' + (B64u $U8.GetBytes(($p | ConvertTo-Json -Compress)))
+    $jwt = $h + '.' + (B64u $hmac.ComputeHash($U8.GetBytes($h)))
+    $url = "https://api.upbit.com/v1/$($t[0])" + $(if ($t[1]) { "?$($t[1])" } else { '' })
+    try { $r = Invoke-WebRequest -UseBasicParsing -Uri $url -Headers @{ Authorization = "Bearer $jwt"; Accept = 'application/json' }; Write-Host ("{0}: 정상 ({1})" -f $t[0], $r.StatusCode) -ForegroundColor Green }
+    catch {
+      $m = "$($_.ErrorDetails.Message)"
+      if (-not $m){ try { $rs = $_.Exception.Response.GetResponseStream(); try { $rs.Position = 0 } catch {}; $m = (New-Object IO.StreamReader($rs)).ReadToEnd() } catch {} }
+      Write-Host ("{0}: 실패 {1} · 업비트 응답: {2}" -f $t[0], $_.Exception.Message, $m) -ForegroundColor Red
+    }
+  }
+  Write-Host '위 내용을 그대로 복사해서 보내 주세요. (키 전체는 표시하지 않아요)'
+  return
+}
 if ($AUTO){
   # 실시간: 처음엔 지난번 이후 전부, 그다음부턴 30초마다 최근 10분만 확인 (겹친 건 서버가 건너뜀)
   $fails = 0
