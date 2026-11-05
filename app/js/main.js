@@ -908,6 +908,7 @@ function setAcct(a){
   $$('#jAcct [data-acct]').forEach(b => b.classList.toggle('on', b.dataset.acct === a));
   recompute(); renderOrderForm(); renderJournal(); renderStatus(); applyGuideToChart(); if (S.tab === 'hold') renderWatch();
   if (isOrdersOpen()) renderOrders();
+  if (isHoldOpen()) renderHold();
 }
 const isOrdersOpen = () => !$('#ordBody').classList.contains('hidden');
 // 폰에서는 표를 카드로 보여 주려고 칸마다 머리글 이름을 붙임
@@ -974,6 +975,79 @@ paper.on('bracket', ({ bracket, kind, trade }) => {
   if ('Notification' in window && Notification.permission === 'granted') try { new Notification('모의 ' + (kind === 'tp' ? '익절' : '손절'), { body: msg, tag: 'quantera-paper-' + bracket.id, icon: './icons/icon-192.png' }); } catch(e){}
 });
 
+// ---------------------------------------------------------------- 보유 자산 (실제 | 모의)
+// 거래일지 기록으로 계산한 보유 수량·평단에 실시간 시세를 곱함. 줄을 누르면 그 종목 기록만 거래일지에서 보여 줌
+const isHoldOpen = () => !$('#holdBody').classList.contains('hidden');
+function holdData(){
+  recompute();
+  const led = S.ledger, isPaper = S.acct === 'paper';
+  const realizedBy = new Map(); let realized = 0;
+  for (const r of led.rows) if (r.realized != null){ realized += r.realized; realizedBy.set(r.symbol, (realizedBy.get(r.symbol) || 0) + r.realized); }
+  const pos = led.positions.map(p => { const cur = priceOf(p.symbol); const value = cur != null ? cur * p.qty : null;
+    return { ...p, cur, value, pnl: value != null ? value * (1 - FEE_RATE) - p.cost : null, pct: value != null ? (value * (1 - FEE_RATE) / p.cost - 1) * 100 : null, realized: realizedBy.get(p.symbol) || 0, chg: (S.quotes.get(upbit.toMarket(p.symbol)) || {}).changeRate }; });
+  const cost = pos.reduce((a, p) => a + p.cost, 0), value = pos.reduce((a, p) => a + (p.value || 0), 0), pnl = pos.reduce((a, p) => a + (p.pnl || 0), 0);
+  for (const p of pos) p.weight = value ? (p.value || 0) / value * 100 : 0;
+  pos.sort((a, b) => (b.value || 0) - (a.value || 0));
+  return { isPaper, pos, cost, value, pnl, pct: cost ? pnl / cost * 100 : 0, realized, cash: isPaper ? paper.state.cash : null, start: isPaper ? paper.state.start : null };
+}
+const signWon = v => (v > 0 ? '+' : '') + won(v) + '원';
+function holdSumHtml(H){
+  const it = (lab, val, cls = '') => `<div class="hs-it"><span class="muted">${lab}</span><b class="mono ${cls}">${val}</b></div>`;
+  return `<div class="hold-sum">
+    ${it(H.isPaper ? '모의 보유' : '보유', `${H.pos.length}종목`)}
+    ${it('매수금액', won(H.cost) + '원')}
+    ${it('평가금액', won(H.value) + '원')}
+    ${it('평가손익', signWon(H.pnl), toneOf(H.pnl))}
+    ${it('수익률', fmtPct(H.pct), toneOf(H.pct))}
+    ${it('누적 실현손익', signWon(H.realized), toneOf(H.realized))}
+    ${H.isPaper ? it('현금', won(H.cash) + '원') + it('총자산 수익률', fmtPct(((H.cash + H.value) / H.start - 1) * 100), toneOf(H.cash + H.value - H.start)) : ''}
+  </div>`;
+}
+function renderHold(){
+  const box = $('#holdBody'); if (!box) return;
+  if (S.acct !== 'paper' && !db.user){ box.innerHTML = '<div class="empty">로그인하면 보유 자산이 보여요.</div>'; return; }
+  const H = holdData();
+  const note = `<div class="note" style="padding:8px">${H.isPaper ? '모의 계좌 기준이에요. 모의 주문·예약 매도는 "주문" 탭에 있어요.' : '거래일지 기록(업비트에서 들어온 체결 + 기초 이월 + 직접 기록)으로 계산해요. 가져오기 전부터 있던 코인이 빠져 있으면 업비트 화면과 다를 수 있어요.'} 평가손익은 팔 때 수수료 ${FEE_RATE * 100}%를 뺀 값이에요.</div>`;
+  if (!H.pos.length){ box.innerHTML = holdSumHtml(H) + `<div class="empty">${H.isPaper ? '모의 보유 종목이 없어요.' : '지금 보유 중인 종목이 없어요.'}</div>` + note; return; }
+  box.innerHTML = holdSumHtml(H) + `<table class="ot hold-t"><thead><tr><th class="l">종목</th><th>보유 수량</th><th>평단</th><th>현재가</th><th>오늘</th><th>매수금액</th><th>평가금액</th><th>평가손익</th><th>수익률</th><th>비중</th><th>실현손익</th><th></th></tr></thead><tbody>
+    ${H.pos.map(p => `<tr class="sc-row" data-hm="${upbit.toMarket(p.symbol)}" data-hs="${esc(p.symbol)}">
+      <td class="l"><b class="hold-nm">${esc(nameOf(upbit.toMarket(p.symbol)))}</b> <span class="mono muted">${upbit.toMarket(p.symbol).replace('KRW-', '')}</span></td>
+      <td class="mono">${p.qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</td>
+      <td class="mono">${fmtPrice(p.avg)}</td>
+      <td class="mono ${toneOf(p.chg)}">${fmtPrice(p.cur)}</td>
+      <td class="mono ${toneOf(p.chg)}">${fmtPct(p.chg)}</td>
+      <td class="mono">${won(p.cost)}</td>
+      <td class="mono">${p.value != null ? won(p.value) : ''}</td>
+      <td class="mono ${toneOf(p.pnl)}">${p.pnl != null ? signWon(p.pnl) : ''}</td>
+      <td class="mono ${toneOf(p.pct)}">${p.pct != null ? fmtPct(p.pct) : ''}</td>
+      <td class="mono"><span class="wbar"><i style="width:${p.weight.toFixed(1)}%"></i></span>${p.weight.toFixed(1)}%</td>
+      <td class="mono ${toneOf(p.realized)}">${p.realized ? signWon(p.realized) : ''}</td>
+      <td><button data-hjournal="${esc(p.symbol)}">기록 보기</button></td></tr>`).join('')}
+  </tbody></table>` + note;
+  labelTables(box);
+}
+// 폰: 종목마다 큰 카드
+function mHoldHtml(){
+  if (S.acct !== 'paper' && !db.user) return '<div class="empty">로그인하면 보유 자산이 보여요.</div>';
+  const H = holdData();
+  const acct = UI.paperOn ? `<div class="m-chips"><button class="pill${S.acct !== 'paper' ? ' on' : ''}" data-macct="real">실제</button><button class="pill${S.acct === 'paper' ? ' on' : ''}" data-macct="paper">모의</button></div>` : '';
+  return acct + holdSumHtml(H) + (H.pos.length ? H.pos.map(p => { const m = upbit.toMarket(p.symbol); return `<button class="m-hcard" data-mm="${m}">
+      <div class="h1"><b>${esc(nameOf(m))}</b><span class="mono ${toneOf(p.pct)}">${p.pct != null ? fmtPct(p.pct) : ''}</span></div>
+      <div class="h2"><span class="mono ${toneOf(p.pnl)}">${p.pnl != null ? signWon(p.pnl) : ''}</span><span class="mono">${p.value != null ? won(p.value) + '원' : ''}</span></div>
+      <div class="h3 muted"><span>평단 <span class="mono">${fmtPrice(p.avg)}</span> → 현재 <span class="mono ${toneOf(p.chg)}">${fmtPrice(p.cur)}</span></span><span>비중 ${p.weight.toFixed(0)}%</span></div>
+    </button>`; }).join('') : `<div class="empty">${H.isPaper ? '모의 보유 종목이 없어요.' : '지금 보유 중인 종목이 없어요.'}</div>`);
+}
+function showJournalFor(sym){
+  S.jSym = sym;
+  if (PH.on){ mGo('journal'); return; }
+  $('#jTabs [data-j="journal"]').click();
+}
+setInterval(() => {
+  if (document.visibilityState !== 'visible') return;
+  if (isHoldOpen() && $('#holdBody').offsetParent) renderHold();
+  if (PH.on && PH.page === 'hold') $('#mHold').innerHTML = mHoldHtml();
+}, 3000);
+
 // ---------------------------------------------------------------- 거래일지
 function recompute(){
   S.ledgerReal = computeLedger(S.trades.filter(t => t.source !== 'paper'), priceOf);
@@ -987,13 +1061,14 @@ function renderJournal(){
 }
 function renderJournalRows(isPaper){
   recompute();
-  const rows = S.ledger.rows.slice().reverse();
+  let rows = S.ledger.rows.slice().reverse();
+  if (S.jSym) rows = rows.filter(r => r.symbol === S.jSym);
   renderStatus();
   const hidden = isPaper ? [] : (S.ledger.hidden || []).slice().reverse();
   if (isPaper && !rows.length){ $('#jBody').innerHTML = '<div class="empty">아직 모의 체결이 없어요. 오른쪽 주문 칸에서 모의 매수를 해 보세요.</div>'; $('#jSummary').textContent = ''; return; }
-  if (!rows.length && !hidden.length){ $('#jBody').innerHTML = `<div class="empty">${db.tablesOk === false ? '기록 테이블이 아직 없어요. Supabase에 PHASE 1 SQL을 실행하면 보여요.' : '아직 거래 기록이 없어요. 위 "기록 추가"로 직접 넣거나 "업비트 가져오기"를 쓰세요.'}</div>`; $('#jSummary').textContent = ''; return; }
+  if (!rows.length && !hidden.length && !S.jSym){ $('#jBody').innerHTML = `<div class="empty">${db.tablesOk === false ? '기록 테이블이 아직 없어요. Supabase에 PHASE 1 SQL을 실행하면 보여요.' : '아직 거래 기록이 없어요. 위 "기록 추가"로 직접 넣거나 "업비트 가져오기"를 쓰세요.'}</div>`; $('#jSummary').textContent = ''; return; }
   const realized = rows.reduce((s, r) => s + (r.realized || 0), 0);
-  $('#jSummary').innerHTML = `${rows.length}건 · 실현손익 <b class="mono ${toneOf(realized)}">${realized ? (realized > 0 ? '+' : '') + Math.round(realized).toLocaleString('ko-KR') : '0'}</b>${hidden.length ? ` · <button class="linkbtn" data-showhidden>지운 기록 ${hidden.length}건 ${S.showHidden ? '숨기기' : '보기'}</button>` : ''}`;
+  $('#jSummary').innerHTML = (S.jSym ? `<button class="pill sm on" data-jsym-clear title="모든 종목 보기">${esc(nameOf(upbit.toMarket(S.jSym)))}만 보는 중 ✕</button> ` : '') + `${rows.length}건 · 실현손익 <b class="mono ${toneOf(realized)}">${realized ? (realized > 0 ? '+' : '') + Math.round(realized).toLocaleString('ko-KR') : '0'}</b>${hidden.length ? ` · <button class="linkbtn" data-showhidden>지운 기록 ${hidden.length}건 ${S.showHidden ? '숨기기' : '보기'}</button>` : ''}`;
   const name = s => (S.byMarket.get(upbit.toMarket(s)) || {}).name || s;
   const src = { carry_over: '기초 이월', manual: '직접 입력', paper: '모의', upbit_import: '업비트', real: '실거래' };
   const when = t => new Date(t).toLocaleString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
@@ -1204,7 +1279,11 @@ function bindJournalEdit(){
       S.trades = await loadTrades(); recompute(); renderJournal(); renderStatus(); applyGuideToChart();
     }catch(err){ alert(err.message || String(err)); }
   });
-  $('#jSummary').addEventListener('click', e => { if (e.target.closest('[data-showhidden]')){ S.showHidden = !S.showHidden; renderJournal(); } });
+  $('#holdBody').addEventListener('click', e => {
+    const j = e.target.closest('[data-hjournal]'); if (j){ showJournalFor(j.dataset.hjournal); return; }
+    const r = e.target.closest('[data-hm]'); if (r){ if (document.body.dataset.view) setView('trade'); select(r.dataset.hm); }
+  });
+  $('#jSummary').addEventListener('click', e => { if (e.target.closest('[data-jsym-clear]')){ S.jSym = null; renderJournal(); return; } if (e.target.closest('[data-showhidden]')){ S.showHidden = !S.showHidden; renderJournal(); } });
 }
 // 숨김 = 대상을 가리키는 무효 기록을 하나 더 쌓음 (원래 기록은 그대로). 무효 기록을 숨기면 복구
 function hideTrade(t, why){
@@ -1354,7 +1433,8 @@ function bindUi(){
     const b = e.target.closest('[data-j]'); if (!b) return;
     $$('#jTabs .pill').forEach(x => x.classList.toggle('on', x === b));
     const j = b.dataset.j, news = j === 'news';
-    $('#jBody').classList.toggle('hidden', j !== 'journal'); $('#newsBody').classList.toggle('hidden', !news); $('#ordBody').classList.toggle('hidden', j !== 'orders'); $('#dayBody').classList.toggle('hidden', j !== 'day'); $('#jSummary').classList.toggle('hidden', j !== 'journal');
+    $('#jBody').classList.toggle('hidden', j !== 'journal'); $('#newsBody').classList.toggle('hidden', !news); $('#ordBody').classList.toggle('hidden', j !== 'orders'); $('#dayBody').classList.toggle('hidden', j !== 'day'); $('#holdBody').classList.toggle('hidden', j !== 'hold'); $('#jSummary').classList.toggle('hidden', j !== 'journal');
+    if (j === 'hold') renderHold();
     if (news) renderNews(); if (j === 'orders') renderOrders(); if (j === 'day'){ S.dayMonth = S.dayMonth || 0; renderDaily($('#dayBody')); }
     if (j === 'journal') renderJournal();
   });
@@ -1417,7 +1497,7 @@ function setView(v){
   S.wasScan = v === 'scan';
   if (v === 'rebuy') pickTab('rebuy');
   if (v === 'journal') $('#jTabs [data-j="journal"]').click();
-  if (v === 'assets') $('#jTabs [data-j="orders"]').click();
+  if (v === 'assets') $('#jTabs [data-j="hold"]').click();
   if (v === 'strat') renderStrat();
   if (v === 'wiki'){ const w = $('#wikiSec'); if (w){ w.open = true; LS.set('quantera:wikiOpen', true); requestAnimationFrame(() => w.scrollIntoView({ block: 'start' })); } }
   if (matchMedia('(max-width: 899px)').matches){
@@ -1760,7 +1840,7 @@ function bindMobile(){
 // PC는 HTS처럼 여러 칸을 한 화면에, 폰은 한 화면에 한 가지만 크게. 나머지는 ☰ 메뉴.
 // PC 칸에서 쓰던 요소(차트·호가·분석·거래일지)는 폰일 때 아래 화면으로 옮겨 그대로 씀.
 const PH = { page: 'home', tab: 'all', cp: LS.get('quantera:mCp', 'chart'), on: false };
-const M_TITLES = { home: 'QUANTERA', list: '종목', search: '종목 검색', journal: '거래일지', news: '업비트 소식', strat: '전략 검증' };
+const M_TITLES = { hold: '보유 자산', home: 'QUANTERA', list: '종목', search: '종목 검색', journal: '거래일지', news: '업비트 소식', strat: '전략 검증' };
 const M_TABS = [['all', '전체'], ['pullback', '눌림'], ['bottom', '바닥'], ['new', '신규'], ['recent', '최근'], ['rebuy', '재매수']];
 function initPhone(){
   if (!isPhone()) return;
@@ -1802,6 +1882,7 @@ function mShow(page, opt = {}){
   if (page === 'coin') mSetCp(PH.cp);
   if (page === 'journal') renderJournal();
   if (page === 'strat') renderStrat();
+  if (page === 'hold') $('#mHold').innerHTML = mHoldHtml();
   if (page === 'news') renderNews().then(() => { $('#mNewsAll').innerHTML = $('#newsBody').innerHTML; });
   mRender();
 }
@@ -1904,6 +1985,7 @@ function bindPhone(){
     const ack = e.target.closest('[data-ack-kind]'); if (ack){ ackKind(ack.dataset.ackKind); mRender(); return; }
     const star = e.target.closest('[data-mstar]');
     if (star){ const sym = star.dataset.mstar; S.watch = new Set(await setWatch(sym, !S.watch.has(sym))); mCoinHead(); return; }
+    const ma = e.target.closest('[data-macct]'); if (ma){ setAcct(ma.dataset.macct); $('#mHold').innerHTML = mHoldHtml(); return; }
     const mo = e.target.closest('[data-mo]'); if (mo){ openRec(mo.dataset.mo); return; }
     const act = e.target.closest('[data-act]');
     if (act){ mCloseMenu(); const a = act.dataset.act;
