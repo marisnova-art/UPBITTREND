@@ -25,7 +25,7 @@ let UI = { paperOn: false, sparkDays: 30, ...(LS.get(UI_KEY, {}) || {}) };
 const S = {
   instruments: [], byMarket: new Map(), quotes: new Map(), results: new Map(),
   watch: new Set(), trades: [], ledger: { rows: [], positions: [], rebuy: [] },
-  tab: 'fav', sdOpen: null, search: '', sel: null, tf: '1d', stream: null, scanning: null,
+  tab: 'fav', sdTab: LS.get('quantera:sdTab', 'surge'), search: '', sel: null, tf: '1d', stream: null, scanning: null,
   firstSeen: LS.get('quantera:firstSeen', null),
   acct: UI.paperOn ? LS.get('quantera:acct', 'paper') : 'real',
   ledgerReal: { rows: [], positions: [], rebuy: [] }, ledgerPaper: { rows: [], positions: [], rebuy: [] }
@@ -192,47 +192,56 @@ function notifySurge(ms, isDump){
 function ackSurge(m){
   if (m){ unseen.delete(m); unseenDump.delete(m); } else { unseen.clear(); unseenDump.clear(); }
   for (const row of $$('.wl-row.blink', $('#wlBody'))) if (!unseen.has(row.dataset.m) && !unseenDump.has(row.dataset.m)) row.classList.remove('blink');
-  renderSurgeBar();
+  renderSurgeBar(); renderSdDrop(true);
 }
 // 위쪽 검색 옆 고정 칩: [● 급등 N 이름 외] [● 급락 N] + 확인 · 30분 끄기. 누르면 아래로 목록
 const sdNm = m => (S.byMarket.get(m) || {}).name || m;
 const sdList = kind => { const src = kind === 'dump' ? dump : surge; return [...src.events.keys()].sort((a, b) => src.get(b).at - src.get(a).at); };
+function ackKind(kind){ (kind === 'dump' ? unseenDump : unseen).clear(); for (const row of $$('.wl-row.blink', $('#wlBody'))) if (!unseen.has(row.dataset.m) && !unseenDump.has(row.dataset.m)) row.classList.remove('blink'); renderSurgeBar(); renderSdDrop(true); }
 function renderSurgeBar(){
   const box = $('#sdChips'); if (!box) return;
   const muted = surgeMuted();
   const chip = (kind, label, cls, fresh) => {
     const ms = sdList(kind), n = ms.length;
-    return `<button class="sd-chip ${cls}${n ? ' has' : ''}${fresh ? ' new' : ''}${S.sdOpen === kind ? ' open' : ''}" data-sd="${kind}" title="${label} 목록 보기"><span class="dot-live"></span>${label} ${n}${n ? `<span class="sd-nm">${esc(sdNm(ms[0]))}${n > 1 ? ' 외' : ''}</span>` : ''}</button>`;
+    return `<button class="sd-chip ${cls}${n ? ' has' : ''}${fresh ? ' new' : ''}${S.sdTab === kind ? ' open' : ''}" data-sd="${kind}" title="${label} 목록 보기"><span class="dot-live"></span>${label} ${n}${n ? `<span class="sd-nm">${esc(sdNm(ms[0]))}${n > 1 ? ' 외' : ''}</span>` : ''}</button>`;
   };
   const up = muted ? 0 : [...unseen].filter(m => surge.events.has(m)).length;
   const dn = muted ? 0 : [...unseenDump].filter(m => dump.events.has(m)).length;
   box.innerHTML = chip('surge', '급등', 'up', up) + chip('dump', '급락', 'dn', dn)
     + `<button class="pill sm" data-surge-ack${up || dn ? '' : ' disabled'}>확인</button>`
     + (muted ? `<button class="pill sm on-warn" data-mute="0" title="${muteText()}">알림 켜기</button>` : `<button class="pill sm" data-mute="30" title="30분 동안 소리·팝업 끄기 (감지·목록은 계속)">30분 끄기</button>`);
-  if (S.sdOpen) renderSdDrop();
+  renderSdDrop();
 }
+// 종목 목록 아래 급등 · 급락 칸 (탭 2개). 위쪽 칩을 누르면 이 칸의 해당 탭으로
 let sdKey = '';
 function renderSdDrop(force){
-  const d = $('#sdDrop'); if (!d) return;
-  if (!S.sdOpen){ d.classList.add('hidden'); return; }
-  const kind = S.sdOpen, src = kind === 'dump' ? dump : surge, ms = sdList(kind);
-  const key = kind + ms.join() + surgeMuted() + (kind === 'surge' ? surge.log().length + '|' + surge.tracking.size : '');
-  if (!force && key === sdKey && !d.classList.contains('hidden')){
-    for (const el of $$('[data-ago]', d)){ const e = src.get(el.dataset.ago); if (e) el.textContent = surgeText(el.dataset.ago, e); }
+  const d = $('#sdDock'); if (!d) return;
+  const key = sdList('surge').join() + '|' + sdList('dump').join() + surgeMuted() + [...unseen].join() + [...unseenDump].join() + surge.log().length + '|' + surge.tracking.size;
+  if (!force && key === sdKey){
+    for (const el of $$('[data-ago]', d)){ const src = el.dataset.k === 'dump' ? dump : surge, e = src.get(el.dataset.ago); if (e) el.textContent = surgeText(el.dataset.ago, e); }
+    for (const el of $$('[data-px]', d)){ const q = S.quotes.get(el.dataset.px) || {}; el.className = `mono sd-px ${toneOf(q.changeRate)}`; el.innerHTML = `${fmtPrice(q.price)}<br>${fmtPct(q.changeRate)}`; }
     return;
   }
   sdKey = key;
-  const rows = ms.map(m => { const q = S.quotes.get(m) || {}, e = src.get(m), fresh = (kind === 'dump' ? unseenDump : unseen).has(m);
-    return `<button class="sd-row${fresh ? (kind === 'dump' ? ' blink-dn' : ' blink') : ''}" data-sdm="${m}"><span class="sd-n">${esc(sdNm(m))}</span><span class="muted" data-ago="${m}">${surgeText(m, e)}</span><span class="grow"></span><span class="mono ${toneOf(q.changeRate)}">${fmtPrice(q.price)} ${fmtPct((q.changeRate || 0) * 100)}</span></button>`; }).join('');
-  d.innerHTML = `<div class="sd-head"><span class="${kind === 'dump' ? 'down' : 'up'}">${kind === 'dump' ? '급락' : '급등'} ${ms.length}</span><span class="grow"></span><button class="pill sm" data-sd-close>닫기</button></div>`
-    + muteCtlHtml() + (rows || `<div class="empty">지금 잡힌 ${kind === 'dump' ? '급락' : '급등'}이 없어요. 앱이 켜져 있는 동안 1초마다 검사해요.</div>`)
-    + (kind === 'surge' ? surgeStatsHtml() : '');
-  d.classList.remove('hidden');
+  const sec = (kind, label, cls) => {
+    const src = kind === 'dump' ? dump : surge, ms = sdList(kind), un = kind === 'dump' ? unseenDump : unseen;
+    const rows = ms.map(m => { const q = S.quotes.get(m) || {}, e = src.get(m);
+      return `<button class="sd-row${un.has(m) ? (kind === 'dump' ? ' blink-dn' : ' blink') : ''}" data-sdm="${m}"><span class="sd-l"><span class="sd-n">${esc(sdNm(m))}</span><span class="muted" data-k="${kind}" data-ago="${m}">${surgeText(m, e)}</span></span><span class="mono sd-px ${toneOf(q.changeRate)}" data-px="${m}">${fmtPrice(q.price)}<br>${fmtPct(q.changeRate)}</span></button>`; }).join('');
+    const nNew = surgeMuted() ? 0 : ms.filter(m => un.has(m)).length;
+    const mute = surgeMuted() ? `<button class="pill sm on-warn" data-mute="0" title="${muteText()}">알림 켜기</button>` : `<button class="pill sm" data-mute="30" title="30분 동안 급등·급락 소리·팝업 끄기 (감지·목록은 계속)">30분 끄기</button>`;
+    return `<section class="sd-sec k-${cls}" id="sdSec-${kind}"><div class="sd-dhead${nNew ? (kind === 'dump' ? ' blink-dn' : ' blink') : ''}"><span class="sd-ttl ${ms.length ? cls : 'muted'}">● ${label} ${ms.length}${nNew ? ` <span class="sd-new">새 ${nNew}</span>` : ''}</span><span class="grow"></span><button class="pill sm" data-ack-kind="${kind}"${nNew ? '' : ' disabled'}>확인</button>${mute}</div>
+      <div class="sd-dbody">${rows || `<div class="empty">지금 잡힌 ${label}이 없어요.</div>`}${kind === 'surge' ? surgeStatsHtml() : ''}</div></section>`;
+  };
+  d.innerHTML = sec('surge', '급등', 'up') + sec('dump', '급락', 'down');
 }
 function toggleSd(kind){
-  S.sdOpen = S.sdOpen === kind ? null : kind;
+  S.sdTab = kind; LS.set('quantera:sdTab', kind);
   if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
+  if (isPhone()){ $('#mBellBtn').click(); return; }
+  if (document.body.dataset.view) setView('trade');
+  const p = $('#pSurge'); if (p && p.classList.contains('collapsed')) { const c = $('[data-collapse="surge"]'); if (c) c.click(); }
   renderSurgeBar(); renderSdDrop(true);
+  const d = $('#sdSec-' + kind); if (d){ d.classList.remove('flash'); void d.offsetWidth; d.classList.add('flash'); }
 }
 setInterval(() => {
   const fresh = surge.check(S.quotes), freshDn = dump.check(S.quotes), cfg = allCfg();
@@ -251,7 +260,7 @@ setInterval(() => {
   if (fresh.length || freshDn.length || key !== lastSurgeKey) renderSurgeBadges();
   if (key !== lastSurgeKey) renderSurgeBar();
   lastSurgeKey = key;
-  if (S.sdOpen) renderSdDrop();
+  renderSdDrop();
 }, 1000);
 function surgeText(m, e){
   const q = S.quotes.get(m) || {}, since = q.price && e.pAt ? (q.price / e.pAt - 1) * 100 : 0;
@@ -1260,14 +1269,14 @@ function bindUi(){
   $('#wlBody').addEventListener('toggle', e => { if (e.target.classList && e.target.classList.contains('surge-stats')) LS.set(e.target.hasAttribute('data-bt') ? 'quantera:btStatsOpen' : 'quantera:surgeStatsOpen', e.target.open); }, true);
   $('#sdWrap').addEventListener('click', e => {
     if (e.target.closest('[data-surge-ack]')) return ackSurge();
-    if (e.target.closest('[data-sd-close]')){ S.sdOpen = null; renderSurgeBar(); renderSdDrop(); return; }
     const c = e.target.closest('[data-sd]'); if (c) return toggleSd(c.dataset.sd);
-    const r = e.target.closest('[data-sdm]');
-    if (r){ const m = r.dataset.sdm; ackSurge(m); S.sdOpen = null; renderSdDrop(); renderSurgeBar(); if (document.body.dataset.view) setView('trade'); select(m); if (isPhone()) setMobile('trade'); }
   });
-  $('#sdDrop').addEventListener('toggle', e => { if (e.target.classList && e.target.classList.contains('surge-stats')) LS.set('quantera:surgeStatsOpen', e.target.open); }, true);
-  document.addEventListener('pointerdown', e => { if (S.sdOpen && !e.target.closest('#sdWrap')){ S.sdOpen = null; renderSdDrop(); renderSurgeBar(); } });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.sdOpen){ S.sdOpen = null; renderSdDrop(); renderSurgeBar(); } });
+  $('#sdDock').addEventListener('click', e => {
+    const k = e.target.closest('[data-ack-kind]'); if (k){ ackKind(k.dataset.ackKind); return; }
+    const r = e.target.closest('[data-sdm]');
+    if (r){ const m = r.dataset.sdm; ackSurge(m); renderSdDrop(true); select(m); if (isPhone()) setMobile('trade'); }
+  });
+  $('#sdDock').addEventListener('toggle', e => { if (e.target.classList && e.target.classList.contains('surge-stats')) LS.set('quantera:surgeStatsOpen', e.target.open); }, true);
   $('#wlBody').addEventListener('click', async e => {
     const st = e.target.closest('[data-star]');
     if (st){ e.stopPropagation(); const sym = st.dataset.star; const on = !S.watch.has(sym); S.watch = new Set(await setWatch(sym, on)); renderWatch(); return; }

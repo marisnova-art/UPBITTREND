@@ -23,7 +23,17 @@
   <header class="topbar">
     <div class="logo"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C6F432" stroke-width="2.4" aria-hidden="true"><path d="M4 17l5-6 4 4 7-9"/></svg></i>QUANTERA</div>
     <input class="search" id="search" type="search" placeholder="종목 검색 (이름 · 코드 · 초성 아님)" autocomplete="off">
-    <div class="sd-wrap" id="sdWrap"><div class="sd-chips" id="sdChips" role="status"></div><div class="sd-drop hidden" id="sdDrop"></div></div>
+    <nav class="rail" aria-label="메뉴">
+      <button class="on" data-view="trade" title="트레이딩"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16M8 15l4-5 3 3 5-6"/></svg>트레이딩</button>
+      <button data-view="scan" title="스캐너"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4-4"/></svg>스캐너</button>
+      <button data-view="wiki" title="고른 종목의 위키 (오른쪽 분석 칸 아래)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 4h11l3 3v13H5z"/><path d="M9 10h6M9 14h6"/></svg>종목 위키</button>
+      <button data-view="rebuy" title="재매수 후보"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12a8 8 0 0114-5l2 2M20 12a8 8 0 01-14 5l-2-2"/><path d="M20 4v5h-5M4 20v-5h5"/></svg>재매수</button>
+      <button data-view="journal" title="거래일지"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18H6zM9 8h6M9 12h6"/></svg>거래일지</button>
+      <button disabled title="전략 설정·자동매매 — 준비 중 (PHASE 4~5)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="4"/></svg>전략</button>
+      <button data-view="assets" title="모의 계좌 · 보유 · 주문"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>자산</button>
+      <button data-view="settings" title="설정"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>설정</button>
+    </nav>
+    <div class="sd-wrap" id="sdWrap"><div class="sd-chips" id="sdChips" role="status"></div></div>
     <div class="grow"></div>
     <div class="chips">
       <span class="hide-m" id="exchangeChip">업비트 · 원화</span>
@@ -37,16 +47,6 @@
     </div>
   </header>
 
-  <nav class="rail" aria-label="메뉴">
-    <button class="on" data-view="trade" title="트레이딩"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16M8 15l4-5 3 3 5-6"/></svg>트레이딩</button>
-    <button data-view="scan" title="스캐너"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4-4"/></svg>스캐너</button>
-    <button data-view="wiki" title="고른 종목의 위키 (오른쪽 분석 칸 아래)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 4h11l3 3v13H5z"/><path d="M9 10h6M9 14h6"/></svg>종목 위키</button>
-    <button data-view="rebuy" title="재매수 후보"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12a8 8 0 0114-5l2 2M20 12a8 8 0 01-14 5l-2-2"/><path d="M20 4v5h-5M4 20v-5h5"/></svg>재매수</button>
-    <button data-view="journal" title="거래일지"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18H6zM9 8h6M9 12h6"/></svg>거래일지</button>
-    <button disabled title="전략 설정·자동매매 — 준비 중 (PHASE 4~5)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="4"/></svg>전략</button>
-    <button data-view="assets" title="모의 계좌 · 보유 · 주문"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>자산</button>
-    <button data-view="settings" title="설정"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>설정</button>
-  </nav>
 
   <main class="desk" id="desk">
     <!-- 관심 목록 -->
@@ -66,6 +66,14 @@
       <div class="scanbar"><button class="pill" id="scanBtn">전체 스캔</button><div class="progress"><i id="scanProg"></i></div><span id="scanText">대기</span></div>
     </section>
     <div class="split" data-split="watch"></div>
+
+    <!-- 급등 (위) · 급락 (아래) -->
+    <section class="panel" id="pSurge" data-panel="surge">
+      <header><h2>급등 · 급락</h2><span class="help" data-tip="앱이 켜져 있는 동안 1초마다 모든 코인을 검사해요.&#10;짧은 시간에 거래가 평소보다 크게 몰리면서 오르면 급등, 내리면 급락.&#10;종목을 누르면 차트가 열려요.">?</span><div class="grow"></div><button class="iconbtn collapse" data-collapse="surge" aria-label="접기">‹</button></header>
+      <span class="vlabel">급등 · 급락</span>
+      <div class="sd-dock" id="sdDock"></div>
+    </section>
+    <div class="split" data-split="surge"></div>
 
     <!-- 가운데: 차트 + 거래일지 -->
     <div class="center" id="colCenter">
