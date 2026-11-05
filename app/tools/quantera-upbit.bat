@@ -38,9 +38,9 @@ function Unseal([string]$t){ Plain (ConvertTo-SecureString $t) }
 
 # ---------- 저장된 키·코드
 $access = $null; $secret = $null; $code = $null
-if (Test-Path $keyFile){ try { $l = Get-Content $keyFile; $access = $l[0]; $secret = Unseal $l[1] } catch { $access = $null } }
-if (Test-Path $codeFile){ try { $code = Unseal ((Get-Content $codeFile)[0]) } catch { $code = $null } }
-$lastTo = 0; if (Test-Path $stateFile){ try { $lastTo = [int64](Get-Content $stateFile)[0] } catch { $lastTo = 0 } }
+if (Test-Path $keyFile){ try { $l = @(Get-Content $keyFile); $access = $l[0]; $secret = Unseal $l[1] } catch { $access = $null } }
+if (Test-Path $codeFile){ try { $code = Unseal (@(Get-Content $codeFile)[0]) } catch { $code = $null } }
+$lastTo = 0; if (Test-Path $stateFile){ try { $lastTo = [int64]@(Get-Content $stateFile)[0] } catch { $lastTo = 0 } }
 
 function TaskOn(){ try { return [bool](Get-ScheduledTask -TaskName $TASK -ErrorAction SilentlyContinue) } catch { return $false } }
 function TaskInstall(){
@@ -107,7 +107,7 @@ if (-not $AUTO){
     if ((Read-Host '앞으로는 거래하면 저절로(30초 안에) 올라가게 켤까요? (y/n)') -match '^[yY]'){ TaskInstall; Write-Host '실시간 자동 올리기를 켰어요. 창을 닫아도 뒤에서 계속 돌아요.' -ForegroundColor Green }
   }
 } else {
-  if (-not $access -or -not $code){ Log '자동 실행: 키나 연결 코드가 없어 건너뜀'; return }
+  if (-not $access -or -not $code){ Log ('자동 실행: ' + $(if (-not $access) { '업비트 키' } else { '연결 코드' }) + '를 못 읽어 건너뜀. bat를 다시 실행해 주세요.'); return }
   # 한 번에 하나만 (1시간마다 확인할 때 이미 돌고 있으면 바로 끝냄)
   $script:mx = New-Object Threading.Mutex($false, 'Local\QUANTERA_Upbit_Watch')
   try { if (-not $script:mx.WaitOne(0)){ return } } catch [Threading.AbandonedMutexException] {}
