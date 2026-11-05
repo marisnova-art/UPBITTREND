@@ -159,7 +159,25 @@ function Push($chunk){
   }
 }
 
+# 업비트 잔고(보유 코인·평단)를 체결과 같이 30초마다 올림 → QUANTERA 보유 자산이 업비트와 똑같이 보임
+$script:balAt = 0; $script:balWarned = $false
+function PushBalances(){
+  $t = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+  if ($t - $script:balAt -lt 25000){ return }
+  try {
+    $acc = @(Call 'accounts' '')
+    $body = @{ p_code = $code; p_accounts = $acc } | ConvertTo-Json -Depth 6 -Compress
+    $null = Invoke-RestMethod -Method Post -Uri "$SB_URL/rest/v1/rpc/q_upbit_balances_push" -Headers @{ apikey = $SB_KEY; Authorization = "Bearer $SB_KEY" } -ContentType 'application/json; charset=utf-8' -Body ($U8.GetBytes($body))
+    $script:balAt = $t; $script:balWarned = $false
+    Say ("업비트 잔고 {0}종 올림" -f $acc.Count)
+  } catch {
+    $script:balAt = $t + 270000   # 실패하면 5분 뒤 다시
+    if (-not $script:balWarned){ Log ("잔고 올리기 실패: " + $_.Exception.Message + " " + "$($_.ErrorDetails.Message)"); $script:balWarned = $true }
+  }
+}
+
 function SyncOnce($from, $now){
+  if ($mode -ne 'file'){ PushBalances }
   Say '업비트에서 체결 내역 확인 중…'
   $accounts = @()
   if ($mode -eq 'file'){ $accounts = @(Call 'accounts' '') }

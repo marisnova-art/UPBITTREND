@@ -12,7 +12,7 @@ import { loadNews, newsFor, newsHtml } from './news.js';
 import { createChart } from './ui/chart.js';
 import { initTips, BAR_TIPS } from './ui/tips.js';
 import { initLayout, apply as applyLayout } from './ui/layout.js';
-import { db, initDb, login, logout, loadWatchlist, setWatch, loadTrades, lastTradeId, importTrades, loadNotes, addNote, localLayout, saveLayout, remoteLayout, paperRemote, resetPrefsCache, uiRemote, upbitLinks, addTrade } from './db.js';
+import { db, initDb, login, logout, loadWatchlist, setWatch, loadTrades, lastTradeId, loadBalances, importTrades, loadNotes, addNote, localLayout, saveLayout, remoteLayout, paperRemote, resetPrefsCache, uiRemote, upbitLinks, addTrade } from './db.js';
 import { createPaper } from './paper.js';
 import { importMeta, toRow } from './upbitPrivate.js';
 import { FEE_RATE } from './analysis/ledger.js';
@@ -112,6 +112,7 @@ async function onAuth(user){
   const ui = await uiRemote.load(); if (ui) setUi(ui, { noSave: true });
   const pr = await paperRemote.load(); if (pr) paper.merge(pr.state, pr.trades);
   recompute(); renderWatch(); analyzeList([...S.watch, ...S.ledger.positions.map(p => p.symbol)].map(upbit.toMarket));
+  loadBal();
 }
 
 // ---------------------------------------------------------------- 실시간
@@ -988,7 +989,7 @@ function holdData(){
   const cost = pos.reduce((a, p) => a + p.cost, 0), value = pos.reduce((a, p) => a + (p.value || 0), 0), pnl = pos.reduce((a, p) => a + (p.pnl || 0), 0);
   for (const p of pos) p.weight = value ? (p.value || 0) / value * 100 : 0;
   pos.sort((a, b) => (b.value || 0) - (a.value || 0));
-  return { isPaper, pos, cost, value, pnl, pct: cost ? pnl / cost * 100 : 0, realized, cash: isPaper ? paper.state.cash : null, start: isPaper ? paper.state.start : null };
+  return { isPaper, fromUpbit: !isPaper && !!(led.positions[0] && led.positions[0].fromUpbit), pos, cost, value, pnl, pct: cost ? pnl / cost * 100 : 0, realized, cash: isPaper ? paper.state.cash : null, start: isPaper ? paper.state.start : null };
 }
 const signWon = v => (v > 0 ? '+' : '') + won(v) + '원';
 function holdSumHtml(H){
@@ -1007,7 +1008,7 @@ function renderHold(){
   const box = $('#holdBody'); if (!box) return;
   if (S.acct !== 'paper' && !db.user){ box.innerHTML = '<div class="empty">로그인하면 보유 자산이 보여요.</div>'; return; }
   const H = holdData();
-  const note = `<div class="note" style="padding:8px">${H.isPaper ? '모의 계좌 기준이에요. 모의 주문·예약 매도는 "주문" 탭에 있어요.' : '거래일지 기록(업비트에서 들어온 체결 + 기초 이월 + 직접 기록)으로 계산해요. 가져오기 전부터 있던 코인이 빠져 있으면 업비트 화면과 다를 수 있어요.'} 평가손익은 팔 때 수수료 ${FEE_RATE * 100}%를 뺀 값이에요.</div>`;
+  const note = `<div class="note" style="padding:8px">${H.isPaper ? '모의 계좌 기준이에요. 모의 주문·예약 매도는 "주문" 탭에 있어요.' : (H.fromUpbit ? `업비트 잔고 기준이에요 (PC 도우미가 30초마다 올림 · ${new Date(S.bal.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })} 확인). 평단은 업비트 평단이에요.` : '거래일지 기록으로 계산했어요. PC 도우미(새 버전)가 업비트 잔고를 올리면 업비트와 똑같이 맞춰져요.')} 평가손익은 팔 때 수수료 ${FEE_RATE * 100}%를 뺀 값이에요.</div>`;
   if (!H.pos.length){ box.innerHTML = holdSumHtml(H) + `<div class="empty">${H.isPaper ? '모의 보유 종목이 없어요.' : '지금 보유 중인 종목이 없어요.'}</div>` + note; return; }
   box.innerHTML = holdSumHtml(H) + `<table class="ot hold-t"><thead><tr><th class="l">종목</th><th>보유 수량</th><th>평단</th><th>현재가</th><th>오늘</th><th>매수금액</th><th>평가금액</th><th>평가손익</th><th>수익률</th><th>비중</th><th>실현손익</th><th></th></tr></thead><tbody>
     ${H.pos.map(p => `<tr class="sc-row" data-hm="${upbit.toMarket(p.symbol)}" data-hs="${esc(p.symbol)}">
@@ -1049,8 +1050,52 @@ setInterval(() => {
 }, 3000);
 
 // ---------------------------------------------------------------- 거래일지
+// 업비트 잔고(도우미가 5분마다 올림)가 있으면 실제 보유는 잔고 기준. 5,000원 미만 먼지는 뺌
+let balMark = null;
+function balPositions(){
+  if (!S.bal || Date.now() - Date.parse(S.bal.at) > 2 * 86400000) return null;
+  const out = [];
+  for (const a of S.bal.accounts || []){
+    if (a.currency === 'KRW' || (a.unit_currency && a.unit_currency !== 'KRW')) continue;
+    const symbol = upbit.toSymbol('KRW-' + a.currency), qty = +a.balance + +(a.locked || 0), avg = +a.avg_buy_price || 0;
+    const cur = priceOf(symbol), px = cur || avg;
+    if (!(qty > 0) || qty * px < 5000) continue;
+    const cost = qty * avg, value = cur != null ? cur * qty : null;
+    out.push({ symbol, qty, avg, cost, value, pnl: value != null ? value * (1 - FEE_RATE) - cost : null, fromUpbit: true });
+  }
+  return out;
+}
+async function loadBal(){
+  if (!db.user) return;
+  const b = await loadBalances(); if (!b || b.at === balMark) return;
+  balMark = b.at; S.bal = b;
+  recompute(); await reconcileCarry();
+  renderStatus(); if (S.tab === 'hold') renderWatch(); if (isHoldOpen()) renderHold(); if (PH.on && PH.page === 'hold') $('#mHold').innerHTML = mHoldHtml();
+}
+// 기록상 수량이 업비트 잔고보다 많고 그 종목에 "기초 이월"이 있으면 → 중복된 이월을 지운 기록으로 (원본은 남고 복구 가능)
+let reconciling = false;
+async function reconcileCarry(){
+  if (reconciling || !S.ledgerReal.positionsRec) return;
+  reconciling = true; let n = 0;
+  try{
+    const bal = new Map((balPositions() || []).map(p => [p.symbol, p.qty]));
+    for (const p of S.ledgerReal.positionsRec){
+      const px = priceOf(p.symbol) || p.avg; let excess = p.qty - (bal.get(p.symbol) || 0);
+      if (excess * px < 5000) continue;
+      const carries = S.ledgerReal.rows.filter(r => r.symbol === p.symbol && r.source === 'carry_over' && r.id != null).sort((a, b) => Date.parse(b.executed_at) - Date.parse(a.executed_at));
+      for (const c of carries){
+        if (c.qty > excess * 1.001 + 1e-9) continue;
+        if (await hideTrade(c, '업비트 잔고와 맞춤: 실제 체결이 들어와 중복된 기초 이월')){ excess -= c.qty; n++; }
+        if (excess * px < 5000) break;
+      }
+    }
+    if (n){ S.trades = await loadTrades(); recompute(); renderJournal(); toast(`업비트 잔고에 맞춰 중복된 기초 이월 ${n}건을 지운 기록으로 옮겼어요. (거래일지 > 지운 기록에서 복구 가능)`); }
+  }catch(e){ /* 다음에 다시 */ }
+  reconciling = false;
+}
 function recompute(){
   S.ledgerReal = computeLedger(S.trades.filter(t => t.source !== 'paper'), priceOf);
+  const bp = balPositions(); S.ledgerReal.positionsRec = S.ledgerReal.positions; if (bp) S.ledgerReal.positions = bp;
   S.ledgerPaper = computeLedger(paper.trades, priceOf);
   S.ledger = S.acct === 'paper' ? S.ledgerPaper : S.ledgerReal;
 }
@@ -1324,6 +1369,7 @@ async function reloadTrades(force){
   }
 }
 setInterval(() => { if (document.visibilityState === 'visible') reloadTrades(); }, 15000);
+setInterval(() => { if (document.visibilityState === 'visible') loadBal(); }, 15000);
 setInterval(() => { if ((db.user && S.trades.length) || paper.trades.length) renderJournal(); if (isOrdersOpen()) renderOrders(); }, 15000);
 
 
