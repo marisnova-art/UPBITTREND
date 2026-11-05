@@ -65,6 +65,12 @@ export async function setWatch(symbol, on){
 }
 
 // ---------- 거래 기록 (읽기 + 추가만)
+// 새 기록이 있는지 가볍게 확인 (가장 큰 id 하나만)
+export async function lastTradeId(){
+  if (!online()) return null;
+  try { const r = await q(() => db.client.from('q_trades').select('id').order('id', { ascending: false }).limit(1)); return r && r[0] ? r[0].id : 0; }
+  catch(e){ return null; }
+}
 export async function loadTrades(){
   if (!online()) return [];
   try { return await q(() => db.client.from('q_trades').select('*').order('executed_at', { ascending: true }).limit(5000)); }

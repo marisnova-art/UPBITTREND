@@ -11,7 +11,7 @@ import { loadNews, newsFor, newsHtml } from './news.js';
 import { createChart } from './ui/chart.js';
 import { initTips, BAR_TIPS } from './ui/tips.js';
 import { initLayout, apply as applyLayout } from './ui/layout.js';
-import { db, initDb, login, logout, loadWatchlist, setWatch, loadTrades, importTrades, loadNotes, addNote, localLayout, saveLayout, remoteLayout, paperRemote, resetPrefsCache, uiRemote, upbitLinks, addTrade } from './db.js';
+import { db, initDb, login, logout, loadWatchlist, setWatch, loadTrades, lastTradeId, importTrades, loadNotes, addNote, localLayout, saveLayout, remoteLayout, paperRemote, resetPrefsCache, uiRemote, upbitLinks, addTrade } from './db.js';
 import { createPaper } from './paper.js';
 import { importMeta, toRow } from './upbitPrivate.js';
 import { FEE_RATE } from './analysis/ledger.js';
@@ -1146,14 +1146,25 @@ function renderStatus(){
   for (const b of [$('#estop'), $('#estopM')]) if (b){ b.classList.toggle('on', halted); b.textContent = halted ? (b.id === 'estopM' ? '긴급 정지 중 · 눌러서 해제' : '정지 중 · 해제') : (b.id === 'estopM' ? '긴급 정지 · 모의 주문 전체 멈춤' : '긴급 정지'); }
 }
 const won = v => Math.round(v).toLocaleString('ko-KR');
-// 도우미가 올린 업비트 체결을 앱이 켜져 있는 동안에도 반영 (5분마다, 앱으로 돌아올 때)
-async function reloadTrades(){
+// 도우미가 올린 업비트 체결을 바로 반영: 15초마다 가장 큰 id만 확인하고, 바뀌었을 때만 다시 읽음
+let tradeMark = null;
+async function reloadTrades(force){
   if (!db.user) return;
-  const t = await loadTrades(); if (!t || t.length === S.trades.length && (t[t.length - 1] || {}).id === (S.trades[S.trades.length - 1] || {}).id) return;
-  const before = S.trades.length; S.trades = t; recompute(); renderJournal(); renderStatus();
-  if (t.length > before && before) toast(`새 기록 ${t.length - before}건이 들어왔어요.`, 'up');
+  const mark = await lastTradeId(); if (mark == null) return;
+  const known = S.trades.reduce((m, t) => Math.max(m, +t.id || 0), 0);
+  if (!force && mark === tradeMark && mark <= known) return;
+  tradeMark = mark;
+  if (!force && mark <= known) return;
+  const t = await loadTrades(); if (!t || !t.length) return;
+  const fresh = known ? t.filter(x => +x.id > known && x.source === 'upbit_import' && !x.voids_trade_id) : [];
+  S.trades = t; recompute(); renderJournal(); renderStatus(); applyGuideToChart();
+  if (fresh.length){
+    const f = fresh[fresh.length - 1];
+    toast(`업비트 체결 ${fresh.length}건이 들어왔어요 · ${nameOf(upbit.toMarket(f.symbol))} ${f.side === 'buy' ? '매수' : '매도'} ${fmtPrice(f.price)}`, 'up');
+    beep('one');
+  }
 }
-setInterval(() => { if (document.visibilityState === 'visible') reloadTrades(); }, 300000);
+setInterval(() => { if (document.visibilityState === 'visible') reloadTrades(); }, 15000);
 setInterval(() => { if ((db.user && S.trades.length) || paper.trades.length) renderJournal(); if (isOrdersOpen()) renderOrders(); }, 15000);
 
 
@@ -1417,7 +1428,7 @@ function appCfgHtml(){
     <label>모의 데이터<span class="row-btns"><button type="button" class="pill sm danger" data-wipe>전부 삭제</button></span></label>
     ${connCfgHtml()}`;
 }
-// 업비트 연결 코드: 앱에서 만들고 PC 도우미에 한 번 넣으면, 도우미가 1시간마다 새 체결을 바로 올림
+// 업비트 연결 코드: 앱에서 만들고 PC 도우미에 한 번 넣으면, 도우미가 30초마다 새 체결을 바로 올림
 let connState = { list: null, fresh: '' };
 function connCfgHtml(){
   const L = connState.list;

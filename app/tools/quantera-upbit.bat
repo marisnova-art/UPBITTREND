@@ -12,12 +12,14 @@ exit /b
 # - 이 PC에서 업비트 API를 직접 부르고(업비트 키는 PC 밖으로 안 나감), 체결 내역을
 #   1) 연결 코드가 있으면 QUANTERA 거래일지에 바로 올리고, 2) 없으면 파일로 저장합니다.
 # - 업비트 키·연결 코드는 Windows 사용자 계정으로 암호화해 %APPDATA%\QUANTERA 에 둡니다.
-# - 자동 실행: Windows 작업 스케줄러에 1시간마다 + 켤 때 등록 (창 없이 조용히, 기록은 helper-log.txt)
+# - 자동 실행: PC에 로그인하면 창 없이 뒤에서 계속 돌며 30초마다 새 체결을 확인해 바로 올림
+#   (작업 스케줄러: 로그인할 때 + 1시간마다 살아 있는지 확인. 기록은 helper-log.txt)
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 $U8 = New-Object System.Text.UTF8Encoding($false)
 $AUTO = ($env:QAUTO -eq '1')
+$WATCH_SEC = 30
 $SB_URL = 'https://owrtvchfcrpiwielyqvo.supabase.co'
 $SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im93cnR2Y2hmY3JwaXdpZWx5cXZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NzcxODMsImV4cCI6MjEwNTI1MzE4M30.gLS438ACEIb9H_Art1HicRomcZO3CT0ctfpau93fPoc'
 $TASK = 'QUANTERA Upbit'
@@ -47,15 +49,23 @@ function TaskInstall(){
   [IO.File]::WriteAllText($ps1, $src.Substring($src.IndexOf('#PS'+'START')), (New-Object System.Text.UTF8Encoding($true)))
   $vbs = 'Set s = CreateObject("WScript.Shell")' + "`r`n" + 's.Environment("PROCESS")("QAUTO") = "1"' + "`r`n" + 's.Run "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""' + $ps1 + '""", 0, False'
   [IO.File]::WriteAllText($launcher, $vbs, [Text.Encoding]::Unicode)
+  WatchStop
   $act = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('"' + $launcher + '"')
-  $t1 = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(2)) -RepetitionInterval (New-TimeSpan -Hours 1)
+  # 로그인할 때 시작 + 1시간마다 살아 있는지 확인 (이미 돌고 있으면 새로 뜬 쪽이 바로 끝남)
+  $t1 = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(1)) -RepetitionInterval (New-TimeSpan -Hours 1)
   $trig = @($t1)
   try { $trig += New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME" } catch {}
-  $set = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
-  try { Register-ScheduledTask -TaskName $TASK -Action $act -Trigger $trig -Settings $set -Description 'QUANTERA: 업비트 체결을 1시간마다 거래일지에 올림' -Force | Out-Null }
-  catch { Register-ScheduledTask -TaskName $TASK -Action $act -Trigger $t1 -Settings $set -Description 'QUANTERA: 업비트 체결을 1시간마다 거래일지에 올림' -Force | Out-Null }
+  $set = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
+  $desc = 'QUANTERA: 업비트 체결을 30초마다 확인해 거래일지에 바로 올림'
+  try { Register-ScheduledTask -TaskName $TASK -Action $act -Trigger $trig -Settings $set -Description $desc -Force | Out-Null }
+  catch { Register-ScheduledTask -TaskName $TASK -Action $act -Trigger $t1 -Settings $set -Description $desc -Force | Out-Null }
+  try { Start-Process wscript.exe -ArgumentList ('"' + $launcher + '"') } catch {}   # 지금 바로 뒤에서 시작
 }
-function TaskRemove(){ try { Unregister-ScheduledTask -TaskName $TASK -Confirm:$false -ErrorAction SilentlyContinue } catch {} }
+# 뒤에서 돌고 있는 도우미 멈추기
+function WatchStop(){
+  try { Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -like '*quantera-upbit.ps1*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } } catch {}
+}
+function TaskRemove(){ try { Unregister-ScheduledTask -TaskName $TASK -Confirm:$false -ErrorAction SilentlyContinue } catch {}; WatchStop }
 
 # ---------- 처음 설정 / 메뉴 (자동 실행일 땐 건너뜀)
 $mode = 'push'
@@ -75,27 +85,32 @@ if (-not $AUTO){
     $c = (Read-Host '연결 코드').Trim()
     if ($c){ $code = $c; Set-Content -Path $codeFile -Value @(Seal $code); Write-Host '연결 코드를 저장했어요.' }
   } else { Write-Host '연결 코드: 저장됨' }
-  Write-Host ("자동 실행(1시간마다): " + $(if (TaskOn) { '켜짐' } else { '꺼짐' }))
+  # 예전 버전(1시간마다)으로 켜 둔 경우 새 버전(실시간)으로 바꿔 둠
+  if ((TaskOn) -and $code){ TaskInstall }
+  Write-Host ("실시간 자동 올리기: " + $(if (TaskOn) { '켜짐 (PC가 켜져 있는 동안 30초마다)' } else { '꺼짐' }))
   Write-Host ''
   Write-Host '  1  지금 가져와서 거래일지에 올리기 (엔터)'
   Write-Host '  2  파일로 저장하기 (직접 올리기용)'
-  Write-Host ('  3  자동 실행 ' + $(if (TaskOn) { '끄기' } else { '켜기 (1시간마다 + PC 켤 때)' }))
+  Write-Host ('  3  실시간 자동 올리기 ' + $(if (TaskOn) { '끄기' } else { '켜기 (PC 켜면 뒤에서 30초마다)' }))
   Write-Host '  4  저장된 키·연결 코드 지우기'
   $pick = (Read-Host '번호').Trim()
   if ($pick -eq '2'){ $mode = 'file' }
   elseif ($pick -eq '3'){
     if (TaskOn){ TaskRemove; Write-Host '자동 실행을 껐어요.' -ForegroundColor Yellow; return }
     if (-not $code){ Write-Host '자동 실행은 연결 코드가 있어야 해요. 4번으로 지운 뒤 다시 실행해 코드를 넣어 주세요.' -ForegroundColor Yellow; return }
-    TaskInstall; Write-Host '자동 실행을 켰어요. 1시간마다, 그리고 PC를 켤 때 조용히 올려요.' -ForegroundColor Green
-    Write-Host '지금 한 번 바로 올릴게요.'
+    TaskInstall; Write-Host '실시간 자동 올리기를 켰어요. PC가 켜져 있는 동안 뒤에서 30초마다 새 체결을 올려요.' -ForegroundColor Green
+    return
   }
   elseif ($pick -eq '4'){ Remove-Item $keyFile, $codeFile, $stateFile -ErrorAction SilentlyContinue; TaskRemove; Write-Host '지웠어요. 다시 실행하면 처음부터 설정해요.'; return }
   if ($mode -eq 'push' -and -not $code){ $mode = 'file' }
   if ($mode -eq 'push' -and -not (TaskOn) -and $pick -ne '3'){
-    if ((Read-Host '1시간마다 자동으로 올리도록 켤까요? (y/n)') -match '^[yY]'){ TaskInstall; Write-Host '자동 실행을 켰어요.' -ForegroundColor Green }
+    if ((Read-Host '앞으로는 거래하면 저절로(30초 안에) 올라가게 켤까요? (y/n)') -match '^[yY]'){ TaskInstall; Write-Host '실시간 자동 올리기를 켰어요. 창을 닫아도 뒤에서 계속 돌아요.' -ForegroundColor Green }
   }
 } else {
   if (-not $access -or -not $code){ Log '자동 실행: 키나 연결 코드가 없어 건너뜀'; return }
+  # 한 번에 하나만 (1시간마다 확인할 때 이미 돌고 있으면 바로 끝냄)
+  $script:mx = New-Object Threading.Mutex($false, 'Local\QUANTERA_Upbit_Watch')
+  try { if (-not $script:mx.WaitOne(0)){ return } } catch [Threading.AbandonedMutexException] {}
 }
 
 # ---------- 기간: 지난번 이후 (하루 겹쳐서 받음, 중복은 서버가 건너뜀). 처음엔 묻거나 30일
@@ -142,7 +157,7 @@ function Push($chunk){
   }
 }
 
-try {
+function SyncOnce($from, $now){
   Say '업비트에서 체결 내역 확인 중…'
   $accounts = @()
   if ($mode -eq 'file'){ $accounts = @(Call 'accounts' '') }
@@ -189,9 +204,24 @@ try {
       $added += [int]$r.added
     }
     Set-Content -Path $stateFile -Value @([string]$now)
-    Log ("올림: 확인한 체결 {0}건 중 새로 {1}건 추가" -f $full.Count, $added)
-    Say 'QUANTERA 거래일지를 새로 고치면 보여요.' 'Green'
+    $script:lastTo = $now
+    if ($added -gt 0 -or -not $AUTO){ Log ("올림: 확인한 체결 {0}건 중 새로 {1}건 추가" -f $full.Count, $added) }
+    Say 'QUANTERA 거래일지에 바로 보여요.' 'Green'
   }
+}
+
+if ($AUTO){
+  # 실시간: 처음엔 지난번 이후 전부, 그다음부턴 30초마다 최근 10분만 확인 (겹친 건 서버가 건너뜀)
+  $fails = 0
+  while ($true){
+    $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    try { SyncOnce $from $now; $fails = 0; $from = $now - 600000 }
+    catch { $fails++; if ($fails -le 3 -or $fails % 60 -eq 0){ Log ("실패: " + $_.Exception.Message) } }
+    Start-Sleep -Seconds $(if ($fails -gt 3) { 300 } else { $WATCH_SEC })
+  }
+}
+try {
+  SyncOnce $from $now
 } catch {
   Log ("실패: " + $_.Exception.Message)
   if (-not $AUTO){ Write-Host $_.Exception.Message -ForegroundColor Red }
