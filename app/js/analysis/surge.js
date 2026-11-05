@@ -13,7 +13,9 @@ export const SURGE_DEFAULTS = {
   surgeMinValue: 2e7,    // 그 시간 거래대금이 최소 이만큼(원) — 아주 작은 코인 잡음 제거
   surgeKeepMin: 30,      // 잡힌 뒤 이 시간(분) 동안 목록에 남김
   surgeAlarm: true,      // 소리 알람
-  surgeRepeat: 5,        // 확인 전까지 이 간격(초)으로 계속 울림
+  surgeRepeat: 15,       // 확인 전까지 이 간격(초)으로 계속 울림
+  alarmVol: 40,          // 알람 소리 크기 (0~100)
+  dumpOn: true,          // 급락도 감지 (같은 기준, 가격이 그만큼 내림)
   surgeCombos: '1/1, 2/2, 2/5, 3/3',   // 익절%/손절% 조합
   surgeTimeoutMin: 30,   // 이 시간(분) 안에 둘 다 안 닿으면 '시간 종료'로 그때 가격 기록
   surgeFeePct: 0.1,      // 왕복 수수료(%)
@@ -25,11 +27,13 @@ const LOG_KEY = 'quantera:surgeLog';
 export const parseCombos = s => String(s || '').split(',').map(x => x.trim().split('/').map(Number))
   .filter(([tp, sl]) => tp > 0 && sl > 0).slice(0, 6);
 
-export function createSurge(getCfg){
+// dir = 1 급등, -1 급락 (같은 거래대금 기준, 가격 방향만 반대). 급락은 적중률 추적 없음
+export function createSurge(getCfg, dir = 1){
   const hist = new Map();      // market → [{ ts, acc, p }]  (1초에 한 칸)
   const events = new Map();    // market → { at, last, p0, pAt, pct, ratio, value }
   const tracking = new Map();  // market → 적중률 추적 중인 기록
-  let log = LS.get(LOG_KEY, []) || [];
+  const logKey = dir > 0 ? LOG_KEY : 'quantera:dumpLog';
+  let log = LS.get(logKey, []) || [];
 
   function push(q){
     if (q.accDay == null || !q.price) return;
@@ -64,7 +68,7 @@ export function createSurge(getCfg){
       hi: +((r.hi / r.entry - 1) * 100).toFixed(2), lo: +((r.lo / r.entry - 1) * 100).toFixed(2),
       trials: r.trials.map(({ tp, sl, res, ret, sec }) => ({ tp, sl, res, ret, sec })) });
     if (log.length > 500) log = log.slice(-500);
-    LS.set(LOG_KEY, log);
+    LS.set(logKey, log);
   }
 
   // 1초마다 호출. 새로 잡힌 코인 목록을 돌려줌.
@@ -80,14 +84,16 @@ export function createSurge(getCfg){
       const value = last.acc - b.acc;
       const normal = q.value24h / 86400000 * el;
       const ratio = value / normal, pct = (last.p / b.p - 1) * 100;
-      if (!(ratio >= c.surgeVol && value >= c.surgeMinValue && (c.surgePct <= 0 || pct >= c.surgePct))) continue;
+      if (dir < 0 && !c.dumpOn) continue;
+      const pOk = dir > 0 ? (c.surgePct <= 0 || pct >= c.surgePct) : pct <= -Math.max(c.surgePct, 0.5);
+      if (!(ratio >= c.surgeVol && value >= c.surgeMinValue && pOk)) continue;
       const ev = events.get(m);
       if (!ev){
         events.set(m, { at: now, last: now, p0: b.p, pAt: last.p, pct, ratio, value }); fresh.push(m);
-        if (!tracking.has(m)) tracking.set(m, { m, at: now, entry: last.p, hi: last.p, lo: last.p, ratio, pct,
+        if (dir > 0 && !tracking.has(m)) tracking.set(m, { m, at: now, entry: last.p, hi: last.p, lo: last.p, ratio, pct,
           trials: parseCombos(c.surgeCombos).map(([tp, sl]) => ({ tp, sl, res: null })) });
       }
-      else { ev.last = now; ev.pct = Math.max(ev.pct, pct); ev.ratio = Math.max(ev.ratio, ratio); ev.value = Math.max(ev.value, value); }
+      else { ev.last = now; ev.pct = dir > 0 ? Math.max(ev.pct, pct) : Math.min(ev.pct, pct); ev.ratio = Math.max(ev.ratio, ratio); ev.value = Math.max(ev.value, value); }
     }
     for (const [m, e] of events) if (now - e.last > c.surgeKeepMin * 60000) events.delete(m);
     // 거래가 끊긴 코인도 시간 종료 처리
@@ -108,7 +114,7 @@ export function createSurge(getCfg){
   }
 
   return { push, check, events, get: m => events.get(m), stats, log: () => log, tracking,
-    clearLog(){ log = []; LS.set(LOG_KEY, log); } };
+    clearLog(){ log = []; LS.set(logKey, log); } };
 }
 
 export const agoKo = ms => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? `${s}초 전` : s < 3600 ? `${Math.floor(s / 60)}분 전` : `${Math.floor(s / 3600)}시간 전`; };

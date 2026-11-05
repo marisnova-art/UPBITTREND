@@ -18,7 +18,7 @@
 <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js" defer></script>
 <script type="module" src="./js/main.js"></script>
 </head>
-<body data-m="home">
+<body data-m="list" data-mt="book">
 <div id="surgeBar" class="surge-bar hidden" role="alert"></div>
 <div class="app">
   <header class="topbar">
@@ -27,7 +27,11 @@
     <div class="grow"></div>
     <div class="chips">
       <span class="hide-m" id="exchangeChip">업비트 · 원화</span>
-      <span><span class="dot" id="wsDot"></span> <span id="wsText">연결 중</span></span>
+      <span class="ws-chip"><span class="dot" id="wsDot"></span> <span id="wsText">연결 중</span></span>
+      <button class="iconbtn sound-btn" data-sound></button>
+      <button class="iconbtn show-m" id="mSearchBtn" aria-label="종목 검색"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4-4"/></svg></button>
+      <button class="iconbtn show-m bell" id="mBellBtn" aria-label="알림"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4z"/><path d="M10 21h4"/></svg><i id="bellN"></i></button>
+      <button class="iconbtn show-m" id="mCfgBtn" aria-label="설정"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg></button>
       <button class="pill accent hidden" id="installBtn">앱 설치</button>
       <button class="pill ghost" id="loginBtn">로그인</button>
     </div>
@@ -57,6 +61,7 @@
         <button class="pill" data-tab="pullback">눌림</button>
         <button class="pill" data-tab="bottom">바닥</button>
         <button class="pill" data-tab="surge">급등</button>
+        <button class="pill" data-tab="dump">급락</button>
         <button class="pill" data-tab="new">신규</button>
       </div>
       <div class="body" id="wlBody"></div>
@@ -83,8 +88,9 @@
       </section>
       <div class="split h" data-split="journal"></div>
       <section class="panel" id="pJournal" data-panel="journal">
-        <header><div class="tabs" id="jTabs" style="border:0;padding:0"><button class="pill on" data-j="journal">거래일지</button><button class="pill" data-j="orders">주문</button><button class="pill" data-j="news">업비트 소식</button></div><span class="muted" id="jSummary"></span><div class="grow"></div><button class="pill ghost sm" id="upImportBtn" data-tip="업비트 실제 체결을 거래일지로 가져와요 (조회 전용 키)">업비트 가져오기</button><button class="iconbtn collapse" data-collapse="journal" aria-label="접기">⌄</button></header>
+        <header><div class="tabs" id="jTabs" style="border:0;padding:0"><button class="pill on" data-j="journal">거래일지</button><button class="pill" data-j="day">일별</button><button class="pill" data-j="orders">주문</button><button class="pill" data-j="news">업비트 소식</button></div><span class="muted" id="jSummary"></span><div class="grow"></div><button class="pill sm" id="jAddBtn" data-tip="매수·매도를 직접 적어 넣어요 (업비트에 없는 거래, 다른 거래소 등)">＋ 기록 추가</button><button class="pill ghost sm" id="upImportBtn" data-tip="업비트 실제 체결을 거래일지로 가져와요 (조회 전용 키)">업비트 가져오기</button><button class="iconbtn collapse" data-collapse="journal" aria-label="접기">⌄</button></header>
         <div class="body" id="jBody"></div>
+        <div class="body hidden" id="dayBody"></div>
         <div class="body hidden" id="ordBody"></div>
         <div class="body hidden" id="newsBody"><div class="empty">불러오는 중…</div></div>
       </section>
@@ -107,12 +113,10 @@
       <div class="body" id="inspBody"></div>
     </section>
 
-    <!-- 모바일 전용: 알림 -->
-    <section class="panel" id="pAlerts">
-      <header><h2>업비트 소식</h2><div class="grow"></div><span class="muted" style="font-size:12px">가격 알림은 다음 단계</span></header>
-      <div class="body" id="alertBody"><div class="empty">불러오는 중…</div></div>
-      <div class="sec" style="border:0"><button class="estop" id="estopM" style="width:100%;height:48px">긴급 정지 · 모의 주문 전체 멈춤</button></div>
-    </section>
+    <!-- 폰 전용: 매매 화면 아래 칸 (호가 · 분석 · 소식 · 일별) -->
+    <div class="m-only" id="mTrade"><div class="mtt" id="mtTabs"><button data-mt="book" class="on">호가</button><button data-mt="insp">분석</button><button data-mt="news">소식</button><button data-mt="day">일별</button></div></div>
+    <section class="panel m-only" id="mNewsP"><div class="body" id="mNews"></div></section>
+    <section class="panel m-only" id="mDayP"><div class="body" id="mDay"></div></section>
   </main>
 
   <footer class="statusbar">
@@ -127,18 +131,19 @@
   </footer>
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
+  <div class="m-orderbar" id="mOrderBar"><button class="buy" data-mo="buy">모의 매수</button><button class="sell" data-mo="sell">모의 매도</button></div>
+  <div class="m-sheet-bg" id="mSheetBg"></div>
   <nav class="mtabs" aria-label="하단 메뉴">
-    <button class="on" data-m="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11l8-7 8 7v9H4z"/></svg>홈</button>
-    <button data-m="chart"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16M8 15l4-5 3 3 5-6"/></svg>종목</button>
-    <button data-m="alerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4z"/></svg>알림</button>
-    <button data-m="journal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18H6zM9 8h6M9 12h6"/></svg>일지</button>
+    <button class="on" data-m="list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>종목</button>
+    <button data-m="trade"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16M8 15l4-5 3 3 5-6"/></svg>매매</button>
+    <button data-m="journal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18H6zM9 8h6M9 12h6"/></svg>거래</button>
   </nav>
 </div>
 
 <dialog id="cfgDlg" style="width:min(520px,calc(100vw - 32px))">
   <form method="dialog" id="cfgForm">
-    <h2>매수 검토 기준</h2>
-    <p>숫자를 바꾸면 바로 다시 계산해요. 이 기기에 저장돼요.</p>
+    <h2>설정</h2>
+    <p>매수 검토 기준 숫자는 바꾸면 바로 다시 계산해요(이 기기에 저장). 화면·기록 설정은 계정에 저장돼요.</p>
     <div id="cfgBody" class="cfg"></div>
     <div class="row"><button class="pill ghost" value="reset" id="cfgReset" formnovalidate>기본값</button><div style="flex:1"></div><button class="pill ghost" value="cancel" formnovalidate>닫기</button><button class="pill accent" value="save">저장</button></div>
   </form>
@@ -147,16 +152,44 @@
 <dialog id="upDlg" style="width:min(500px,calc(100vw - 32px))">
   <form method="dialog" id="upForm">
     <h2>업비트 실제 거래 가져오기</h2>
-    <p>업비트는 웹페이지에서 바로 오는 개인 API 요청을 막아요. 그래서 <b>PC 도우미</b>가 업비트에서 거래내역을 받아 파일로 저장하고, 그 파일을 여기에 올리는 방식이에요. 키와 기록은 PC 밖으로 나가지 않아요.</p>
+    <p>업비트는 웹페이지에서 바로 오는 개인 API 요청을 막아요. 그래서 <b>PC 도우미</b>(Windows 프로그램)가 업비트에서 체결 내역을 받아 올려요. 업비트 키는 PC 밖으로 나가지 않아요.</p>
     <ol class="up-steps">
       <li><b>키 만들기</b> · 업비트 &gt; 마이페이지 &gt; Open API 관리에서 <b>자산조회·주문조회만</b> 켜요(주문하기·출금은 끄기). 허용 IP에는 도우미를 돌릴 PC의 IP를 넣어요<span id="upIp"></span>.</li>
-      <li><b>도우미 받기</b> · <a href="./tools/quantera-upbit.bat" download="quantera-upbit.bat" class="linkbtn">quantera-upbit.bat</a> (Windows) 을 받아 더블클릭해요. 처음 한 번 키를 넣고, 며칠치를 가져올지 정해요. "Windows의 PC 보호" 창이 뜨면 추가 정보 &gt; 실행을 눌러요.</li>
-      <li><b>파일 올리기</b> · 만들어진 <span class="mono">quantera-upbit-날짜.json</span> 을 아래에서 골라요. 이미 가져온 주문은 다시 넣지 않아요.</li>
+      <li><b>연결 코드 만들기</b> · <button type="button" class="linkbtn" id="upOpenCfg">설정 &gt; 업비트 자동 올리기</button>에서 "코드 만들기"를 눌러요(자동 복사).</li>
+      <li><b>도우미 받기</b> · <a href="./tools/quantera-upbit.bat" download="quantera-upbit.bat" class="linkbtn">quantera-upbit.bat</a> 을 받아 더블클릭해요. 처음 한 번 업비트 키와 연결 코드를 넣고, 자동 실행을 켜면 <b>1시간마다 + PC를 켤 때</b> 알아서 올려요. "Windows의 PC 보호" 창이 뜨면 추가 정보 &gt; 실행.</li>
     </ol>
+    <p class="muted small" style="margin-top:-4px">직접 올리기: 도우미에서 2번(파일로 저장)을 고르면 <span class="mono">quantera-upbit-날짜.json</span> 이 생겨요. 아래에서 골라 올리면 돼요. 어느 쪽이든 같은 주문은 다시 넣지 않아요.</p>
     <label class="up-file"><input type="file" id="upFile" accept=".json,application/json"><span id="upFileName">파일 고르기</span></label>
     <label class="up-row"><input type="checkbox" id="upCarry" checked><span>업비트 잔고와 기록 수량이 다르면 차이만큼 "기초 이월"로 맞추기</span></label>
     <div class="msg" id="upMsg"></div>
     <div class="row"><div style="flex:1"></div><button class="pill ghost" value="cancel" formnovalidate>닫기</button><button class="pill accent" value="go" id="upGo">가져오기</button></div>
+  </form>
+</dialog>
+
+<dialog id="bellDlg" class="sheet">
+  <form method="dialog">
+    <div class="sheet-h"><h2>알림</h2><div style="flex:1"></div><button class="pill ghost sm" value="close">닫기</button></div>
+    <div id="bellBody"></div>
+    <h3 class="sheet-sub">업비트 소식</h3>
+    <div id="alertBody"><div class="empty">불러오는 중…</div></div>
+  </form>
+</dialog>
+
+<dialog id="addDlg" style="width:min(440px,calc(100vw - 32px))">
+  <form method="dialog" id="addForm" class="addf" autocomplete="off">
+    <h2 id="addTitle">기록 추가</h2>
+    <p>잔고·보유와 상관없이 자유롭게 적어요. 거래일지(실제 기록)에 들어가고 손익이 자동으로 계산돼요.</p>
+    <input type="hidden" name="side" value="buy">
+    <div class="seg"><button type="button" class="buy" data-aside="buy">매수</button><button type="button" class="sell" data-aside="sell">매도</button></div>
+    <label>종목<input name="sym" list="addSyms" placeholder="이름이나 코드 (예: 비트코인, BTC)"></label>
+    <datalist id="addSyms"></datalist>
+    <label>가격 (원)<input name="price" inputmode="decimal" placeholder="1개 가격"></label>
+    <div class="two"><label>수량<input name="qty" inputmode="decimal" placeholder="수량"></label><label>또는 금액 (원)<input name="amount" inputmode="numeric" placeholder="총 금액"></label></div>
+    <label>날짜 · 시간<input name="at" type="datetime-local"></label>
+    <label>수수료 (원, 없으면 비워 두기) <button type="button" class="linkbtn" data-autofee>0.05% 넣기</button><input name="fee" inputmode="decimal" placeholder="0"></label>
+    <label>메모 (판단 이유)<input name="memo" placeholder="왜 샀는지 / 팔았는지"></label>
+    <div class="msg" id="addMsg"></div>
+    <div class="row"><div style="flex:1"></div><button class="pill ghost" value="cancel" formnovalidate>닫기</button><button class="pill accent" value="go" id="addGo">저장</button></div>
   </form>
 </dialog>
 

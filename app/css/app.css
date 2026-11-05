@@ -42,6 +42,17 @@ a{color:var(--accent)} a:hover{color:#E1FF7A}
 .help:hover{color:var(--text);border-color:var(--muted)}
 .wl-row .bar[data-tip]{cursor:help}
 .badge.surge{background:var(--up);color:#fff}
+.badge.dump{background:#2A6BFF;color:#fff}
+#wlTabs [data-tab="dump"][data-n]:not([data-n=""])::after{color:var(--down)}
+@keyframes qblinkdn{0%,100%{background:transparent}50%{background:rgba(76,141,255,.22)}}
+.wl-row.blink-dn{animation:qblinkdn 1s steps(2,jump-none) infinite}
+#wlTabs .pill.blink-dn{animation:qblinkdn 1s infinite;border-color:var(--down)}
+.sound-btn.off{color:var(--muted);opacity:.7}
+.sound-btn svg,.iconbtn svg{width:18px;height:18px}
+.show-m{display:none!important}
+.sb-part{display:flex;align-items:center;gap:8px;border:0;background:transparent;color:var(--text);padding:0 4px;font-size:var(--f-m)}
+.sb-part.dn b{color:var(--down)} .sb-part.dn .dot-live{background:var(--down);box-shadow:0 0 8px var(--down);animation:qblinkdn 1s infinite}
+.surge-bar.only-dn{background:#0b1220;border-color:var(--down)}
 #wlTabs [data-n]:not([data-n=""])::after{content:attr(data-n);margin-left:4px;font-size:10px;color:var(--up);font-weight:700}
 .surge-txt{color:var(--text-2)}
 .surge-stats{margin:4px 8px 8px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;font-size:var(--f-s)}
@@ -155,12 +166,15 @@ a{color:var(--accent)} a:hover{color:#E1FF7A}
 
 /* 호가·주문 */
 .ob{font-size:var(--f-s)}
-.ob-row{display:grid;grid-template-columns:1fr 1fr;height:24px;align-items:center;position:relative}
-.ob-row span{position:relative;z-index:1;padding:0 10px}
-.ob-row .sz{text-align:right}
-.ob-row i{position:absolute;top:2px;bottom:2px;right:0;z-index:0;border-radius:4px}
-.ob-row.ask i{background:rgba(76,141,255,.13)} .ob-row.bid i{background:rgba(240,68,82,.13)}
-.ob-row.ask .p{color:var(--down)} .ob-row.bid .p{color:var(--up)}
+.ob-row{display:grid;grid-template-columns:1.3fr 1fr;height:20px;align-items:center;position:relative}
+.ob-row span{position:relative;z-index:1;padding:0 10px;white-space:nowrap}
+.ob-row .sz{text-align:right;color:var(--text-2)}
+.ob-row i{position:absolute;top:2px;bottom:2px;right:0;z-index:0;border-radius:3px}
+.ob-row.ask{background:rgba(240,68,82,.045)} .ob-row.bid{background:rgba(76,141,255,.045)}
+.ob-row.ask i{background:rgba(240,68,82,.16)} .ob-row.bid i{background:rgba(76,141,255,.16)}
+.ob-row.bid:first-of-type,.ob-row.ask+.ob-row.bid{border-top:1px solid var(--line-2)}
+.ob-row.cur{outline:1.5px solid var(--text);outline-offset:-1.5px;border-radius:3px;font-weight:600}
+.ob-row .p em{font-style:normal;font-size:11px;margin-left:6px;font-weight:500}
 .ob-mid{height:30px;display:flex;align-items:center;justify-content:center;gap:8px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);font-size:var(--f-m)}
 .order{padding:12px;display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line)}
 .order .seg{display:grid;grid-template-columns:1fr 1fr;gap:6px}
@@ -249,6 +263,41 @@ details.sec[open] summary::after{content:'–'}
 .jt th.l,.jt td.l{text-align:left}
 .jt td.reason{max-width:240px;overflow:hidden;text-overflow:ellipsis;color:var(--text-2)}
 .jt tr:hover td{background:var(--panel-2)}
+/* 매수 = 빨강, 매도 = 파랑: 옅은 바탕 + 왼쪽 막대 */
+.jt tr.r-buy td{background:rgba(240,68,82,.055)} .jt tr.r-sell td{background:rgba(76,141,255,.06)}
+.jt tr.r-buy td:first-child{box-shadow:inset 3px 0 0 var(--up)} .jt tr.r-sell td:first-child{box-shadow:inset 3px 0 0 var(--down)}
+.jt tr.r-buy:hover td{background:rgba(240,68,82,.1)} .jt tr.r-sell:hover td{background:rgba(76,141,255,.11)}
+.jt td.sym{color:var(--accent);font-weight:700;cursor:pointer}
+.jt td.side{font-weight:600}
+.jt td.spk{padding-top:4px;padding-bottom:4px;line-height:0}
+.spark{display:block} .spark-ph{display:inline-block;width:96px;height:24px}
+.jt td.when{color:var(--text-2)}
+.jt td.acts{white-space:nowrap;position:sticky;right:0;background:var(--panel)!important;padding-left:4px}
+.jt th:last-child{position:sticky;right:0}
+.jt td.acts button{height:22px;padding:0 9px;border-radius:999px;border:1px solid var(--line-2);background:transparent;color:var(--muted);font-size:11px;margin-left:4px;opacity:0;transition:opacity .1s}
+.jt tr:hover td.acts button,.jt tr.gone td.acts button{opacity:1}
+.jt td.acts button:hover{color:var(--text);border-color:var(--muted)}
+.jt tr.gone td{opacity:.55;text-decoration:line-through;text-decoration-color:rgba(255,255,255,.25)}
+.jt tr.gone td.acts{opacity:1;text-decoration:none}
+.addf .seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+.addf .seg button{height:36px;border-radius:999px;border:1px solid var(--line-2);background:var(--panel-2);font-weight:600}
+.addf .seg button.buy.on{background:var(--up);border-color:var(--up);color:#fff}
+.addf .seg button.sell.on{background:#2A6BFF;border-color:#2A6BFF;color:#fff}
+.addf label{display:block;font-size:var(--f-s);color:var(--text-2)}
+.addf label input{margin-top:4px}
+.addf .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+/* 일별 시세 */
+.day-nav{display:flex;align-items:center;gap:8px;padding:10px 10px 6px;flex-wrap:wrap}
+.day-nav b{font-size:var(--f-m);min-width:92px;text-align:center}
+.day-nav .muted{font-size:var(--f-s);margin-left:6px}
+.day-nav .pill.sm{height:26px;padding:0 10px}
+.day-sum{display:flex;flex-wrap:wrap;gap:6px 16px;padding:4px 12px 10px;font-size:var(--f-s);color:var(--muted)}
+.day-sum b{color:var(--text);font-weight:600;margin-left:4px} .day-sum b.up{color:var(--up)} .day-sum b.down{color:var(--down)}
+.dayt tr.mine td{background:rgba(198,244,50,.05)}
+.dayt tr.mine td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+.my-dot i{font-style:normal;font-size:10px;font-weight:700;margin-left:4px;font-family:'IBM Plex Sans KR',sans-serif}
+.dayt td b{font-weight:600}
 
 /* 하단 바 */
 .statusbar{grid-column:1/-1;display:flex;align-items:center;gap:16px;padding:0 16px;border-top:1px solid var(--line);font-size:var(--f-s);color:var(--text-2)}
@@ -269,6 +318,14 @@ details.sec[open] summary::after{content:'–'}
 .cfg label{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:var(--f-s);color:var(--text-2)}
 .cfg input[type=number]{width:110px;height:32px;margin:0;text-align:right;font-family:var(--mono)}
 .cfg input[type=checkbox]{width:18px;height:18px;margin:0}
+.cfg select{height:32px;min-width:110px}
+.cfg .row-btns{display:flex;gap:6px}
+.cfg .conn-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:var(--f-s)}
+.cfg .small{font-size:11px}
+.pill.danger{border-color:var(--up);color:#FF7A84;background:rgba(240,68,82,.1)}
+.cfg .conn-code{font-family:var(--mono);font-size:13px;letter-spacing:.04em;padding:6px 10px;border-radius:10px;background:var(--panel-2);border:1px solid var(--line-2);user-select:all;word-break:break-all}
+body.no-paper #orderBox,body.no-paper [data-j="orders"],body.no-paper .rail [data-view="assets"],body.no-paper #estop,body.no-paper #estopM{display:none!important}
+body.no-paper #obBody{flex:1}
 
 /* 로그인 */
 dialog{border:1px solid var(--line-2);border-radius:20px;background:var(--panel);color:var(--text);padding:20px;width:min(380px,calc(100vw - 32px))}
@@ -337,29 +394,80 @@ dialog .msg{min-height:18px;font-size:var(--f-s);color:var(--warn)}
   body{padding-top:env(safe-area-inset-top);box-sizing:border-box}
   .app{height:calc(100dvh - env(safe-area-inset-top))}
   .topbar{padding-top:20px;padding-right:calc(16px + env(safe-area-inset-right))}
-  .desk{display:block;padding:0 16px;overflow:auto}
-  .desk>.col,.desk>.panel{display:none}
-  .center{display:block}
-  .center>.panel{display:none}
+  .desk{display:flex;flex-direction:column;padding:0 12px;overflow:hidden;gap:0}
+  .desk>*{display:none!important}
   .panel{border-radius:16px}
   .panel>header .collapse{display:none}
-  body[data-m="home"] #pWatch{display:flex;height:100%}
-  body[data-m="chart"] #colCenter,body[data-m="chart"] #pChart{display:flex}
-  body[data-m="chart"] #colCenter{flex-direction:column}
-  body[data-m="chart"] #pChart{height:420px}
-  #pChart>header{height:auto;flex:0 0 auto;flex-wrap:wrap;padding:10px 12px;row-gap:8px}
+  .show-m{display:inline-flex!important}
+  .topbar .chips{gap:2px}
+  .topbar .chips .ws-chip{display:none}
+  .topbar .logo{font-size:15px} .topbar .logo i{width:28px;height:28px}
+  #loginBtn{height:28px;padding:0 10px;margin-left:4px}
+  .bell{position:relative}
+  .bell i{position:absolute;top:2px;right:2px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--up);color:#fff;font-size:10px;font-style:normal;font-weight:700;line-height:16px;text-align:center;display:none}
+  .bell i.on{display:block}
+  /* 검색: 돋보기를 누르면 위쪽 바 아래로 한 줄 */
+  body.m-search .search{display:block;position:fixed;left:12px;right:12px;top:calc(env(safe-area-inset-top) + 62px);z-index:40;flex:none;height:40px;font-size:15px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+  body.m-search #pWatch{padding-top:48px}
+  /* 종목 */
+  body[data-m="list"] #pWatch{display:flex!important;flex:1;min-height:0}
+  /* 매매: 차트는 늘 위에, 아래 칸은 탭으로 */
+  body[data-m="trade"] #colCenter{display:flex!important;flex:0 0 auto;flex-direction:column;order:1}
+  body[data-m="trade"] #colCenter>*{display:none!important}
+  body[data-m="trade"] #pChart{display:flex!important;height:min(40vh,380px)}
+  body[data-m="trade"] #mTrade{display:block!important;order:2;flex:0 0 auto}
+  body[data-m="trade"][data-mt="book"] #pBook,body[data-m="trade"][data-mt="insp"] #pInsp,body[data-m="trade"][data-mt="news"] #mNewsP,body[data-m="trade"][data-mt="day"] #mDayP{display:flex!important;order:3;flex:1 1 0;min-height:0;margin-bottom:8px}
+  body[data-m="trade"] #pBook>header,body[data-m="trade"] #pBook .vlabel{display:none}
+  body[data-m="trade"] #pBook .order{display:none}
+  body[data-m="trade"] #pBook #obBody{flex:1}
+  body[data-m="trade"] #pInsp>header{height:40px;flex-basis:40px}
+  .ob-row{height:24px} .ob{font-size:13px}
+  .mtt{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:8px 0;}
+  .mtt button{height:34px;border-radius:999px;border:1px solid var(--line-2);background:var(--panel);color:var(--text-2);font-size:14px}
+  .mtt button.on{background:var(--text);color:var(--bg);border-color:var(--text);font-weight:700}
+  .m-sec-t{padding:12px 14px 4px;font-size:var(--f-s);color:var(--muted)}
+  #pChart>header{height:auto;flex:0 0 auto;flex-wrap:wrap;padding:8px 12px;row-gap:6px}
   #pChart>header .grow{display:none}
-  #pChart .chart-head{width:100%;flex-wrap:wrap;row-gap:4px}
+  #pChart .chart-head{width:100%;flex-wrap:wrap;row-gap:2px;gap:8px}
+  #pChart .chart-head .px{font-size:20px}
   #chCode{display:none}
   #tfTabs{width:100%;overflow-x:auto;flex-wrap:nowrap!important}
-  body[data-m="chart"] #pBook{display:flex;flex-direction:column;margin-top:12px}
-  body[data-m="chart"] #pBook #obBody,body[data-m="chart"] #pBook>header{display:none}
-  body[data-m="chart"] #pBook .order{max-height:none;border:0}
+  #tfTabs .pill{height:26px;padding:0 10px}
+  /* 모의투자 켜짐일 때만: 아래 고정 매수·매도 → 주문 시트 (왼쪽 호가 · 오른쪽 주문) */
+  body.no-paper .m-orderbar{display:none!important}
+  body[data-m="trade"]:not(.no-paper) .m-orderbar{display:grid}
+  body[data-m="trade"]:not(.no-paper) #pBook,body[data-m="trade"]:not(.no-paper) #pInsp,body[data-m="trade"]:not(.no-paper) #mNewsP,body[data-m="trade"]:not(.no-paper) #mDayP{margin-bottom:64px}
+  body.m-sheet #pBook{display:grid!important;position:fixed;left:0;right:0;bottom:0;z-index:55;height:min(78dvh,640px);margin:0!important;border-radius:20px 20px 0 0;grid-template-columns:44% 56%;grid-template-rows:minmax(0,1fr);padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -12px 40px rgba(0,0,0,.6)}
+  body.m-sheet #pBook #obBody{display:block;overflow:auto;border-right:1px solid var(--line)}
+  body.m-sheet #pBook .order{display:flex!important;max-height:none;border:0;overflow:auto;padding:10px}
+  body.m-sheet #pBook .ob-row{height:26px;grid-template-columns:1fr} body.m-sheet #pBook .ob-row .sz{display:none}
+  body.m-sheet .m-sheet-bg{display:block}
   .toasts{bottom:84px;right:12px;left:12px;align-items:stretch}
-  body[data-m="chart"] #pInsp{display:flex;margin:12px 0}
-  body[data-m="chart"] #pInsp .body{overflow:visible}
-  body[data-m="alerts"] #pAlerts{display:flex}
-  body[data-m="journal"] #colCenter,body[data-m="journal"] #pJournal{display:flex;height:100%}
+  /* 거래 */
+  body[data-m="journal"] #colCenter{display:flex!important;flex:1;min-height:0;flex-direction:column}
+  body[data-m="journal"] #colCenter>*{display:none!important}
+  body[data-m="journal"] #pJournal{display:flex!important;flex:1;min-height:0}
+  #pJournal [data-j="day"],#upImportBtn{display:none!important}
+  #jAddBtn{order:2;height:32px;padding:0 14px;background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:700}
+  .jt td.acts{display:none!important;position:static}
+  .jt tr.show-acts td.acts{display:flex!important;grid-column:1/-1;justify-content:flex-end;gap:6px;padding-top:8px}
+  .jt tr.show-acts td.acts button{opacity:1;height:34px;padding:0 16px;font-size:13px}
+  .jt tr.gone td.acts{display:flex!important;grid-column:1/-1;justify-content:flex-end}
+  .jt tr.gone td.acts button{opacity:1;height:30px}
+  .jt td.spk{grid-column:1/-1;order:-1;padding:2px 0 4px!important}
+  .jt td.spk::before{display:none}
+  .jt td.spk .spark{width:100%;height:30px}
+  .jt tr.r-buy,.jt tr.r-sell{border-left-width:3px}
+  .jt tr.r-buy{background:rgba(240,68,82,.06)!important;border-left-color:var(--up)!important}
+  .jt tr.r-sell{background:rgba(76,141,255,.07)!important;border-left-color:var(--down)!important}
+  .jt tr td{background:transparent!important;box-shadow:none!important}
+  .jt td.sym{font-size:16px!important}
+  .jt td.when{order:-1;grid-column:1/-1;justify-content:flex-start;color:var(--muted)}
+  .jt td.when::before{display:none}
+  /* 위쪽 급등 알림은 아래쪽(메뉴 위)으로: 로고·로그인을 가리지 않게 */
+  .surge-bar{top:auto;bottom:calc(76px + env(safe-area-inset-bottom));left:12px;right:12px;transform:none;justify-content:flex-start;overflow-x:auto;font-size:14px;padding:6px 8px}
+  body[data-m="trade"]:not(.no-paper) .surge-bar{bottom:calc(136px + env(safe-area-inset-bottom))}
+  .surge-bar .pill{flex:0 0 auto}
   /* ---- 폰 최적화: 탭은 한 줄 가로 스크롤, 표는 카드 */
   .tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
   .tabs::-webkit-scrollbar{display:none}
@@ -388,16 +496,38 @@ dialog .msg{min-height:18px;font-size:var(--f-s);color:var(--warn)}
   .ot.acct td.l{color:var(--muted);text-align:left}
   .ot-title{padding:14px 2px 6px}
   #jBody,#ordBody{padding:0 2px}
-  .mtabs{display:grid;grid-template-columns:repeat(4,1fr);height:calc(64px + env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+  .mtabs{display:grid;grid-template-columns:repeat(3,1fr);height:calc(64px + env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
   .mtabs button{border:0;background:transparent;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:var(--f-s)}
   .mtabs button.on{color:var(--accent);font-weight:600}
   .mtabs svg{width:22px;height:22px}
   .wl-row{padding:12px 12px 12px 0}
   .guide-row{height:44px}
   .ohlc{display:none}
+  .chart-info{right:60px;top:4px}
+  body.m-sheet .acct-sw>span:first-child,body.m-sheet .acct-sw button{display:none}
+  /* 일별: 폰에선 표 그대로, 핵심 칸만 (날짜 · 종가 · 전일 대비 · 변동폭 · 거래대금) */
+  .ot.dayt{white-space:nowrap}
+  .ot.dayt thead{display:table-header-group} .ot.dayt tbody{display:table-row-group}
+  .ot.dayt tr{display:table-row;padding:0;border:0;border-radius:0;background:transparent}
+  .ot.dayt td,.ot.dayt th{display:table-cell;padding:7px 6px;border-bottom:1px solid var(--line);font-size:12px}
+  .ot.dayt td::before{display:none}
+  .ot.dayt th:nth-child(2),.ot.dayt td:nth-child(2),.ot.dayt th:nth-child(3),.ot.dayt td:nth-child(3),.ot.dayt th:nth-child(4),.ot.dayt td:nth-child(4),.ot.dayt th:nth-child(8),.ot.dayt td:nth-child(8){display:none}
+  .ot.dayt td.lead{font-size:12px;font-weight:400}
   .legend span{display:none}
   .ctip{min-width:200px}
   .guide-row>span:nth-child(3){font-size:13px}
 }
-@media (min-width: 900px){ #pAlerts{display:none} }
+@media (min-width: 900px){ .m-only,.m-orderbar,.m-sheet-bg{display:none!important} }
+.m-orderbar{display:none;position:fixed;left:12px;right:12px;bottom:calc(72px + env(safe-area-inset-bottom));z-index:45;grid-template-columns:1fr 1fr;gap:8px}
+.m-orderbar button{height:48px;border:0;border-radius:999px;font-weight:700;font-size:16px;color:#fff}
+.m-orderbar .buy{background:var(--up)} .m-orderbar .sell{background:#2A6BFF}
+.m-sheet-bg{display:none;position:fixed;inset:0;z-index:54;background:rgba(0,0,0,.55)}
+dialog.sheet{width:min(560px,100vw);max-height:80dvh;margin:auto auto 0;border-radius:20px 20px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));overflow:auto}
+@media (min-width: 900px){ dialog.sheet{margin:auto;border-radius:20px} }
+.sheet-h{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.sheet-h h2{margin:0}
+.sheet-sub{font-size:var(--f-s);color:var(--muted);font-weight:600;margin:16px 0 4px}
+.bell-row{display:flex;align-items:center;gap:8px;width:100%;padding:12px 4px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--text);text-align:left;font-size:14px}
+.bell-row .grow{flex:1} .bell-row .muted{font-size:12px}
+#bellBody .mute-ctl{padding:4px 0 10px}
 .linkbtn{border:0;background:none;color:var(--accent);font-size:12px;padding:0 4px;cursor:pointer;height:auto}

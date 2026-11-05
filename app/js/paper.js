@@ -133,6 +133,8 @@ export function createPaper({ priceOf, remote }){
         tp: tpPct > 0 ? entry * (1 + tpPct / 100) : null, sl: slPct > 0 ? entry * (1 - slPct / 100) : null, strategy, active: true });
       save(); },
     halt(on){ st.halted = on; if (on){ for (const o of st.orders) if (o.status === 'open') o.status = 'cancelled'; for (const b of st.brackets) if (b.active){ b.active = false; b.note = '긴급 정지'; } } save(); },
+    // 모의 데이터 전부 삭제: 잔고·주문·예약·체결 기록을 이 기기에서 지우고, 지운 시각 이전 기록은 다시 안 보이게
+    wipe(){ trades = []; st = { ...fresh(), resetAt: Date.now(), wipedAt: Date.now() }; st.savedAt = Date.now(); lastLocal = st.savedAt; LS.set(KEY, st); LS.set(TKEY, trades); ev.emit('change'); return st; },
     reset(start = PAPER_START){ st = { ...fresh(), start, cash: start }; // 체결 기록은 남기고 잔고·주문만 새로
       st.resetAt = Date.now(); st.seq = Math.max(0, ...trades.map(t => +String(t.trade_no || '').replace(/\D/g, '') || 0)); save(); },
     // 실시간 시세

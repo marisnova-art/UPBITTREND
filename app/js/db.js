@@ -125,6 +125,29 @@ export const paperRemote = {
   }
 };
 export function resetPrefsCache(){ prefsCache = null; }
+// 화면 설정(모의투자 켜기, 거래일지 그래프 기간 등): prefs.ui 에 저장해 기기끼리 맞춤
+let uiTimer = null;
+export const uiRemote = {
+  async load(){ if (!online()) return null; try { const p = await loadPrefs(); return p.ui || null; } catch(e){ return null; } },
+  save(ui){
+    if (!online()) return;
+    clearTimeout(uiTimer);
+    uiTimer = setTimeout(async () => {
+      try{
+        const prefs = { ...(await loadPrefs()), ui }; prefsCache = prefs;
+        await q(() => db.client.from('q_user_settings').upsert({ prefs, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }));
+      }catch(e){ console.warn('설정 저장 실패', e.message); }
+    }, 600);
+  },
+  // 모의 상태를 서버에서도 지움 (체결 기록 행은 쌓기만 하는 표라 남지만, 지운 시각 이전 것은 앱이 안 보여 줌)
+  async clearPaper(st){
+    if (!online()) return;
+    try{
+      const prefs = { ...(await loadPrefs()), paper: st }; prefsCache = prefs;
+      await q(() => db.client.from('q_user_settings').upsert({ prefs, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }));
+    }catch(e){}
+  }
+};
 
 // ---------- 업비트 가져오기: 이미 올린 주문(external_id)은 건너뜀
 export async function importTrades(rows){
@@ -138,6 +161,20 @@ export async function importTrades(rows){
   const fresh = rows.filter(x => !x.external_id || !have.has(x.external_id));
   for (let i = 0; i < fresh.length; i += 200) await q(() => db.client.from('q_trades').insert(fresh.slice(i, i + 200)));
   return { added: fresh.length, skipped: rows.length - fresh.length };
+}
+
+// ---------- 업비트 연결 코드 (PC 도우미가 이 코드로 거래일지에 바로 올림). 서버엔 코드의 SHA-256만 저장
+export const upbitLinks = {
+  async list(){ if (!online()) return null; try { return await q(() => db.client.from('q_upbit_links').select('id,created_at,last_used_at,last_added,revoked_at').is('revoked_at', null).order('created_at', { ascending: false })); } catch(e){ return e && /q_upbit_links/.test(e.message || '') ? 'missing' : null; } },
+  async create(hash){ if (!online()) throw new Error('로그인이 필요해요.'); await q(() => db.client.from('q_upbit_links').insert({ code_hash: hash })); },
+  async revokeAll(){ if (!online()) return; await q(() => db.client.from('q_upbit_links').update({ revoked_at: new Date().toISOString() }).is('revoked_at', null)); }
+};
+
+// ---------- 거래 기록: 직접 추가 · 숨김(무효 기록을 쌓아서 지움, 원래 기록은 남음)
+export async function addTrade(row){
+  if (!online()) throw new Error('로그인한 뒤에 기록할 수 있어요.');
+  const r = await q(() => db.client.from('q_trades').insert(row).select('*'));
+  return r && r[0];
 }
 
 // ---------- 종목 위키 메모 (쌓기만 함)

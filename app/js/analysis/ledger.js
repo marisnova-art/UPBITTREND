@@ -3,8 +3,17 @@ export const FEE_RATE = 0.0005; // 업비트 원화 마켓 0.05%
 
 // 시간순 기록 → 각 매도에 실현손익(수수료 포함), 각 매수에 현재가 대비 %
 export function computeLedger(trades, priceOf){
-  const voided = new Set(trades.filter(t => t.voids_trade_id).map(t => t.voids_trade_id));
-  const live = trades.filter(t => !t.voids_trade_id && !voided.has(t.id));
+  // 숨김(무효) 기록: voids_trade_id 로 대상을 가리킴. 무효 기록을 다시 무효로 하면 '복구'
+  const voiders = new Map();
+  for (const t of trades) if (t.voids_trade_id){ const l = voiders.get(t.voids_trade_id) || []; l.push(t); voiders.set(t.voids_trade_id, l); }
+  const memo = new Map();
+  const activeVoid = (id, d = 0) => {   // 이 기록을 지금 숨기고 있는 무효 기록 (없으면 null)
+    if (memo.has(id)) return memo.get(id);
+    let r = null; if (d < 20) for (const v of voiders.get(id) || []) if (!activeVoid(v.id, d + 1)){ r = v; break; }
+    memo.set(id, r); return r;
+  };
+  const live = trades.filter(t => !t.voids_trade_id && !(t.id != null && activeVoid(t.id)));
+  const hidden = trades.filter(t => !t.voids_trade_id && t.id != null && activeVoid(t.id)).map(t => ({ ...t, hiddenBy: activeVoid(t.id) }));
   const pos = new Map(); // symbol → { qty, cost }
   const rows = [];
   for (const t of live){
@@ -34,7 +43,7 @@ export function computeLedger(trades, priceOf){
     const cur = priceOf(symbol), avg = p.cost / p.qty;
     return { symbol, qty: p.qty, avg, cost: p.cost, value: cur != null ? cur * p.qty : null, pnl: cur != null ? cur * p.qty * (1 - FEE_RATE) - p.cost : null };
   });
-  return { rows, positions, rebuy: rebuyCandidates(rows, pos, priceOf) };
+  return { rows, positions, hidden, rebuy: rebuyCandidates(rows, pos, priceOf) };
 }
 
 // 재매수 기회: 이익을 내고 판 적이 있는 종목인데 지금 가격이 그때 매수가보다 낮음

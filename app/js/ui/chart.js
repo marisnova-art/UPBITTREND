@@ -127,16 +127,18 @@ export function createChart(el, legendEl, infoEl){
     if (top + th > H - 30) top = Math.max(4, y - th - 16);
     tip.style.left = Math.max(4, left) + 'px'; tip.style.top = Math.max(4, top) + 'px';
   }
+  const PHONE = () => matchMedia('(max-width: 899px)').matches;
   chart.subscribeCrosshairMove(p => {
     const i = p && p.time != null && p.point && p.point.x >= 0 ? idxOf(p.time) : null;
     hoverIdx = i;
     showInfo(i == null ? (pinned ? pinned.i : data.length - 1) : i);
+    if (PHONE()){ tip.hidden = true; return; }   // 폰: 큰 카드 대신 위쪽 한 줄 정보만
     if (pinned) return;                     // 고정 중엔 카드가 움직이지 않음
     if (i == null) tip.hidden = true; else renderTip(i, p.point.x, p.point.y, false);
   });
   chart.subscribeClick(p => {
     const i = p && p.time != null && p.point ? idxOf(p.time) : null;
-    if (i == null) return;
+    if (i == null || PHONE()) return;
     pinned = { i, x: p.point.x, y: p.point.y };   // 다른 봉을 누르면 그 봉으로 옮겨 고정
     renderTip(i, p.point.x, p.point.y, true);
   });
