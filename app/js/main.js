@@ -237,9 +237,9 @@ function renderSdDrop(force){
 function toggleSd(kind){
   S.sdTab = kind; LS.set('quantera:sdTab', kind);
   if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
-  if (isPhone()){ $('#mBellBtn').click(); return; }
+  if (isPhone()){ document.body.classList.remove('m-search'); setMobile('list'); }
   if (document.body.dataset.view) setView('trade');
-  const p = $('#pSurge'); if (p && p.classList.contains('collapsed')) { const c = $('[data-collapse="surge"]'); if (c) c.click(); }
+  const p = $('#pSurge'); if (p && !isPhone() && p.classList.contains('collapsed')) { const c = $('[data-collapse="surge"]'); if (c) c.click(); }
   renderSurgeBar(); renderSdDrop(true);
   const d = $('#sdSec-' + kind); if (d){ d.classList.remove('flash'); void d.offsetWidth; d.classList.add('flash'); }
 }

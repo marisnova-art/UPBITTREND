@@ -678,7 +678,7 @@ dialog input[type=checkbox]{width:16px;height:16px;margin:0;flex:0 0 auto}
 @keyframes sdflash{0%,40%{box-shadow:inset 0 0 0 1px var(--accent)}100%{box-shadow:none}}
 .panel.collapsed .sd-dock{display:none}
 #pSurge .sd-row .sd-n{font-size:var(--f-m)}
-@media (max-width: 899px){ .sd-dock{display:none} }
+
 
 /* ---------- 메뉴를 위쪽 로고 옆으로 (왼쪽 줄 없앰) */
 @media (min-width: 900px){
@@ -701,3 +701,31 @@ dialog input[type=checkbox]{width:16px;height:16px;margin:0;flex:0 0 auto}
 .sd-dhead .pill[disabled]{opacity:.4}
 #pChart>header{flex-wrap:wrap;height:auto;min-height:44px;row-gap:4px;padding-top:6px;padding-bottom:6px}
 #pChart .chart-head{min-width:0}
+
+/* ---------- 폰 다듬기 (3차) */
+@media (max-width: 899px){
+  /* 종목 화면: 위 종목 목록, 아래 급등 · 급락 (PC 칸과 같은 내용) */
+  body[data-m="list"] #pSurge{display:flex!important;flex:0 1 auto;max-height:44%;min-height:0;margin-top:8px}
+  #pSurge>header,#pSurge .vlabel{display:none}
+  #pSurge .sd-dock{flex:1}
+  #pSurge .sd-sec{flex:0 1 auto}
+  #pSurge .sd-dbody{max-height:22vh}
+  #pSurge .sd-dbody .empty{display:none}
+  #pSurge .surge-stats{display:none}
+  #pSurge .sd-dhead{padding:6px 12px}
+  #pSurge .sd-row{padding:8px 12px}
+  body.m-search #pSurge{display:none!important}
+  /* 종목 탭: 한 줄에 다 보이게 */
+  #wlTabs{flex-wrap:nowrap;overflow-x:auto;gap:4px;scrollbar-width:none}
+  #wlTabs::-webkit-scrollbar{display:none}
+  #wlTabs .pill{padding:0 10px;flex:0 0 auto}
+  #tfTabs{overflow-x:auto;scrollbar-width:none}
+  #tfTabs::-webkit-scrollbar{display:none}
+  #tfTabs .pill{padding:0 10px;flex:0 0 auto}
+  /* 아래 버튼이 호가·분석 끝줄을 가리지 않게 */
+  body[data-m="trade"] #pBook,body[data-m="trade"] #pInsp,body[data-m="trade"] #mNewsP,body[data-m="trade"] #mDayP{margin-bottom:60px}
+  .m-orderbar{bottom:calc(70px + env(safe-area-inset-bottom))}
+  body[data-m="trade"] #pBook .ob-tot{padding:8px 12px}
+}
+@media (max-width: 899px){ .sd-chips .pill{display:none} }
+@media (max-width: 899px){ body[data-m="trade"] .desk{padding-bottom:52px} }
