@@ -1033,7 +1033,7 @@ function mHoldHtml(){
   const H = holdData();
   const acct = UI.paperOn ? `<div class="m-chips"><button class="pill${S.acct !== 'paper' ? ' on' : ''}" data-macct="real">실제</button><button class="pill${S.acct === 'paper' ? ' on' : ''}" data-macct="paper">모의</button></div>` : '';
   return acct + holdSumHtml(H) + (H.pos.length ? H.pos.map(p => { const m = upbit.toMarket(p.symbol); return `<button class="m-hcard" data-mm="${m}">
-      <div class="h1"><b>${esc(nameOf(m))}</b><span class="mono ${toneOf(p.pct)}">${p.pct != null ? fmtPct(p.pct) : ''}</span></div>
+      <div class="h1"><span class="hn">${mLogo(m)}<b>${esc(nameOf(m))}</b></span><span class="m-pct ${toneOf(p.pct)}">${p.pct != null ? fmtPct(p.pct) : ''}</span></div>
       <div class="h2"><span class="mono ${toneOf(p.pnl)}">${p.pnl != null ? signWon(p.pnl) : ''}</span><span class="mono">${p.value != null ? won(p.value) + '원' : ''}</span></div>
       <div class="h3 muted"><span>평단 <span class="mono">${fmtPrice(p.avg)}</span> → 현재 <span class="mono ${toneOf(p.chg)}">${fmtPrice(p.cur)}</span></span><span>비중 ${p.weight.toFixed(0)}%</span></div>
     </button>`; }).join('') : `<div class="empty">${H.isPaper ? '모의 보유 종목이 없어요.' : '지금 보유 중인 종목이 없어요.'}</div>`);
@@ -1180,7 +1180,7 @@ function openRec(tab = 'rec', { edit = null, price = null, side = null } = {}){
   if (edit) tab = 'rec';
   const f = $('#addForm'), r = edit || null;
   f.dataset.edit = r ? r.id : '';
-  $('#addTitle').textContent = r ? '기록 수정 · 고치기 전 기록은 "지운 기록"에 남아요.' : '잔고·보유와 상관없이 자유롭게 적어요. 거래일지(실제 기록)에 들어가고 손익이 자동으로 계산돼요.';
+  $('#addTitle').textContent = r ? '기록 수정 · 고치기 전 기록은 "지운 기록"에 남아요.' : '거래일지(실제 기록)에 적어요. 손익은 자동 계산돼요.';
   const m = r ? upbit.toMarket(r.symbol) : S.sel, inst = S.byMarket.get(m);
   f.elements.sym.value = inst ? `${inst.name} (${inst.market.slice(4)})` : '';
   f.elements.side.value = r ? r.side : (side || 'buy');
@@ -1260,7 +1260,7 @@ function bindRec(){
   $('#recOb').addEventListener('click', e => {
     const row = e.target.closest('.ob-row'); if (!row) return;
     const p = Math.round(+row.dataset.p * 1e8) / 1e8;
-    if (REC.tab === 'rec'){ $('#addForm').elements.price.value = p; }
+    if (REC.tab === 'rec'){ $('#addForm').elements.price.value = p; addPreview(); }
     else { OF.price = p; OF.type = 'limit'; renderOrderForm(); }
     recPriceLine();
   });
@@ -1269,7 +1269,21 @@ function bindRec(){
   $('#addForm').elements.sym.addEventListener('change', e => { const i = findInst(e.target.value); if (i && i.market !== REC.m){ setRecMarket(i.market); const p = priceOf(i.symbol); if (p && !$('#addForm').dataset.edit) $('#addForm').elements.price.value = p; } });
   $('#addDlg').addEventListener('click', e => { if (e.target === $('#addDlg')) $('#addDlg').close(); });
 }
-function renderAddSide(){ const v = $('#addForm').elements.side.value; $$('#addForm [data-aside]').forEach(b => b.classList.toggle('on', b.dataset.aside === v)); }
+function renderAddSide(){
+  const f = $('#addForm'), v = f.elements.side.value, go = $('#addGo');
+  $$('#addForm [data-aside]').forEach(b => b.classList.toggle('on', b.dataset.aside === v));
+  go.className = 'submit ' + v; go.textContent = `${f.dataset.edit ? '고쳐 저장' : '기록 저장'} · ${v === 'buy' ? '매수' : '매도'}`;
+  addPreview();
+}
+// 기록 창 아래 합계: 수량이나 금액 중 하나만 넣어도 나머지를 계산해 보여 줌
+function addPreview(){
+  const f = $('#addForm').elements, pv = $('#addPv'); if (!pv) return;
+  const p = num(f.price.value); let q = num(f.qty.value), a = num(f.amount.value);
+  if (p > 0 && q > 0) a = p * q; else if (p > 0 && a > 0) q = a / p;
+  if (!(p > 0 && q > 0)){ pv.innerHTML = '<div><span>가격과 수량(또는 금액)을 넣으면 합계가 보여요.</span></div>'; return; }
+  const fee = num(f.fee.value) > 0 ? num(f.fee.value) : 0;
+  pv.innerHTML = `<div><span>수량</span><b class="mono">${q.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</b></div><div><span>금액</span><b class="mono">${won(a)}원</b></div>${fee ? `<div><span>수수료 포함</span><b class="mono">${won(f.side.value === 'buy' ? a + fee : a - fee)}원</b></div>` : ''}`;
+}
 function findInst(text){
   const t = String(text || '').trim().toLowerCase(); if (!t) return null;
   const code = (t.match(/\(([a-z0-9]+)\)\s*$/) || [])[1];
@@ -1281,8 +1295,10 @@ function bindJournalEdit(){
   $('#addSyms').innerHTML = '';
   $('#addForm').addEventListener('click', e => {
     const b = e.target.closest('[data-aside]'); if (b){ e.preventDefault(); $('#addForm').elements.side.value = b.dataset.aside; renderAddSide(); }
-    if (e.target.closest('[data-autofee]')){ e.preventDefault(); const f = $('#addForm').elements, p = num(f.price.value), q = num(f.qty.value) || num(f.amount.value) / p; if (p > 0 && q > 0) f.fee.value = r2(p * q * FEE_RATE); }
+    if (e.target.closest('[data-autofee]')){ e.preventDefault(); const f = $('#addForm').elements, p = num(f.price.value), q = num(f.qty.value) || num(f.amount.value) / p; if (p > 0 && q > 0) f.fee.value = r2(p * q * FEE_RATE); addPreview(); }
+    if (e.target.closest('[data-reccur]')){ e.preventDefault(); const f = $('#addForm').elements, i = findInst(f.sym.value), p = i && priceOf(i.symbol); if (p){ f.price.value = p; recPriceLine(); addPreview(); } }
   });
+  $('#addForm').addEventListener('input', addPreview);
   $('#addForm').elements.sym.addEventListener('focus', () => { if (!$('#addSyms').children.length) $('#addSyms').innerHTML = S.instruments.map(i => `<option value="${esc(i.name)} (${i.market.slice(4)})">`).join(''); });
   $('#addForm').addEventListener('submit', async e => {
     if (e.submitter && e.submitter.value === 'cancel') return;
@@ -1895,8 +1911,9 @@ function initPhone(){
   $('#mApp').hidden = false;
   document.body.appendChild($('#toasts'));
   // 차트 · 호가 · 분석 · 일별 · 소식 · 거래일지를 폰 화면으로 옮김
-  $('#mCpChart').append($('#tfTabs'), $('#chartWrap'));
+  $('#mCpChart').prepend($('#tfTabs'), $('#chartWrap'));
   $('#mCpBook').append($('#obBody'), $('#obTot'), $('.tr-box'));
+  mMenuIcons();
   $('#mCpInsp').append($('#inspBody'));
   $('#mCpDay').append($('#mDay'));
   $('#mCpNews').append($('#mNews'));
@@ -1922,6 +1939,8 @@ function mShow(page, opt = {}){
   PH.page = page;
   $('#mApp').dataset.page = page;
   $('#mBack').hidden = page === 'home';
+  const dk = { coin: 'list', search: 'list' }[page] || page;
+  $$('#mDock [data-dk]').forEach(b => b.classList.toggle('on', b.dataset.dk === dk));
   $('#mTitle').textContent = page === 'list' ? (M_TABS.find(t => t[0] === PH.tab) || [, '종목'])[1] + ' 종목' : page === 'coin' ? nameOf(S.sel) : M_TITLES[page] || 'QUANTERA';
   window.scrollTo(0, 0);
   if (page === 'search'){ setTimeout(() => $('#mSearch').focus(), 50); }
@@ -1935,6 +1954,7 @@ function mShow(page, opt = {}){
 addEventListener('popstate', e => { if (!PH.on) return; const st = e.state && e.state.mp; mCloseMenu(); mShow(st ? st.page : 'home', st || {}); });
 function mOpenCoin(m){ select(m); mGo('coin'); }
 function mSetCp(cp){
+  if (cp === 'book') cp = 'chart';   // 차트와 호가는 한 화면
   PH.cp = cp; LS.set('quantera:mCp', cp);
   $$('#mCoinTabs button').forEach(b => b.classList.toggle('on', b.dataset.cp === cp));
   $$('#mApp .m-cpane').forEach(p => p.classList.toggle('on', p.dataset.cp === cp));
@@ -1942,22 +1962,52 @@ function mSetCp(cp){
   if (cp === 'chart' && chart) requestAnimationFrame(() => chart.refit());
   if (cp === 'day') renderDaily($('#mDay'));
   if (cp === 'news') renderMNews();
-  if (cp === 'book'){ const b = $('#obBody'); requestAnimationFrame(() => { b.scrollIntoView({ block: 'nearest' }); }); }
 }
 // 한 줄: 이름 · 현재가 · 등락률, 아래 줄에 가이드 한 줄 (또는 거래대금)
-function mRow(i, sub){
-  const q = S.quotes.get(i.market) || {}, L = live(i.market), t = toneOf(q.changeRate);
+// 코인 로고 (업비트 공식 이미지, 못 받으면 첫 글자)
+const LOGO_C = ['#C6F432', '#F04452', '#4C8DFF', '#F5A524', '#EDEDEF'];
+function mLogo(m, size = ''){
+  const sym = m.slice(4), c = LOGO_C[[...sym].reduce((a, ch) => a + ch.charCodeAt(0), 0) % LOGO_C.length];
+  return `<i class="m-logo${size ? ' ' + size : ''}" style="--lc:${c}"><b>${esc(sym.slice(0, 1))}</b><span style="background-image:url(https://static.upbit.com/logos/${encodeURIComponent(sym)}.png)"></span></i>`;
+}
+// 최근 30일 종가 추세선 (거래일지와 같은 캐시 사용, 없으면 빈칸)
+function mSpark(m){
+  const d = sparkCache.get(sparkKey(m)); if (!d || !d.closes || d.closes.length < 2) return '<span class="m-spk"></span>';
+  const W = 64, H = 26, C = d.closes.map(x => x.c), n = C.length, lo = Math.min(...C), hi = Math.max(...C), sp = hi - lo || 1;
+  const pts = C.map((v, i) => `${(i / (n - 1) * W).toFixed(1)},${(H - 2 - (v - lo) / sp * (H - 4)).toFixed(1)}`).join(' ');
+  const col = C[n - 1] >= C[0] ? 'var(--up)' : 'var(--down)';
+  return `<svg class="m-spk" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,${H} ${pts} ${W},${H}" fill="${col}" opacity=".14"/><polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+}
+const mPct = q => `<span class="m-pct ${toneOf(q.changeRate)}">${fmtPct(q.changeRate)}</span>`;
+function mRow(i, sub, spark){
+  const q = S.quotes.get(i.market) || {}, L = live(i.market);
   const badge = L.stance === 'buy_zone' ? `<span class="badge accent">${TYPE_KO[L.type]}</span>` : surge.get(i.market) ? '<span class="badge surge">급등</span>' : dump.get(i.market) ? '<span class="badge dump">급락</span>' : isNewListing(i.market) ? '<span class="badge warn">신규</span>' : '';
   const line = sub != null ? sub : (L.text && L.stance !== 'blocked' ? esc(L.text) : `${i.market.slice(4)} · 거래대금 ${fmtKrwShort(q.value24h)}`);
-  return `<button class="m-row" data-mm="${i.market}"><span class="m-l"><span class="m-n">${esc(i.name)}${badge}</span><span class="m-s">${line}</span></span><span class="m-r mono ${t}" data-mq="${i.market}"><span>${fmtPrice(q.price)}</span><span>${fmtPct(q.changeRate)}</span></span></button>`;
+  return `<button class="m-row" data-mm="${i.market}">${mLogo(i.market)}<span class="m-l"><span class="m-n">${esc(i.name)}${badge}</span><span class="m-s">${line}</span></span>${spark ? mSpark(i.market) : ''}<span class="m-r mono" data-mq="${i.market}"><span>${fmtPrice(q.price)}</span>${mPct(q)}</span></button>`;
+}
+// 급등·급락: 옆으로 넘기는 카드
+function mSdCard(m, kind){
+  const i = S.byMarket.get(m); if (!i) return '';
+  const q = S.quotes.get(m) || {}, src = kind === 'dump' ? dump : surge;
+  return `<button class="m-sc ${kind}" data-mm="${m}"><span class="m-sc-h">${mLogo(m, 'sm')}<span class="m-sc-n">${esc(i.name)}</span></span><b class="mono ${toneOf(q.changeRate)}" data-mq2="${m}">${fmtPct(q.changeRate)}</b><span class="mono m-sc-p">${fmtPrice(q.price)}</span><span class="m-sc-t" data-k="${kind}" data-ago="${m}">${surgeText(m, src.get(m))}</span></button>`;
+}
+// 홈 맨 위: 내 자산 카드
+const HX_C = ['#C6F432', '#EDEDEF', '#9A9AA3', '#F5A524', '#5A5A63'];
+function mHeroHtml(){
+  if (S.acct !== 'paper' && !db.user) return `<button class="m-hero" data-act="login"><div class="hx-t"><span>내 자산</span></div><div class="hx-e">로그인하면 보유 자산과 손익이 여기에 보여요.</div></button>`;
+  const H = holdData(), segs = H.pos.slice(0, 5);
+  const bar = H.value ? `<div class="hx-bar">${segs.map((p, k) => `<i style="width:${p.weight.toFixed(1)}%;background:${HX_C[k]}"></i>`).join('')}</div><div class="hx-lg">${segs.map((p, k) => `<span><i style="background:${HX_C[k]}"></i>${esc(nameOf(upbit.toMarket(p.symbol)))} ${p.weight.toFixed(0)}%</span>`).join('')}</div>` : '';
+  return `<button class="m-hero" data-go="hold"><div class="hx-t"><span>${H.isPaper ? '모의 자산' : '내 자산'}</span><span class="muted">보유 ${H.pos.length}종목 ›</span></div>
+    <div class="hx-v mono">${won(H.isPaper ? H.cash + H.value : H.value)}<small>원</small></div>
+    <div class="hx-s"><span class="m-pct ${toneOf(H.pct)}">${fmtPct(H.pct)}</span><span class="mono ${toneOf(H.pnl)}">${signWon(H.pnl)}</span><span class="muted">평가손익</span></div>${bar}</button>`;
 }
 function mSurgeHtml(){
   const muted = surgeMuted();
   const sec = (kind, label, cls) => {
-    const src = kind === 'dump' ? dump : surge, ms = sdList(kind), un = kind === 'dump' ? unseenDump : unseen;
+    const ms = sdList(kind), un = kind === 'dump' ? unseenDump : unseen;
     const nNew = muted ? 0 : ms.filter(m => un.has(m)).length;
-    const rows = ms.slice(0, 8).map(m => { const i = S.byMarket.get(m); return i ? mRow(i, `<span data-k="${kind}" data-ago="${m}">${surgeText(m, src.get(m))}</span>`) : ''; }).join('');
-    return `<div class="m-sd ${nNew ? (kind === 'dump' ? 'blink-dn' : 'blink') : ''}"><div class="m-sec-h"><span class="m-h ${ms.length ? cls : 'muted'}">● ${label} ${ms.length}</span>${nNew ? `<span class="sd-new">새 ${nNew}</span>` : ''}<span class="grow"></span>${nNew ? `<button class="m-btn" data-ack-kind="${kind}">확인</button>` : ''}</div>${rows || `<div class="m-none">지금 잡힌 ${label}이 없어요.</div>`}</div>`;
+    const cards = ms.slice(0, 12).map(m => mSdCard(m, kind)).join('');
+    return `<div class="m-sd ${nNew ? (kind === 'dump' ? 'blink-dn' : 'blink') : ''}"><div class="m-sec-h"><span class="m-h ${ms.length ? cls : 'muted'}">● ${label} ${ms.length}</span>${nNew ? `<span class="sd-new">새 ${nNew}</span>` : ''}<span class="grow"></span>${nNew ? `<button class="m-btn" data-ack-kind="${kind}">확인</button>` : ''}</div>${cards ? `<div class="m-hs">${cards}</div>` : `<div class="m-none">지금 잡힌 ${label}이 없어요.</div>`}</div>`;
   };
   return sec('surge', '급등', 'up') + sec('dump', '급락', 'down')
     + `<div class="m-mute"><span class="${muted ? 'muted' : 'accent'}">● 알림 ${muted ? muteText() : '켜짐'}</span><span class="grow"></span>${muted ? '<button class="m-btn" data-mute="0">다시 켜기</button>' : '<button class="m-btn" data-mute="30">30분 끄기</button><button class="m-btn" data-mute="-1">끄기</button>'}</div>`;
@@ -1966,16 +2016,20 @@ function mMineHtml(){
   const held = new Map(S.ledger.positions.map(p => [upbit.toMarket(p.symbol), p]));
   const ms = [...new Set([...held.keys(), ...[...S.watch].map(upbit.toMarket)])].filter(m => S.byMarket.has(m));
   if (!ms.length) return `<div class="m-none">관심 종목이 없어요. 종목을 열고 ☆를 누르면 여기에 모여요.</div>`;
+  loadSparks(ms.map(m => ({ symbol: upbit.toSymbol(m) })));
   return ms.map(m => { const p = held.get(m), q = S.quotes.get(m) || {};
     const sub = p && q.price ? `보유 · 평단 ${fmtPrice(p.avg)} 대비 <span class="${toneOf(q.price - p.avg)}">${fmtPct((q.price / p.avg - 1) * 100)}</span>` : null;
-    return mRow(S.byMarket.get(m), sub); }).join('');
+    return mRow(S.byMarket.get(m), sub, true); }).join('');
 }
 let mLastList = '';
 function mRender(){
   if (!PH.on) return;
   const pg = PH.page;
   if (pg === 'home'){
+    $('#mHero').innerHTML = mHeroHtml();
+    const hs = $$('#mSurgeSec .m-hs').map(x => x.scrollLeft);
     $('#mSurgeSec').innerHTML = mSurgeHtml();
+    $$('#mSurgeSec .m-hs').forEach((x, k) => { if (hs[k]) x.scrollLeft = hs[k]; });
     $('#mMine').innerHTML = mMineHtml();
     $('#mScanLine').textContent = $('#scanText') ? '스캔 · ' + $('#scanText').textContent : '';
   } else if (pg === 'list'){
@@ -1995,14 +2049,14 @@ function mRender(){
   } else if (pg === 'coin') mCoinHead();
 }
 function mPatch(root){
-  for (const el of $$('[data-mq]', root)){ const q = S.quotes.get(el.dataset.mq); if (!q) continue; el.className = `m-r mono ${toneOf(q.changeRate)}`; el.innerHTML = `<span>${fmtPrice(q.price)}</span><span>${fmtPct(q.changeRate)}</span>`; }
+  for (const el of $$('[data-mq]', root)){ const q = S.quotes.get(el.dataset.mq); if (!q) continue; el.innerHTML = `<span>${fmtPrice(q.price)}</span>${mPct(q)}`; }
 }
 function mCoinHead(){
   const i = S.byMarket.get(S.sel); if (!i) return;
   const q = S.quotes.get(S.sel) || {}, L = live(S.sel), on = S.watch.has(i.symbol);
   $('#mTitle').textContent = i.name;
-  $('#mCoinHead').innerHTML = `<div class="m-coin-p mono ${toneOf(q.changeRate)}"><span class="m-big">${fmtPrice(q.price)}</span><span>${fmtPct(q.changeRate)}</span></div>
-    <div class="m-coin-s"><span class="muted mono">${i.market}</span><span class="muted">거래대금 ${fmtKrwShort(q.value24h)}</span><span class="grow"></span><button class="m-btn${on ? ' on' : ''}" data-mstar="${i.symbol}">${on ? '★ 관심' : '☆ 관심'}</button></div>
+  $('#mCoinHead').innerHTML = `<div class="m-coin-top">${mLogo(i.market, 'lg')}<div class="m-coin-p"><span class="m-big mono ${toneOf(q.changeRate)}">${fmtPrice(q.price)}</span><span class="m-coin-s">${mPct(q)}<span class="muted mono">${i.market.slice(4)}</span><span class="muted">거래대금 ${fmtKrwShort(q.value24h)}</span></span></div></div>
+    <div class="m-coin-b"><button class="m-btn${on ? ' on' : ''}" data-mstar="${i.symbol}">${on ? '★ 관심' : '☆ 관심'}</button><button class="m-btn rec" data-mo="rec">＋ 기록</button><button class="m-btn" data-mo="paper">모의</button></div>
     ${L.text && L.stance !== 'blocked' ? `<div class="m-coin-g">${esc(L.text)}</div>` : ''}`;
 }
 function mTick(){
@@ -2010,8 +2064,26 @@ function mTick(){
   if (PH.page === 'home'){ if (!document.activeElement || !document.activeElement.closest('#mApp')) mRender(); }
   else if (PH.page === 'list' || PH.page === 'search') mPatch($('#mApp'));
   else if (PH.page === 'coin') mCoinHead();
+  if (PH.page === 'hold' || PH.page === 'home'){ /* 위에서 다시 그림 */ }
   const li = $('#mLoginItem'); if (li) li.textContent = $('#loginBtn').textContent;
   const ii = $('#mInstallItem'); if (ii) ii.hidden = $('#installBtn').classList.contains('hidden');
+}
+const MI = (d) => `<svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const M_ICONS = {
+  home: '<path d="M4 11l8-7 8 7v9H4z"/><path d="M10 20v-6h4v6"/>', search: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4-4"/>',
+  'list:all': '<path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/>', 'list:pullback': '<path d="M3 7l6 6 4-4 8 8"/><path d="M21 12v5h-5"/>', 'list:bottom': '<path d="M3 6c4 0 5 12 9 12s5-12 9-12"/>',
+  'list:new': '<path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/>', 'list:recent': '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>', 'list:rebuy': '<path d="M4 12a8 8 0 0 1 14-5l2 2M20 12a8 8 0 0 1-14 5l-2-2"/><path d="M20 4v5h-5M4 20v-5h5"/>',
+  scan: '<path d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4M4 12h16"/>', strat: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/>',
+  hold: '<rect x="3" y="6" width="18" height="14" rx="3"/><path d="M3 10h18M16 15h2"/>', journal: '<path d="M6 3h10l3 3v15H6z"/><path d="M9 9h7M9 13h7M9 17h4"/>',
+  rec: '<path d="M12 5v14M5 12h14"/>', paper: '<path d="M4 17l5-6 4 4 7-9"/>', upbit: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+  news: '<path d="M4 5h13v14H6a2 2 0 0 1-2-2z"/><path d="M17 9h3v8a2 2 0 0 1-2 2"/><path d="M8 9h5M8 13h5"/>', cfg: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
+  login: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>', install: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M12 18h.01"/>'
+};
+function mMenuIcons(){
+  for (const b of $$('#mMenu button')){
+    const k = b.dataset.go ? (b.dataset.go === 'list' ? 'list:' + b.dataset.tab : b.dataset.go) : b.dataset.act;
+    if (M_ICONS[k] && !b.querySelector('.mi')) b.insertAdjacentHTML('afterbegin', MI(M_ICONS[k]));
+  }
 }
 function mOpenMenu(){ $('#mApp').classList.add('menu-open'); }
 function mCloseMenu(){ $('#mApp').classList.remove('menu-open'); }

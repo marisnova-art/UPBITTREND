@@ -20,7 +20,10 @@ export function createChart(el, legendEl, infoEl){
   });
   const candles = chart.addCandlestickSeries({ upColor: C.up, downColor: C.down, borderUpColor: C.up, borderDownColor: C.down, wickUpColor: C.up, wickDownColor: C.down, priceLineColor: C.white });
   const vol = chart.addHistogramSeries({ priceScaleId: 'vol', priceFormat: { type: 'volume' }, lastValueVisible: false, priceLineVisible: false });
-  chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.86, bottom: 0 } });
+  // 폰: 거래량 칸을 크게(아래 25%), 캔들은 그 위로
+  const PH0 = matchMedia('(max-width: 899px)').matches;
+  chart.priceScale('vol').applyOptions({ scaleMargins: { top: PH0 ? 0.74 : 0.86, bottom: 0 } });
+  if (PH0) chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.08, bottom: 0.3 } });
   const ma20 = chart.addLineSeries({ color: C.ma20, lineWidth: 1, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
   const ma60 = chart.addLineSeries({ color: C.ma60, lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
   // 매수 구간 띠: 위·아래 두 선 사이를 옅게 칠하는 대신, 두 선 + 라벨로 표시(라이브러리 기본 기능만 사용)
@@ -105,7 +108,7 @@ export function createChart(el, legendEl, infoEl){
       cell('등락', sign(s.chgPct), tone) + cell('고저폭', sign(s.rangePct).replace('+', '')) +
       cell('거래량', fmtVol(b.v)) + (b.value ? cell('거래대금', krw(b.value)) : '');
   }
-  function renderTip(i, x, y, isPinned){
+  function renderTip(i, x, y, isPinned, corner){
     const s = stats(i); if (!s){ tip.hidden = true; return; }
     const { b } = s, tone = toneOf(s.chgPct);
     const row = (k, v, cls = '', sub = '') => `<div class="r"><span>${k}</span><b class="${cls}">${v}${sub ? `<i>${sub}</i>` : ''}</b></div>`;
@@ -120,6 +123,7 @@ export function createChart(el, legendEl, infoEl){
       (b.value ? row('거래대금', krw(b.value)) : '');
     tip.classList.toggle('pinned', !!isPinned);
     tip.hidden = false;
+    if (corner){ tip.style.left = '8px'; tip.style.top = '8px'; return; }
     // 커서 옆에 두되 차트 밖으로 나가지 않게
     const W = el.clientWidth, H = el.clientHeight, tw = tip.offsetWidth, th = tip.offsetHeight;
     let left = x + 16, top = y + 16;
@@ -132,13 +136,14 @@ export function createChart(el, legendEl, infoEl){
     const i = p && p.time != null && p.point && p.point.x >= 0 ? idxOf(p.time) : null;
     hoverIdx = i;
     showInfo(i == null ? (pinned ? pinned.i : data.length - 1) : i);
-    if (PHONE()){ tip.hidden = true; return; }   // 폰: 큰 카드 대신 위쪽 한 줄 정보만
+    if (PHONE()){ if (pinned && i != null){ pinned.i = i; renderTip(i, 0, 0, true, true); } return; }   // 폰: 누르면 왼쪽 위 카드, 끌면 따라감
     if (pinned) return;                     // 고정 중엔 카드가 움직이지 않음
     if (i == null) tip.hidden = true; else renderTip(i, p.point.x, p.point.y, false);
   });
   chart.subscribeClick(p => {
     const i = p && p.time != null && p.point ? idxOf(p.time) : null;
-    if (i == null || PHONE()) return;
+    if (i == null) return;
+    if (PHONE()){ pinned = { i, x: 0, y: 0 }; renderTip(i, 0, 0, true, true); return; }
     pinned = { i, x: p.point.x, y: p.point.y };   // 다른 봉을 누르면 그 봉으로 옮겨 고정
     renderTip(i, p.point.x, p.point.y, true);
   });

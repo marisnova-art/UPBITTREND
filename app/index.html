@@ -160,10 +160,12 @@
     <div class="m-ttl" id="mTitle">QUANTERA</div>
     <button class="m-ib sound-btn" data-sound></button>
     <button class="m-ib" id="mFind" aria-label="종목 검색"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4-4"/></svg></button>
+    <button class="m-ib" id="mCfg" data-act="cfg" aria-label="설정"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
   </header>
 
   <!-- 첫 화면: 급등·급락 + 내 종목 -->
   <section class="m-page" data-p="home">
+    <div id="mHero"></div>
     <div class="m-sec" id="mSurgeSec"></div>
     <div class="m-sec">
       <div class="m-sec-h"><span class="m-h">내 종목</span><span class="muted">관심 · 보유</span><span class="grow"></span><button class="m-link" data-go="list" data-tab="all">전체 보기</button></div>
@@ -188,13 +190,11 @@
   <!-- 종목 상세 -->
   <section class="m-page" data-p="coin">
     <div class="m-coin" id="mCoinHead"></div>
-    <div class="m-ctabs" id="mCoinTabs"><button data-cp="chart" class="on">차트</button><button data-cp="book">호가</button><button data-cp="insp">분석</button><button data-cp="day">일별</button><button data-cp="news">소식</button></div>
-    <div class="m-cpane" data-cp="chart" id="mCpChart"></div>
-    <div class="m-cpane" data-cp="book" id="mCpBook"></div>
+    <div class="m-ctabs" id="mCoinTabs"><button data-cp="chart" class="on">차트·호가</button><button data-cp="insp">분석</button><button data-cp="day">일별</button><button data-cp="news">소식</button></div>
+    <div class="m-cpane" data-cp="chart" id="mCpChart"><div id="mCpBook"><div class="m-sub-h">호가</div></div></div>
     <div class="m-cpane" data-cp="insp" id="mCpInsp"></div>
     <div class="m-cpane" data-cp="day" id="mCpDay"></div>
     <div class="m-cpane" data-cp="news" id="mCpNews"></div>
-    <div class="m-act"><button class="rec" data-mo="rec">＋ 기록</button><button class="ppr" data-mo="paper">모의 주문</button></div>
   </section>
 
   <!-- 거래일지 -->
@@ -209,6 +209,15 @@
   <!-- 업비트 소식 -->
   <section class="m-page" data-p="news"><div id="mNewsAll"><div class="empty">불러오는 중…</div></div></section>
 
+
+  <!-- 하단 캡슐 바 (퀵 메뉴) -->
+  <nav class="m-dock" id="mDock" aria-label="빠른 메뉴">
+    <button data-go="home" data-dk="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7v9H4z"/><path d="M10 20v-6h4v6"/></svg><span>홈</span></button>
+    <button data-go="list" data-tab="all" data-dk="list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg><span>종목</span></button>
+    <button data-go="hold" data-dk="hold"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="3"/><path d="M3 10h18M16 15h2"/></svg><span>자산</span></button>
+    <button data-go="journal" data-dk="journal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h10l3 3v15H6z"/><path d="M9 9h7M9 13h7M9 17h4"/></svg><span>일지</span></button>
+    <button data-go="strat" data-dk="strat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".6" fill="currentColor"/></svg><span>전략</span></button>
+  </nav>
   <!-- ☰ 메뉴 -->
   <div class="m-dim" id="mDim"></div>
   <nav class="m-menu" id="mMenu" aria-label="메뉴">
@@ -230,7 +239,7 @@
     <div class="m-menu-g"><div class="m-menu-t">기록</div>
       <button data-go="hold">보유 자산 <span class="muted">평가손익 · 수익률</span></button>
       <button data-go="journal">거래일지</button>
-      <button data-act="rec">＋ 기록 추가</button>
+      <button data-act="rec">기록 추가</button>
       <button data-act="paper">모의 주문</button>
       <button data-act="upbit">업비트 가져오기</button>
     </div>
@@ -288,19 +297,22 @@
     <div class="rec-right">
       <div class="rec-top"><div class="tabs" id="recTabs" style="border:0;padding:0"><button class="pill on" data-rt="rec">기록</button><button class="pill" data-rt="paper">모의</button></div><span class="grow"></span><button class="pill ghost" id="recClose">닫기</button></div>
       <div class="rec-pane" id="recPaneRec">
-  <form method="dialog" id="addForm" class="addf" autocomplete="off">
-    <p class="rec-note" id="addTitle">잔고·보유와 상관없이 자유롭게 적어요. 거래일지(실제 기록)에 들어가고 손익이 자동으로 계산돼요.</p>
+  <form method="dialog" id="addForm" class="addf order" autocomplete="off" novalidate>
+    <div class="acct-sw"><span id="addTitle">거래일지(실제 기록)에 적어요. 손익은 자동 계산돼요.</span></div>
     <input type="hidden" name="side" value="buy">
     <div class="seg"><button type="button" class="buy" data-aside="buy">매수</button><button type="button" class="sell" data-aside="sell">매도</button></div>
-    <label>종목<input name="sym" id="addSym" list="addSyms" placeholder="이름이나 코드 (예: 비트코인, BTC)"></label>
+    <label class="field"><span>종목</span><input name="sym" id="addSym" list="addSyms" placeholder="비트코인, BTC"></label>
     <datalist id="addSyms"></datalist>
-    <label>가격 (원) <span class="muted">· 왼쪽 호가를 누르면 들어가요</span><input name="price" inputmode="decimal" placeholder="1개 가격"></label>
-    <div class="two"><label>수량<input name="qty" inputmode="decimal" placeholder="수량"></label><label>또는 금액 (원)<input name="amount" inputmode="numeric" placeholder="총 금액"></label></div>
-    <label>날짜 · 시간<input name="at" type="datetime-local"></label>
-    <label>수수료 (원, 없으면 비워 두기) <button type="button" class="linkbtn" data-autofee>0.05% 넣기</button><input name="fee" inputmode="decimal" placeholder="0"></label>
-    <label>메모 (판단 이유)<input name="memo" placeholder="왜 샀는지 / 팔았는지"></label>
-    <div class="msg" id="addMsg"></div>
-    <div class="row"><div style="flex:1"></div><button class="pill ghost" value="cancel" formnovalidate>닫기</button><button class="pill accent" value="go" id="addGo">저장</button></div>
+    <label class="field"><span>가격 <button type="button" class="linkbtn" data-reccur>현재가</button></span><input name="price" inputmode="decimal" placeholder="1개 가격"></label>
+    <label class="field"><span>수량</span><input name="qty" inputmode="decimal" placeholder="개"></label>
+    <label class="field"><span>금액</span><input name="amount" inputmode="numeric" placeholder="원"></label>
+    <label class="field"><span>일시</span><input name="at" type="datetime-local"></label>
+    <label class="field"><span>수수료 <button type="button" class="linkbtn" data-autofee>0.05%</button></span><input name="fee" inputmode="decimal" placeholder="0원"></label>
+    <label class="field"><span>메모</span><input name="memo" placeholder="판단 이유"></label>
+    <div class="pv" id="addPv"></div>
+    <div class="err msg" id="addMsg"></div>
+    <button class="submit buy" value="go" id="addGo">기록 저장 · 매수</button>
+    <div class="note">호가를 누르면 가격이 들어가요. 수량이나 금액 중 하나만 넣어도 돼요.</div>
   </form>
       </div>
       <div class="rec-pane hidden" id="recPanePaper"><div class="order" id="orderBox"></div></div>
