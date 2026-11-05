@@ -92,18 +92,27 @@ if (-not $AUTO){
   Write-Host '  1  지금 가져와서 거래일지에 올리기 (엔터)'
   Write-Host '  2  파일로 저장하기 (직접 올리기용)'
   Write-Host ('  3  실시간 자동 올리기 ' + $(if (TaskOn) { '끄기' } else { '켜기 (PC 켜면 뒤에서 30초마다)' }))
-  Write-Host '  4  저장된 키·연결 코드 지우기'
+  Write-Host '  4  업비트 키만 다시 넣기 (연결 코드는 그대로)'
+  Write-Host '  6  전부 지우기 (키 + 연결 코드 + 자동 실행)'
   Write-Host '  5  연결 점검 (업비트 응답을 그대로 보여 줌)'
   $pick = (Read-Host '번호').Trim()
   if ($pick -eq '2'){ $mode = 'file' }
   elseif ($pick -eq '3'){
     if (TaskOn){ TaskRemove; Write-Host '자동 실행을 껐어요.' -ForegroundColor Yellow; return }
-    if (-not $code){ Write-Host '자동 실행은 연결 코드가 있어야 해요. 4번으로 지운 뒤 다시 실행해 코드를 넣어 주세요.' -ForegroundColor Yellow; return }
+    if (-not $code){ Write-Host '자동 실행은 연결 코드가 있어야 해요. 6번으로 지운 뒤 다시 실행해 코드를 넣어 주세요.' -ForegroundColor Yellow; return }
     TaskInstall; Write-Host '실시간 자동 올리기를 켰어요. PC가 켜져 있는 동안 뒤에서 30초마다 새 체결을 올려요.' -ForegroundColor Green
     return
   }
   elseif ($pick -eq '5'){ $script:diag = $true }
-  elseif ($pick -eq '4'){ Remove-Item $keyFile, $codeFile, $stateFile -ErrorAction SilentlyContinue; TaskRemove; Write-Host '지웠어요. 다시 실행하면 처음부터 설정해요.'; return }
+  elseif ($pick -eq '6'){ Remove-Item $keyFile, $codeFile, $stateFile -ErrorAction SilentlyContinue; TaskRemove; Write-Host '전부 지웠어요. 다시 실행하면 처음부터 설정해요.'; return }
+  elseif ($pick -eq '4'){
+    Write-Host '새 업비트 키를 넣어 주세요. (자산조회·주문조회만 켠 키)'
+    $access = (Read-Host 'Access Key').Trim()
+    $secret = (Plain (Read-Host 'Secret Key' -AsSecureString)).Trim()
+    Set-Content -Path $keyFile -Value @($access, (Seal $secret))
+    Write-Host '새 키를 저장했어요. 연결 코드와 자동 실행은 그대로예요.' -ForegroundColor Green
+    if (TaskOn){ TaskInstall }   # 뒤에서 도는 도우미가 새 키로 다시 시작
+  }
   if ($mode -eq 'push' -and -not $code){ $mode = 'file' }
   if ($mode -eq 'push' -and -not (TaskOn) -and $pick -ne '3' -and -not $script:diag){
     if ((Read-Host '앞으로는 거래하면 저절로(30초 안에) 올라가게 켤까요? (y/n)') -match '^[yY]'){ TaskInstall; Write-Host '실시간 자동 올리기를 켰어요. 창을 닫아도 뒤에서 계속 돌아요.' -ForegroundColor Green }
@@ -142,8 +151,8 @@ function Call($path, $query){
       if ($msg -match 'no_authorization_ip'){ $ip = ''; try { $ip = (Invoke-RestMethod -Uri 'https://api.ipify.org' -TimeoutSec 5) } catch {}; throw "허용되지 않은 IP예요. 업비트 Open API 관리에서 이 PC의 공인 IP($ip)를 키의 허용 IP에 넣어 주세요." }
       if ($msg -match 'nonce_used'){ Start-Sleep -Milliseconds 300; continue }
       if ($msg -match 'out_of_scope'){ throw "키 권한이 부족해요. 자산조회·주문조회를 켜 주세요." }
-      if ($msg -match 'invalid_access_key'){ throw "Access Key가 맞지 않아요 ($path). 도우미 5번(연결 점검)으로 확인해 주세요. 업비트 응답: $msg" }
-      if ($msg -match 'jwt_verification'){ throw "Secret Key가 맞지 않아요 ($path). 도우미 5번(연결 점검)으로 확인해 주세요. 업비트 응답: $msg" }
+      if ($msg -match 'invalid_access_key'){ throw "Access Key가 맞지 않아요 ($path). 도우미 4번으로 키만 다시 넣거나 5번(연결 점검)으로 확인해 주세요. 업비트 응답: $msg" }
+      if ($msg -match 'jwt_verification'){ throw "Secret Key가 맞지 않아요 ($path). 도우미 4번으로 키만 다시 넣거나 5번(연결 점검)으로 확인해 주세요. 업비트 응답: $msg" }
       if ($msg -match 'expired_access_key'){ throw "업비트 키가 만료됐어요. 업비트에서 새로 발급해 주세요." }
       throw "업비트 오류: $msg $($_.Exception.Message)"
     }
@@ -156,7 +165,7 @@ function Push($chunk){
     return Invoke-RestMethod -Method Post -Uri "$SB_URL/rest/v1/rpc/q_upbit_push" -Headers @{ apikey = $SB_KEY; Authorization = "Bearer $SB_KEY" } -ContentType 'application/json; charset=utf-8' -Body ($U8.GetBytes($body))
   } catch {
     $m = "$($_.ErrorDetails.Message)"
-    if ($m -match 'invalid_code'){ throw '연결 코드가 맞지 않거나 끊겼어요. QUANTERA 설정에서 새 코드를 만들고, 도우미 4번(지우기) 후 다시 넣어 주세요.' }
+    if ($m -match 'invalid_code'){ throw '연결 코드가 맞지 않거나 끊겼어요. QUANTERA 설정에서 새 코드를 만들고, 도우미 6번(전부 지우기) 후 다시 넣어 주세요.' }
     throw "QUANTERA에 올리지 못했어요: $m $($_.Exception.Message)"
   }
 }
