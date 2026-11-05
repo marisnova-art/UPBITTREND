@@ -245,6 +245,11 @@ if ($script:diag){
   Write-Host ''
   Write-Host '--- 연결 점검 ---' -ForegroundColor Cyan
   Write-Host ("저장된 Access Key: {0}… ({1}자, 보통 40자){2}" -f $access.Substring(0, [Math]::Min(6, $access.Length)), $access.Length, $(if ($access -match '\s') { ' · 빈칸이 섞여 있어요!' } else { '' }))
+  Write-Host ("Access Key 끝 4자리: …{0}  (업비트 목록의 끝자리와 같아야 해요)" -f $access.Substring([Math]::Max(0, $access.Length - 4)))
+  $odd = @($access.ToCharArray() | Where-Object { $_ -notmatch '[A-Za-z0-9]' }).Count
+  $odd2 = @($secret.ToCharArray() | Where-Object { $_ -notmatch '[A-Za-z0-9]' }).Count
+  Write-Host ("영문·숫자가 아닌 글자: Access {0}개 · Secret {1}개 (둘 다 0이어야 해요)" -f $odd, $odd2) -ForegroundColor $(if ($odd -or $odd2) { 'Red' } else { 'Gray' })
+  Write-Host ("Access와 Secret이 같은 값인가요? {0}" -f $(if ($access -eq $secret) { '네, 같은 걸 두 번 넣었어요!' } else { '아니요' }))
   Write-Host ("저장된 Secret Key: {0}자 (보통 40자)" -f $secret.Length)
   $ip = ''; try { $ip = (Invoke-RestMethod -Uri 'https://api.ipify.org' -TimeoutSec 5) } catch {}
   Write-Host "이 PC의 공인 IP: $ip  (업비트 키의 허용 IP와 같아야 해요)"
