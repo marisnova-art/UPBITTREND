@@ -38,8 +38,13 @@ function Unseal([string]$t){ Plain (ConvertTo-SecureString $t) }
 
 # ---------- 저장된 키·코드
 $access = $null; $secret = $null; $code = $null
-if (Test-Path $keyFile){ try { $l = @(Get-Content $keyFile); $access = $l[0]; $secret = Unseal $l[1] } catch { $access = $null } }
-if (Test-Path $codeFile){ try { $code = Unseal (@(Get-Content $codeFile)[0]) } catch { $code = $null } }
+function LoadSaved(){
+  $script:access = $null; $script:code = $null
+  if (Test-Path $keyFile){ try { $l = @(Get-Content $keyFile); $script:access = "$($l[0])".Trim(); $script:secret = (Unseal $l[1]).Trim() } catch { $script:access = $null } }
+  if (Test-Path $codeFile){ try { $script:code = Unseal (@(Get-Content $codeFile)[0]) } catch { $script:code = $null } }
+  $script:savedAt = @($keyFile, $codeFile, $ps1) | ForEach-Object { if (Test-Path $_){ (Get-Item $_).LastWriteTimeUtc.Ticks } else { 0 } }
+}
+LoadSaved
 $lastTo = 0; if (Test-Path $stateFile){ try { $lastTo = [int64]@(Get-Content $stateFile)[0] } catch { $lastTo = 0 } }
 
 function TaskOn(){ try { return [bool](Get-ScheduledTask -TaskName $TASK -ErrorAction SilentlyContinue) } catch { return $false } }
@@ -121,7 +126,7 @@ if (-not $AUTO){
   if (-not $access -or -not $code){ Log ('자동 실행: ' + $(if (-not $access) { '업비트 키' } else { '연결 코드' }) + '를 못 읽어 건너뜀. bat를 다시 실행해 주세요.'); return }
   # 한 번에 하나만 (1시간마다 확인할 때 이미 돌고 있으면 바로 끝냄)
   $script:mx = New-Object Threading.Mutex($false, 'Local\QUANTERA_Upbit_Watch')
-  try { if (-not $script:mx.WaitOne(0)){ return } } catch [Threading.AbandonedMutexException] {}
+  try { if (-not $script:mx.WaitOne(75000)){ return } } catch [Threading.AbandonedMutexException] {}
 }
 
 # ---------- 기간: 지난번 이후 (하루 겹쳐서 받음, 중복은 서버가 건너뜀). 처음엔 묻거나 30일
@@ -151,7 +156,7 @@ function Call($path, $query){
       if ($msg -match 'no_authorization_ip'){ $ip = ''; try { $ip = (Invoke-RestMethod -Uri 'https://api.ipify.org' -TimeoutSec 5) } catch {}; throw "허용되지 않은 IP예요. 업비트 Open API 관리에서 이 PC의 공인 IP($ip)를 키의 허용 IP에 넣어 주세요." }
       if ($msg -match 'nonce_used'){ Start-Sleep -Milliseconds 300; continue }
       if ($msg -match 'out_of_scope'){ throw "키 권한이 부족해요. 자산조회·주문조회를 켜 주세요." }
-      if ($msg -match 'invalid_access_key'){ throw "Access Key가 맞지 않아요 ($path). 도우미 4번으로 키만 다시 넣거나 5번(연결 점검)으로 확인해 주세요. 업비트 응답: $msg" }
+      if ($msg -match 'invalid_access_key'){ throw "Access Key가 맞지 않아요 ($path, 쓰는 키 $($access.Substring(0, [Math]::Min(6, $access.Length)))…). 도우미 4번으로 키만 다시 넣거나 5번(연결 점검)으로 확인해 주세요. 업비트 응답: $msg" }
       if ($msg -match 'jwt_verification'){ throw "Secret Key가 맞지 않아요 ($path). 도우미 4번으로 키만 다시 넣거나 5번(연결 점검)으로 확인해 주세요. 업비트 응답: $msg" }
       if ($msg -match 'expired_access_key'){ throw "업비트 키가 만료됐어요. 업비트에서 새로 발급해 주세요." }
       throw "업비트 오류: $msg $($_.Exception.Message)"
@@ -251,6 +256,10 @@ if ($script:diag){
   Write-Host ("영문·숫자가 아닌 글자: Access {0}개 · Secret {1}개 (둘 다 0이어야 해요)" -f $odd, $odd2) -ForegroundColor $(if ($odd -or $odd2) { 'Red' } else { 'Gray' })
   Write-Host ("Access와 Secret이 같은 값인가요? {0}" -f $(if ($access -eq $secret) { '네, 같은 걸 두 번 넣었어요!' } else { '아니요' }))
   Write-Host ("저장된 Secret Key: {0}자 (보통 40자)" -f $secret.Length)
+  $cmp = (Read-Host '업비트 화면의 Access Key를 붙여 넣으면 저장된 것과 비교해요 (엔터 = 건너뜀)').Trim()
+  if ($cmp){ Write-Host ("저장된 Access Key와 {0}" -f $(if ($cmp -ceq $access) { '똑같아요' } else { '달라요! 4번으로 다시 넣어 주세요' })) -ForegroundColor $(if ($cmp -ceq $access) { 'Green' } else { 'Red' }) }
+  $bg = @(); try { $bg = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -like '*quantera-upbit.ps1*' }) } catch {}
+  Write-Host ("뒤에서 도는 도우미: {0}개" -f $bg.Count)
   $ip = ''; try { $ip = (Invoke-RestMethod -Uri 'https://api.ipify.org' -TimeoutSec 5) } catch {}
   Write-Host "이 PC의 공인 IP: $ip  (업비트 키의 허용 IP와 같아야 해요)"
   Write-Host ("PowerShell {0} · Windows {1}" -f $PSVersionTable.PSVersion, [Environment]::OSVersion.Version)
@@ -273,7 +282,17 @@ if ($script:diag){
 if ($AUTO){
   # 실시간: 처음엔 지난번 이후 전부, 그다음부턴 30초마다 최근 10분만 확인 (겹친 건 서버가 건너뜀)
   $fails = 0
+  Log ("자동 실행 시작 (키 {0}…)" -f $access.Substring(0, [Math]::Min(6, $access.Length)))
   while ($true){
+    $old = $script:savedAt
+    $nowAt = @($keyFile, $codeFile, $ps1) | ForEach-Object { if (Test-Path $_){ (Get-Item $_).LastWriteTimeUtc.Ticks } else { 0 } }
+    if ($nowAt[2] -ne $old[2]){ Log '도우미가 새 버전으로 바뀌어 이전 것은 멈춤'; try { $script:mx.ReleaseMutex() } catch {}; return }
+    if ($nowAt[0] -ne $old[0] -or $nowAt[1] -ne $old[1]){
+      LoadSaved
+      if (-not $access -or -not $code){ Log '자동 실행: 저장된 키나 연결 코드를 못 읽어 멈춤'; return }
+      $script:hmac = New-Object Security.Cryptography.HMACSHA512 (,$U8.GetBytes($secret)); $fails = 0; $script:balAt = 0; $script:balWarned = $false
+      Log ("새로 저장된 키로 바꿈 ({0}…)" -f $access.Substring(0, [Math]::Min(6, $access.Length)))
+    }
     $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     try { SyncOnce $from $now; $fails = 0; $from = $now - 600000 }
     catch { $fails++; if ($fails -le 3 -or $fails % 60 -eq 0){ Log ("실패: " + $_.Exception.Message) } }
