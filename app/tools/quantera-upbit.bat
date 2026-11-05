@@ -134,9 +134,11 @@ function Call($path, $query){
   for ($i = 0; $i -lt 3; $i++){
     try { $r = Invoke-RestMethod -Uri $url -Headers @{ Authorization = "Bearer $jwt"; Accept = 'application/json' }; return $r }
     catch {
-      $msg = $_.ErrorDetails.Message
+      $msg = "$($_.ErrorDetails.Message)"
+      if (-not $msg){ try { $rs = $_.Exception.Response.GetResponseStream(); try { $rs.Position = 0 } catch {}; $msg = (New-Object IO.StreamReader($rs)).ReadToEnd() } catch {} }
       if ($msg -match 'too_many_requests' -or $_.Exception.Response.StatusCode.value__ -eq 429){ Start-Sleep -Milliseconds (1000 * ($i + 1)); continue }
-      if ($msg -match 'no_authorization_ip'){ throw "허용되지 않은 IP예요. 업비트 Open API 관리에서 이 PC의 공인 IP를 등록해 주세요." }
+      if ($msg -match 'no_authorization_ip'){ $ip = ''; try { $ip = (Invoke-RestMethod -Uri 'https://api.ipify.org' -TimeoutSec 5) } catch {}; throw "허용되지 않은 IP예요. 업비트 Open API 관리에서 이 PC의 공인 IP($ip)를 키의 허용 IP에 넣어 주세요." }
+      if ($msg -match 'nonce_used'){ Start-Sleep -Milliseconds 300; continue }
       if ($msg -match 'out_of_scope'){ throw "키 권한이 부족해요. 자산조회·주문조회를 켜 주세요." }
       if ($msg -match 'invalid_access_key'){ throw "Access Key가 맞지 않아요. 도우미를 실행해 4번(지우기) 후 다시 넣어 주세요." }
       if ($msg -match 'jwt_verification'){ throw "Secret Key가 맞지 않아요. 도우미를 실행해 4번(지우기) 후 다시 넣어 주세요." }
