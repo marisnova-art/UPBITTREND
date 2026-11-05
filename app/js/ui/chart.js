@@ -2,7 +2,7 @@
 // 캔들 + 거래량 + 이동평균(20·60) + 가이드 선(매수 구간, 1·2차 매도, 손절, 과거 매수가)
 import { A } from '../analysis/trend.js';
 
-const C = { up: '#F04452', down: '#4C8DFF', grid: '#141417', text: '#9A9AA3', accent: '#C6F432', warn: '#F5A524', white: '#EDEDEF', ma20: '#C9C9CF', ma60: '#7D7D86' };
+const C = { up: '#F04452', down: '#4C8DFF', grid: '#24242A', text: '#9A9AA3', accent: '#C6F432', warn: '#F5A524', white: '#EDEDEF', ma20: '#EDEDEF', ma60: '#9A9AA3' };
 const KST = 9 * 3600; // 분·시간봉은 한국 시간으로 보이게
 const LONG = new Set(['1d', '1w', '1M', '1y']); // 날짜 단위 봉 (한국 시간 보정 안 함)
 const TF_SEC = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '1d': 86400, '1w': 604800, '1M': 2592000, '1y': 31536000 };
@@ -13,8 +13,8 @@ export function createChart(el, legendEl, infoEl){
     autoSize: true,
     layout: { background: { type: 'solid', color: 'transparent' }, textColor: C.text, fontFamily: "'JetBrains Mono', monospace", fontSize: 12 },
     grid: { vertLines: { color: C.grid }, horzLines: { color: C.grid } },
-    rightPriceScale: { borderColor: '#1F1F23', scaleMargins: { top: 0.14, bottom: 0.2 } },
-    timeScale: { borderColor: '#1F1F23', timeVisible: true, secondsVisible: false, rightOffset: 6 },
+    rightPriceScale: { borderColor: '#24242A', scaleMargins: { top: 0.14, bottom: 0.2 } },
+    timeScale: { borderColor: '#24242A', timeVisible: true, secondsVisible: false, rightOffset: 6 },
     crosshair: { mode: LW.CrosshairMode.Normal },
     localization: { locale: 'ko-KR', priceFormatter: p => fmt(p) }
   });
@@ -165,10 +165,10 @@ export function createChart(el, legendEl, infoEl){
       add(g.sell1, '1차 매도', C.white); add(g.sell2, '2차 매도', C.white); add(g.stop, '손절', C.warn);
       legend.push(['매수 구간', C.accent], ['매도가', C.white], ['손절', C.warn]);
     }
-    for (const b of pastBuys.slice(0, 3)) add(b.price, b.label, '#7D7D86', 3);
+    for (const b of pastBuys.slice(0, 3)) add(b.price, b.label, '#9A9AA3', 3);
     for (const x of extra) add(x.price, x.title, x.color, x.style ?? 0, x.width ?? 1);
     for (const [t, c] of [...new Map(extra.filter(x => x.legend).map(x => [x.legend, x.color]))]) legend.push([t, c]);
-    if (pastBuys.length) legend.push(['과거 매수가', '#7D7D86']);
+    if (pastBuys.length) legend.push(['과거 매수가', '#9A9AA3']);
     legend.push(['20선', C.ma20], ['60선', C.ma60]);
     if (legendEl) legendEl.innerHTML = legend.map(([t, c]) => `<span style="color:${c}">${t}</span>`).join('') +
       (lines.length ? `<button class="lbl-toggle${showLabels ? ' on' : ''}" data-lbl aria-pressed="${showLabels}">라벨 ${showLabels ? 'ON' : 'OFF'}</button>` : '');

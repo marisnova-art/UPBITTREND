@@ -146,6 +146,12 @@ const mapOrderbook = ob => ob && ({
   units: (ob.orderbook_units || []).map(u => ({ ask: u.ask_price, askSize: u.ask_size, bid: u.bid_price, bidSize: u.bid_size }))
 });
 
+// ---------- 최근 체결 (처음 열 때 한 번, 이후는 실시간)
+export async function getTrades(market, count = 50){
+  const rows = await api(`/trades/ticks?market=${market}&count=${count}`);
+  return (rows || []).map(d => ({ market: d.market, price: d.trade_price, size: d.trade_volume, side: d.ask_bid === 'BID' ? 'buy' : 'sell', ts: d.timestamp }));
+}
+
 // ---------- 실시간 (WebSocket). 연결이 끊기면 자동 재연결.
 // handlers: { ticker(q), orderbook(ob), trade(t), status(state) }
 export function stream(markets, handlers = {}){

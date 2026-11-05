@@ -25,7 +25,7 @@ let UI = { paperOn: false, sparkDays: 30, ...(LS.get(UI_KEY, {}) || {}) };
 const S = {
   instruments: [], byMarket: new Map(), quotes: new Map(), results: new Map(),
   watch: new Set(), trades: [], ledger: { rows: [], positions: [], rebuy: [] },
-  tab: 'fav', search: '', sel: null, tf: '1d', stream: null, scanning: null,
+  tab: 'fav', sdOpen: null, search: '', sel: null, tf: '1d', stream: null, scanning: null,
   firstSeen: LS.get('quantera:firstSeen', null),
   acct: UI.paperOn ? LS.get('quantera:acct', 'paper') : 'real',
   ledgerReal: { rows: [], positions: [], rebuy: [] }, ledgerPaper: { rows: [], positions: [], rebuy: [] }
@@ -80,7 +80,7 @@ async function boot(){
   recompute(); renderWatch();
   select(LS.get('quantera:sel', 'KRW-BTC'), { noRecent: true });
   S.stream = upbit.stream(S.instruments.map(i => i.market), {
-    ticker: onTick, orderbook: renderOrderbook, status: setWs
+    ticker: onTick, orderbook: renderOrderbook, trade: onTrade, status: setWs
   });
   S.stream.focus(S.sel);   // 처음 연 종목도 호가·체결 실시간 구독 (전에는 다른 종목을 눌러야 구독됐음)
   // 모의투자: 앱이 꺼져 있던 동안 지정가·예약 매도가 닿았는지 캔들로 확인
@@ -141,7 +141,7 @@ const surgeMuted = () => muteUntil() !== 0;
 function setSurgeMute(min){
   LS.set(MUTE_KEY, min === 0 ? 0 : min < 0 ? -1 : Date.now() + min * 60000);
   if (min !== 0){ unseen.clear(); unseenDump.clear(); }
-  renderSurgeBar(); renderMuteBtns(); if (S.tab === 'surge' || S.tab === 'dump') renderWatch();
+  renderSurgeBar(); renderMuteBtns(); renderSdDrop(true);
   toast(min === 0 ? '급등·급락 알림을 다시 켰어요.' : min < 0 ? '급등·급락 알림을 껐어요. 감지와 목록은 계속돼요.' : `급등·급락 알림을 ${min >= 60 ? min / 60 + '시간' : min + '분'} 동안 껐어요.`);
 }
 function muteText(){
@@ -156,7 +156,6 @@ function muteCtlHtml(){
     : '<button class="pill sm" data-mute="30">30분 끄기</button><button class="pill sm" data-mute="60">1시간</button><button class="pill sm" data-mute="-1">끄기</button>'}</div>`;
 }
 function renderMuteBtns(){
-  for (const k of ['surge', 'dump']){ const t = $(`#wlTabs [data-tab="${k}"]`); if (t) t.classList.toggle('muted-tab', surgeMuted()); }
   const c = $('.mute-ctl'); if (c) c.outerHTML = muteCtlHtml();
 }
 // 소리만 켜고 끄기 (위쪽 🔊 버튼). 감지·팝업은 그대로
@@ -195,18 +194,45 @@ function ackSurge(m){
   for (const row of $$('.wl-row.blink', $('#wlBody'))) if (!unseen.has(row.dataset.m) && !unseenDump.has(row.dataset.m)) row.classList.remove('blink');
   renderSurgeBar();
 }
+// 위쪽 검색 옆 고정 칩: [● 급등 N 이름 외] [● 급락 N] + 확인 · 30분 끄기. 누르면 아래로 목록
+const sdNm = m => (S.byMarket.get(m) || {}).name || m;
+const sdList = kind => { const src = kind === 'dump' ? dump : surge; return [...src.events.keys()].sort((a, b) => src.get(b).at - src.get(a).at); };
 function renderSurgeBar(){
-  const bar = $('#surgeBar'); if (!bar) return;
-  const up = surgeMuted() ? [] : [...unseen].filter(m => surge.events.has(m));
-  const dn = surgeMuted() ? [] : [...unseenDump].filter(m => dump.events.has(m));
-  $('#wlTabs [data-tab="surge"]').classList.toggle('blink', !!up.length);
-  const dt = $('#wlTabs [data-tab="dump"]'); if (dt) dt.classList.toggle('blink-dn', !!dn.length);
-  if (!up.length && !dn.length){ bar.classList.add('hidden'); return; }
-  const nm = m => (S.byMarket.get(m) || {}).name || m;
-  const part = (ms, label, cls, tab) => ms.length ? `<button class="sb-part ${cls}" data-surge-go="${tab}"><span class="dot-live"></span><b>${label} ${ms.length}</b><span>${esc(nm(ms[0]))}${ms.length > 1 ? ` 외 ${ms.length - 1}` : ''}</span></button>` : '';
-  bar.innerHTML = part(up, '급등', 'up', 'surge') + part(dn, '급락', 'dn', 'dump') + `<button class="pill" data-surge-ack>확인</button><button class="pill" data-mute="30" title="30분 동안 소리·팝업 끄기">30분 끄기</button>`;
-  bar.classList.toggle('only-dn', !up.length);
-  bar.classList.remove('hidden');
+  const box = $('#sdChips'); if (!box) return;
+  const muted = surgeMuted();
+  const chip = (kind, label, cls, fresh) => {
+    const ms = sdList(kind), n = ms.length;
+    return `<button class="sd-chip ${cls}${n ? ' has' : ''}${fresh ? ' new' : ''}${S.sdOpen === kind ? ' open' : ''}" data-sd="${kind}" title="${label} 목록 보기"><span class="dot-live"></span>${label} ${n}${n ? `<span class="sd-nm">${esc(sdNm(ms[0]))}${n > 1 ? ' 외' : ''}</span>` : ''}</button>`;
+  };
+  const up = muted ? 0 : [...unseen].filter(m => surge.events.has(m)).length;
+  const dn = muted ? 0 : [...unseenDump].filter(m => dump.events.has(m)).length;
+  box.innerHTML = chip('surge', '급등', 'up', up) + chip('dump', '급락', 'dn', dn)
+    + `<button class="pill sm" data-surge-ack${up || dn ? '' : ' disabled'}>확인</button>`
+    + (muted ? `<button class="pill sm on-warn" data-mute="0" title="${muteText()}">알림 켜기</button>` : `<button class="pill sm" data-mute="30" title="30분 동안 소리·팝업 끄기 (감지·목록은 계속)">30분 끄기</button>`);
+  if (S.sdOpen) renderSdDrop();
+}
+let sdKey = '';
+function renderSdDrop(force){
+  const d = $('#sdDrop'); if (!d) return;
+  if (!S.sdOpen){ d.classList.add('hidden'); return; }
+  const kind = S.sdOpen, src = kind === 'dump' ? dump : surge, ms = sdList(kind);
+  const key = kind + ms.join() + surgeMuted() + (kind === 'surge' ? surge.log().length + '|' + surge.tracking.size : '');
+  if (!force && key === sdKey && !d.classList.contains('hidden')){
+    for (const el of $$('[data-ago]', d)){ const e = src.get(el.dataset.ago); if (e) el.textContent = surgeText(el.dataset.ago, e); }
+    return;
+  }
+  sdKey = key;
+  const rows = ms.map(m => { const q = S.quotes.get(m) || {}, e = src.get(m), fresh = (kind === 'dump' ? unseenDump : unseen).has(m);
+    return `<button class="sd-row${fresh ? (kind === 'dump' ? ' blink-dn' : ' blink') : ''}" data-sdm="${m}"><span class="sd-n">${esc(sdNm(m))}</span><span class="muted" data-ago="${m}">${surgeText(m, e)}</span><span class="grow"></span><span class="mono ${toneOf(q.changeRate)}">${fmtPrice(q.price)} ${fmtPct((q.changeRate || 0) * 100)}</span></button>`; }).join('');
+  d.innerHTML = `<div class="sd-head"><span class="${kind === 'dump' ? 'down' : 'up'}">${kind === 'dump' ? '급락' : '급등'} ${ms.length}</span><span class="grow"></span><button class="pill sm" data-sd-close>닫기</button></div>`
+    + muteCtlHtml() + (rows || `<div class="empty">지금 잡힌 ${kind === 'dump' ? '급락' : '급등'}이 없어요. 앱이 켜져 있는 동안 1초마다 검사해요.</div>`)
+    + (kind === 'surge' ? surgeStatsHtml() : '');
+  d.classList.remove('hidden');
+}
+function toggleSd(kind){
+  S.sdOpen = S.sdOpen === kind ? null : kind;
+  if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
+  renderSurgeBar(); renderSdDrop(true);
 }
 setInterval(() => {
   const fresh = surge.check(S.quotes), freshDn = dump.check(S.quotes), cfg = allCfg();
@@ -222,14 +248,10 @@ setInterval(() => {
   const ring = !surgeMuted.last && cfg.surgeAlarm && (unseen.size || unseenDump.size);
   if (ring && (fresh.length || freshDn.length || Date.now() - lastBeep >= cfg.surgeRepeat * 1000)){ lastBeep = Date.now(); beep(freshDn.length && !fresh.length || (!unseen.size && unseenDump.size) ? 'down' : 'up'); }
   const key = [...surge.events.keys(), '|', ...dump.events.keys()].join() + '|' + surge.log().length + '|' + surge.tracking.size;
-  if ((S.tab === 'surge' || S.tab === 'dump') && !S.search){
-    if (fresh.length || freshDn.length || key !== lastSurgeKey) renderWatch();
-    else for (const el of $$('[data-ago]', $('#wlBody'))){ const isD = S.tab === 'dump', e = (isD ? dump : surge).get(el.dataset.ago); if (e) el.textContent = surgeText(el.dataset.ago, e); }
-  } else if (fresh.length || freshDn.length || key !== lastSurgeKey) renderSurgeBadges();
+  if (fresh.length || freshDn.length || key !== lastSurgeKey) renderSurgeBadges();
   if (key !== lastSurgeKey) renderSurgeBar();
   lastSurgeKey = key;
-  const t = $('#wlTabs [data-tab="surge"]'); if (t) t.dataset.n = surge.events.size || '';
-  const d = $('#wlTabs [data-tab="dump"]'); if (d) d.dataset.n = dump.events.size || '';
+  if (S.sdOpen) renderSdDrop();
 }, 1000);
 function surgeText(m, e){
   const q = S.quotes.get(m) || {}, since = q.price && e.pAt ? (q.price / e.pAt - 1) * 100 : 0;
@@ -335,8 +357,6 @@ function listFor(tab){
   else if (tab === 'pullback' || tab === 'bottom') list = list.filter(i => isPick(i.market, tab));
   else if (tab === 'new') list = list.filter(i => isNewListing(i.market));
   else if (tab === 'recent' && !S.search) return recent.map(x => S.byMarket.get(x.m)).filter(Boolean);
-  else if (tab === 'surge' && !S.search) return list.filter(i => surge.events.has(i.market)).sort((a, b) => surge.get(b.market).at - surge.get(a.market).at);
-  else if (tab === 'dump' && !S.search) return list.filter(i => dump.events.has(i.market)).sort((a, b) => dump.get(b.market).at - dump.get(a.market).at);
   else if (tab === 'rebuy'){ const rb = new Set(S.ledger.rebuy.map(r => upbit.toMarket(r.symbol))); list = list.filter(i => rb.has(i.market)); }
   if (S.search){ const s = S.search.toLowerCase(); list = S.instruments.filter(i => i.name.toLowerCase().includes(s) || i.market.toLowerCase().includes(s) || (i.nameEn || '').toLowerCase().includes(s)); }
   const val = i => (S.quotes.get(i.market) || {}).value24h || 0;
@@ -348,20 +368,20 @@ function renderWatch(){
   const rebuy = new Set(S.ledger.rebuy.map(r => upbit.toMarket(r.symbol)));
   if (!list.length){
     const msg = { fav: '관심 종목이 없어요. 전체 탭에서 ☆를 눌러 추가하세요.', hold: '보유 종목이 없어요. 로그인하면 기존 보유 종목이 기초 이월로 보여요.', pullback: '지금 조건에 맞는 눌림 매수 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', bottom: '지금 조건에 맞는 바닥 반등 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', new: '최근 30일 안에 새로 상장된 종목이 없어요.', recent: '아직 본 종목이 없어요. 종목을 열면 여기에 본 순서대로 남아요.', dump: `지금 갑자기 매도가 몰리며 내린 코인이 없어요. 급등과 같은 기준(최근 ${allCfg().surgeSec}초 거래대금 ${allCfg().surgeVol}배 이상)에 가격이 ${Math.max(allCfg().surgePct, 0.5)}% 이상 내리면 잡혀요.${allCfg().dumpOn ? '' : ' (지금 설정에서 급락 감지가 꺼져 있어요)'}`, surge: `지금 갑자기 거래가 몰린 코인이 없어요. 앱이 켜져 있는 동안 1초마다 검사해요. (최근 ${allCfg().surgeSec}초 거래대금이 평소의 ${allCfg().surgeVol}배 이상)`, rebuy: '재매수 후보가 없어요. 이익을 내고 판 종목이 그때 매수가보다 싸지면 여기에 떠요.' };
-    $('#wlBody').innerHTML = (S.tab === 'surge' && !S.search ? muteCtlHtml() + surgeStatsHtml() : S.tab === 'dump' && !S.search ? muteCtlHtml() : '') + (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + `<div class="empty">${S.search ? '검색 결과가 없어요.' : msg[S.tab] || ''}</div>`; return;
+    $('#wlBody').innerHTML = (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + `<div class="empty">${S.search ? '검색 결과가 없어요.' : msg[S.tab] || ''}</div>`; return;
   }
-  $('#wlBody').innerHTML = (S.tab === 'surge' && !S.search ? muteCtlHtml() + surgeStatsHtml() : S.tab === 'dump' && !S.search ? muteCtlHtml() : '') + (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + list.slice(0, 300).map(i => {
+  $('#wlBody').innerHTML = (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + list.slice(0, 300).map(i => {
     const q = S.quotes.get(i.market) || {}, r = S.results.get(i.market);
     const L = live(i.market);
     const bar = L.stance === 'buy_zone' ? 'entry' : ['chase', 'broken', 'failed'].includes(L.stance) ? 'warn' : '';
     const sv = surge.get(i.market), dv = dump.get(i.market);
     const badges = [sv ? '<span class="badge surge">급등</span>' : '', dv ? '<span class="badge dump">급락</span>' : '', L.stance === 'buy_zone' ? `<span class="badge accent">${TYPE_KO[L.type]}</span>` : '', rebuy.has(i.market) ? '<span class="badge accent">재매수</span>' : '', isNewListing(i.market) ? '<span class="badge warn">신규</span>' : '',
       q.suspended ? '<span class="badge warn">거래정지</span>' : '', i.warning ? '<span class="badge warn">유의</span>' : '', (i.caution || []).length ? '<span class="badge line">주의</span>' : ''].join('');
-    return `<div class="wl-row${S.sel === i.market ? ' sel' : ''}${S.tab === 'surge' && unseen.has(i.market) ? ' blink' : S.tab === 'dump' && unseenDump.has(i.market) ? ' blink-dn' : ''}" data-m="${i.market}">
+    return `<div class="wl-row${S.sel === i.market ? ' sel' : ''}" data-m="${i.market}">
       <span class="bar ${bar}" data-tip="${BAR_TIPS[bar]}"></span>
       <div style="min-width:0">
         <div class="wl-name"><button class="star${S.watch.has(i.symbol) ? ' on' : ''}" data-star="${i.symbol}" aria-label="관심">${S.watch.has(i.symbol) ? '★' : '☆'}</button><b>${esc(i.name)}</b>${badges}</div>
-        <div class="wl-peter">${S.tab === 'recent' && !S.search ? recentText(i.market) : S.tab === 'surge' && sv ? `<span class="surge-txt" data-ago="${i.market}">${surgeText(i.market, sv)}</span>` : S.tab === 'dump' && dv ? `<span class="surge-txt" data-ago="${i.market}">${surgeText(i.market, dv)}</span>` : r && L.stance !== 'blocked' ? esc(L.text || r.peter) :`<span class="mono">${i.market}</span> · ${fmtKrwShort(q.value24h)}`}</div>
+        <div class="wl-peter">${S.tab === 'recent' && !S.search ? recentText(i.market) : r && L.stance !== 'blocked' ? esc(L.text || r.peter) :`<span class="mono">${i.market}</span> · ${fmtKrwShort(q.value24h)}`}</div>
       </div>
       <div class="wl-px mono"><div class="p ${toneOf(q.changeRate)}" data-px="${i.market}">${fmtPrice(q.price)}</div><div class="c ${toneOf(q.changeRate)}" data-cr="${i.market}">${fmtPct(q.changeRate)}</div></div>
     </div>`;
@@ -384,7 +404,7 @@ async function select(market, { noRecent = false } = {}){
   if (!noRecent){ addRecent(market); if (S.tab === 'recent' && !S.search) renderWatch(); }
   for (const el of $$('.wl-row')) el.classList.toggle('sel', el.dataset.m === market);
   S.stream && S.stream.focus(market);
-  renderHead(); renderOrderbook(null); renderOrderForm();
+  renderHead(); renderOrderbook(null); renderOrderForm(); resetTrades(market);
   loadChart(); S.dayMonth = 0; renderDailyAll(); if (document.body.dataset.mt === 'news' && isPhone()) renderMNews();
   upbit.getOrderbook(market).then(ob => S.sel === market && renderOrderbook(ob)).catch(() => {});
   $('#inspBody').innerHTML = '<div class="empty">분석 중…</div>';
@@ -408,7 +428,7 @@ function applyGuideToChart(){
   const r = S.results.get(S.sel);
   const sym = upbit.toSymbol(S.sel), extra = [];
   const pos = S.ledger.positions.find(p => p.symbol === sym);
-  if (pos) extra.push({ price: pos.avg, title: S.acct === 'paper' ? '모의 평단' : '내 평단', color: '#B48CFF', legend: '내 평단', width: 2 });
+  if (pos) extra.push({ price: pos.avg, title: S.acct === 'paper' ? '모의 평단' : '내 평단', color: '#EDEDEF', style: 2, legend: '내 평단', width: 1 });
   if (S.acct === 'paper') for (const b of paper.activeBrackets().filter(b => b.symbol === sym)){
     if (b.tp) extra.push({ price: b.tp, title: `예약 익절 +${b.tpPct}%`, color: '#F04452', style: 1, legend: '예약 익절' });
     if (b.sl) extra.push({ price: b.sl, title: `예약 손절 -${b.slPct}%`, color: '#4C8DFF', style: 1, legend: '예약 손절' });
@@ -455,19 +475,19 @@ function renderInspector(){
       row('#EDEDEF', '2차 매도', fmtPrice(G.sell2), G.sell2Pct),
       row('#F5A524', '손절', fmtPrice(G.stop), G.stopPct)
     ].join('') +
-    `<div class="muted" style="font-size:12px;margin-top:6px">% 는 신호일 종가 ${fmtPrice(G.ref)} 대비 · 손익비 ${G.rr.toFixed(2)}${sig.type === 'bottom' ? ' · 바닥 반등은 위험이 커서 비중을 작게' : ''}</div>
+    `<div class="muted" style="font-size:var(--f-s);margin-top:6px">% 는 신호일 종가 ${fmtPrice(G.ref)} 대비 · 손익비 ${G.rr.toFixed(2)}${sig.type === 'bottom' ? ' · 바닥 반등은 위험이 커서 비중을 작게' : ''}</div>
      <ul class="reasons">${sig.why.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
-     <h3 style="margin:12px 0 8px">과거 같은 신호 결과 <span class="grow"></span><span class="muted" style="font-size:12px;font-weight:400">${cfg.holdDays}일 안 1차 매도 or 손절</span></h3>
+     <h3 style="margin:12px 0 8px">과거 같은 신호 결과 <span class="grow"></span><span class="muted" style="font-size:var(--f-s);">${cfg.holdDays}일 안 1차 매도 or 손절</span></h3>
      <dl class="kv">${st(mine, '이 종목')}${st(all, `분석한 ${S.results.size}종목`)}</dl>`;
   } else if (L.stance === 'chase' || L.stance === 'blocked') {
-    guide = liveNote + `<div class="muted" style="font-size:12px">이 종목엔 매수 가이드를 내지 않아요.</div>`;
+    guide = liveNote + `<div class="muted" style="font-size:var(--f-s)">이 종목엔 매수 가이드를 내지 않아요.</div>`;
   } else if (L.stance === 'avoid') {
     guide = `<div class="peter">하락 추세예요. 바닥 반등 조건(1년 고점 대비 -${cfg.btMinDrop}%, ${cfg.btNoNewLowDays}일 새 저점 없음, 반등 신호)이 맞으면 가이드가 떠요.</div>`;
   } else if (L.stance === 'none') {
     guide = `<div class="peter">${esc(r.peter)}</div>`;
   } else {
     guide = `<div class="peter">지금은 매수 신호가 없어요. 눌림 매수나 바닥 반등 조건이 맞으면 가이드가 떠요.</div>` +
-      (g.buyLo ? row('#7D7D86', '참고 지지', `${fmtPrice(g.buyLo)} ~ ${fmtPrice(g.buyHi)}`, null) + row('#7D7D86', '참고 저항', fmtPrice(g.sell1), null) : '');
+      (g.buyLo ? row('#9A9AA3', '참고 지지', `${fmtPrice(g.buyLo)} ~ ${fmtPrice(g.buyHi)}`, null) + row('#9A9AA3', '참고 저항', fmtPrice(g.sell1), null) : '');
   }
 
   if (r.scr && r.scr.bt2 && r.scr.bt2.trades.length){
@@ -491,13 +511,13 @@ function renderInspector(){
   $('#inspBody').innerHTML = `
     <div class="sec"><h3>매매 가이드 <span class="grow"></span>${stanceTxt}</h3>${guide}</div>
     <div class="sec"><div class="peter"><b>피터</b>${esc(r.peter)}</div></div>
-    <div class="sec"><h3>추세 분석 (참고)</h3>${stats || '<div class="muted" style="font-size:12px">캔들이 부족해 점수를 내지 않아요.</div>'}
-      ${r.reasons && r.reasons.length ? `<details style="margin-top:8px"><summary class="muted" style="font-size:12px;cursor:pointer">근거 보기</summary><ul class="reasons">${r.reasons.slice(0, 4).map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}</div>
-    <div class="sec"><h3>변동폭 프로필 <span class="grow"></span><span class="muted" style="font-size:12px;font-weight:400">최근 ${P.lookback || 90}일</span></h3>
+    <div class="sec"><h3>추세 분석 (참고)</h3>${stats || '<div class="muted" style="font-size:var(--f-s)">캔들이 부족해 점수를 내지 않아요.</div>'}
+      ${r.reasons && r.reasons.length ? `<details style="margin-top:8px"><summary class="muted" style="font-size:var(--f-s);cursor:pointer">근거 보기</summary><ul class="reasons">${r.reasons.slice(0, 4).map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}</div>
+    <div class="sec"><h3>변동폭 프로필 <span class="grow"></span><span class="muted" style="font-size:var(--f-s);">최근 ${P.lookback || 90}일</span></h3>
       <table class="prof"><thead><tr><th></th><th>평균</th><th>보통</th><th>최대</th><th>최소</th></tr></thead><tbody>${pr('1d', '일봉') + pr('1w', '주봉')}</tbody></table>
-      <div class="muted" style="font-size:12px;margin-top:6px">5분·1시간·월봉 변동폭은 수집 서버가 붙으면 채워져요.</div></div>
-    <div class="sec"><h3>업비트 소식</h3><div id="inspNews"><div class="muted" style="font-size:12px">불러오는 중…</div></div></div>
-    <details class="sec wiki" id="wikiSec" ${LS.get('quantera:wikiOpen', true) ? 'open' : ''}><summary>종목 위키 <span class="muted" style="font-weight:400">${esc(nameOf(S.sel))}</span></summary>${wikiHtml(r)}</details>`;
+      <div class="muted" style="font-size:var(--f-s);margin-top:6px">5분·1시간·월봉 변동폭은 수집 서버가 붙으면 채워져요.</div></div>
+    <div class="sec"><h3>업비트 소식</h3><div id="inspNews"><div class="muted" style="font-size:var(--f-s)">불러오는 중…</div></div></div>
+    <details class="sec wiki" id="wikiSec" ${LS.get('quantera:wikiOpen', true) ? 'open' : ''}><summary>종목 위키 <span class="muted" style="">${esc(nameOf(S.sel))}</span></summary>${wikiHtml(r)}</details>`;
   if (draft) $('#wikiNote').value = draft;
   fillNotes();
 }
@@ -534,10 +554,10 @@ function wikiHtml(r){
   const mine = [...S.ledgerReal.rows, ...S.ledgerPaper.rows].filter(x => x.symbol === sym).sort((a, b) => new Date(b.executed_at) - new Date(a.executed_at));
   return `<div class="wiki-sum">${wikiFacts(r).map(([a, b]) => `<div><b>${esc(a)}</b>${b ? `<span class="muted">${esc(b)}</span>` : ''}</div>`).join('')}</div>
     <h4>내 거래 <span class="muted">${mine.length}건</span></h4>
-    ${mine.length ? `<div class="bt-list wiki-trades">${mine.slice(0, 12).map(x => `<div><span class="mono muted">${dShort(x.executed_at)}</span><span><span class="${x.side === 'buy' ? 'up' : 'down'}">${x.side === 'buy' ? '매수' : '매도'}</span> <span class="mono">${fmtPrice(x.price)}</span> <span class="badge line">${src[x.source] || x.source}</span></span><span class="mono ${toneOf(x.realized)}">${x.realized != null ? fmtPct(x.realizedPct) : ''}</span></div>`).join('')}</div>` : '<div class="muted" style="font-size:12px">아직 이 종목 거래가 없어요.</div>'}
+    ${mine.length ? `<div class="bt-list wiki-trades">${mine.slice(0, 12).map(x => `<div><span class="mono muted">${dShort(x.executed_at)}</span><span><span class="${x.side === 'buy' ? 'up' : 'down'}">${x.side === 'buy' ? '매수' : '매도'}</span> <span class="mono">${fmtPrice(x.price)}</span> <span class="badge line">${src[x.source] || x.source}</span></span><span class="mono ${toneOf(x.realized)}">${x.realized != null ? fmtPct(x.realizedPct) : ''}</span></div>`).join('')}</div>` : '<div class="muted" style="font-size:var(--f-s)">아직 이 종목 거래가 없어요.</div>'}
     <h4>메모 <span class="muted">쌓기만 해요 (지우지 않음)</span></h4>
     <div class="wiki-add"><textarea id="wikiNote" rows="2" placeholder="왜 샀는지, 무엇을 봤는지, 다음엔 어떻게 할지"></textarea><button class="pill accent sm" id="wikiSave">남기기</button></div>
-    <div id="wikiNotes" class="wiki-notes"><div class="muted" style="font-size:12px">불러오는 중…</div></div>`;
+    <div id="wikiNotes" class="wiki-notes"><div class="muted" style="font-size:var(--f-s)">불러오는 중…</div></div>`;
 }
 const notesCache = new Map();
 async function fillNotes(force){
@@ -545,7 +565,7 @@ async function fillNotes(force){
   if (force || !notesCache.has(sym)) notesCache.set(sym, await loadNotes(sym));
   const el = $('#wikiNotes'); if (!el || S.sel !== m) return;
   const list = notesCache.get(sym) || [];
-  el.innerHTML = list.length ? list.map(n => `<div><span class="mono muted">${new Date(n.created_at).toLocaleString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}</span><p>${esc(n.body)}</p></div>`).join('') : '<div class="muted" style="font-size:12px">아직 메모가 없어요.</div>';
+  el.innerHTML = list.length ? list.map(n => `<div><span class="mono muted">${new Date(n.created_at).toLocaleString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}</span><p>${esc(n.body)}</p></div>`).join('') : '<div class="muted" style="font-size:var(--f-s)">아직 메모가 없어요.</div>';
 }
 function bindWiki(){
   $('#inspBody').addEventListener('toggle', e => { if (e.target.id === 'wikiSec') LS.set('quantera:wikiOpen', e.target.open); }, true);
@@ -563,7 +583,8 @@ function bindWiki(){
 function renderOrderbook(ob){
   if (!ob){ if (!$('#obBody').children.length) $('#obBody').innerHTML = '<div class="empty">호가 불러오는 중…</div>'; return; }
   if (ob.market !== S.sel) return;
-  const units = ob.units.slice(0, 12);
+  if (recOpen() && ob.market === REC.m) renderRecOb(ob);
+  const units = ob.units.slice(0, 15);
   const max = Math.max(...units.map(u => Math.max(u.askSize, u.bidSize)), 1e-9);
   const q = S.quotes.get(S.sel) || {}, pc = q.prevClose || (q.price && q.changeRate != null ? q.price / (1 + q.changeRate / 100) : null);
   // 업비트처럼: 위(파는 쪽, 높은 가격) 빨강 · 아래(사는 쪽) 파랑. 가격 글자는 전일 종가 대비 색. 현재가와 같은 줄만 테두리 + 등락률
@@ -573,7 +594,32 @@ function renderOrderbook(ob){
   const asks = units.slice().reverse().map(u => row('ask', u.ask, u.askSize)).join('');
   const bids = units.map(u => row('bid', u.bid, u.bidSize)).join('');
   $('#obBody').innerHTML = asks + bids;
+  const ta = ob.totalAsk || units.reduce((s, u) => s + u.askSize, 0), tb = ob.totalBid || units.reduce((s, u) => s + u.bidSize, 0), tt = ta + tb || 1;
+  $('#obTot').innerHTML = `<span class="up mono" data-tip="매도 잔량 합계 (팔려고 걸어 둔 수량)">${fmtQty(ta)}</span><div class="ob-bar"><i class="a" style="width:${ta / tt * 100}%"></i><i class="b" style="width:${tb / tt * 100}%"></i></div><span class="down mono" data-tip="매수 잔량 합계 (사려고 걸어 둔 수량)">${fmtQty(tb)}</span>`;
   if (!renderOrderbook.centered || renderOrderbook.centered !== ob.market){ renderOrderbook.centered = ob.market; const b = $('#obBody'); requestAnimationFrame(() => { b.scrollTop = (b.scrollHeight - b.clientHeight) / 2; }); }
+}
+const fmtQty = v => v >= 1000 ? Math.round(v).toLocaleString('ko-KR') : (+v).toLocaleString('ko-KR', { maximumFractionDigits: 3 });
+// ---------------------------------------------------------------- 실시간 체결 + 체결강도
+const TR = { m: null, list: [], raf: 0 };
+function resetTrades(m){
+  if (TR.m === m) return;
+  TR.m = m; TR.list = []; renderTrades();
+  upbit.getTrades(m, 50).then(rows => { if (TR.m !== m) return; const seen = new Set(TR.list.map(t => t.ts + ':' + t.price + ':' + t.size)); TR.list = [...TR.list, ...rows.filter(t => !seen.has(t.ts + ':' + t.price + ':' + t.size))].sort((a, b) => b.ts - a.ts).slice(0, 80); renderTrades(); }).catch(() => {});
+}
+function onTrade(t){
+  if (t.market !== TR.m) return;
+  TR.list.unshift(t); if (TR.list.length > 80) TR.list.length = 80;
+  if (!TR.raf) TR.raf = requestAnimationFrame(() => { TR.raf = 0; renderTrades(); });
+}
+function renderTrades(){
+  const el = $('#trList'); if (!el) return;
+  if (!TR.list.length){ el.innerHTML = '<div class="empty">체결을 기다리는 중…</div>'; $('#trStr').textContent = '체결강도 -'; return; }
+  const pad = v => String(v).padStart(2, '0');
+  el.innerHTML = TR.list.slice(0, 60).map(t => { const d = new Date(t.ts);
+    return `<div class="tr-row ${t.side === 'buy' ? 'up' : 'down'}"><span class="muted">${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}</span><span>${fmtPrice(t.price)}</span><span>${fmtQty(t.size)}</span></div>`; }).join('');
+  let bv = 0, sv = 0; for (const t of TR.list) t.side === 'buy' ? bv += t.size : sv += t.size;
+  const st = sv ? bv / sv * 100 : bv ? 999 : 100;
+  $('#trStr').innerHTML = `체결강도 <span class="${st >= 100 ? 'up' : 'down'} mono">${st.toFixed(1)}%</span> <span class="muted">· 최근 ${TR.list.length}건</span>`;
 }
 // ---------------------------------------------------------------- 주문 칸 (모의투자)
 // 입력값은 OF에 들고 있어서 화면을 다시 그려도 지워지지 않음
@@ -653,13 +699,8 @@ setInterval(() => {
 }, 1000);
 function renderOrderForm(){
   const box = $('#orderBox'); if (!box || !S.sel) return;
-  if (!UI.paperOn){ box.innerHTML = ''; return; }
   const sym = upbit.toSymbol(S.sel), cur = priceOf(sym), name = (S.byMarket.get(S.sel) || {}).name || S.sel;
-  const sw = `<div class="acct-sw"><span>계좌</span><button data-acct="paper" class="${S.acct === 'paper' ? 'on' : ''}">모의</button><button data-acct="real" class="${S.acct === 'real' ? 'on' : ''}">실제</button><span class="grow"></span>${S.acct === 'paper' ? `<span class="mono" data-tip="모의 계좌에서 지금 주문에 쓸 수 있는 현금">${won(paper.available())}원</span>` : ''}</div>`;
-  if (S.acct === 'real'){
-    box.innerHTML = sw + `<div class="note">실제 계좌 주문은 업비트 API 연결(PHASE 5) 뒤에 열려요. 지금은 "모의"로 바꿔서 같은 화면으로 연습할 수 있어요. 실제 계좌 탭에서는 거래일지·보유가 실제 기록 기준으로 보여요.</div>`;
-    return;
-  }
+  const sw = `<div class="acct-sw"><span>모의 계좌 · ${esc(name)}</span><span class="grow"></span><span class="mono" data-tip="모의 계좌에서 지금 주문에 쓸 수 있는 현금">${won(paper.available())}원</span></div>`;
   const pos = S.ledgerPaper.positions.find(p => p.symbol === sym);
   const seg = `<div class="seg"><button class="buy${OF.side === 'buy' ? ' on' : ''}" data-side="buy">매수</button><button class="sell${OF.side === 'sell' ? ' on' : ''}" data-side="sell">매도</button></div>`;
   const type = `<div class="seg2"><button data-type="limit" class="${OF.type === 'limit' ? 'on' : ''}">지정가</button><button data-type="market" class="${OF.type === 'market' ? 'on' : ''}">시장가</button></div>`;
@@ -741,6 +782,7 @@ function bindOrder(){
     if (t.dataset.boff){ paper.bracketOff(t.dataset.boff); return; }
     if (t.hasAttribute('data-submit')){
       try{
+        if (!UI.paperOn) setUi({ paperOn: true });   // 처음 모의 주문을 넣으면 주문 탭·모의 거래일지가 보여요
         const base = { symbol: sym, side: OF.side, type: OF.type, price: OF.type === 'market' ? cur : (num(OF.price) || cur) };
         if (OF.side === 'buy') paper.place({ ...base, amount: num(OF.amount), tpPct: num(OF.tpPct) || null, slPct: OF.slNone ? null : (num(OF.slPct) || null),
           strategy: STRATS[OF.strategy], reason: OF.strategy === 'guide' ? (live(S.sel).text || (S.results.get(S.sel) || {}).peter || null) : null });
@@ -749,11 +791,12 @@ function bindOrder(){
       }catch(err){ OF.err = err.message; renderOrderForm(); }
     }
   });
-  // 호가를 누르면 그 가격이 주문 가격으로
+  // 호가를 누르면: 기록 · 모의 창을 그 가격으로 열기
   $('#obBody').addEventListener('click', e => {
     const row = e.target.closest('.ob-row'); if (!row) return;
-    OF.price = +row.dataset.p; OF.type = 'limit'; renderOrderForm();
+    openRec(LS.get('quantera:recTab', 'rec'), { price: Math.round(+row.dataset.p * 1e8) / 1e8 });
   });
+  $('#jAcct').addEventListener('click', e => { const b = e.target.closest('[data-acct]'); if (b) setAcct(b.dataset.acct); });
   for (const id of ['#estop', '#estopM']) { const b = $(id); if (b) b.addEventListener('click', () => {
     if (paper.state.halted){ paper.halt(false); toast('긴급 정지를 해제했어요. 취소된 주문은 다시 넣어야 해요.'); return; }
     if (confirm('모의 계좌의 모든 미체결 주문과 예약 매도(익절·손절)를 멈출까요?')){ paper.halt(true); toast('긴급 정지: 모의 미체결 주문과 예약 매도를 모두 멈췄어요.', 'warn'); }
@@ -774,6 +817,7 @@ function bindOrder(){
 }
 function setAcct(a){
   S.acct = a; LS.set('quantera:acct', a);
+  $$('#jAcct [data-acct]').forEach(b => b.classList.toggle('on', b.dataset.acct === a));
   recompute(); renderOrderForm(); renderJournal(); renderStatus(); applyGuideToChart(); if (S.tab === 'hold') renderWatch();
   if (isOrdersOpen()) renderOrders();
 }
@@ -920,22 +964,101 @@ async function loadSparks(rows){
 }
 
 // ---------------------------------------------------------------- 거래일지: 직접 기록 · 수정 · 숨김 · 복구
-function openAddDlg(edit){
-  if (!db.user){ toast('기록은 로그인 후에 추가할 수 있어요.'); $('#loginDlg').showModal(); return; }
+// ---------------------------------------------------------------- 기록 · 모의 창 (왼쪽: 작은 차트 + 호가, 오른쪽: [기록 | 모의])
+const REC = { m: null, chart: null, series: null, line: null, poll: 0, tab: 'rec' };
+const recOpen = () => $('#addDlg').open;
+function openRec(tab = 'rec', { edit = null, price = null, side = null } = {}){
+  if (edit) tab = 'rec';
   const f = $('#addForm'), r = edit || null;
   f.dataset.edit = r ? r.id : '';
-  $('#addTitle').textContent = r ? '기록 수정' : '기록 추가';
-  const inst = r ? S.byMarket.get(upbit.toMarket(r.symbol)) : S.byMarket.get(S.sel);
+  $('#addTitle').textContent = r ? '기록 수정 · 고치기 전 기록은 "지운 기록"에 남아요.' : '잔고·보유와 상관없이 자유롭게 적어요. 거래일지(실제 기록)에 들어가고 손익이 자동으로 계산돼요.';
+  const m = r ? upbit.toMarket(r.symbol) : S.sel, inst = S.byMarket.get(m);
   f.elements.sym.value = inst ? `${inst.name} (${inst.market.slice(4)})` : '';
-  f.elements.side.value = r ? r.side : 'buy';
-  f.elements.price.value = r ? r.price : (priceOf(upbit.toSymbol(S.sel)) || '');
+  f.elements.side.value = r ? r.side : (side || 'buy');
+  f.elements.price.value = r ? r.price : (price || priceOf(upbit.toSymbol(m)) || '');
   f.elements.qty.value = r ? r.qty : ''; f.elements.amount.value = '';
   f.elements.fee.value = r ? r.fee : '';
   const d = r ? new Date(r.executed_at) : new Date(), pad = v => String(v).padStart(2, '0');
   f.elements.at.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   f.elements.memo.value = r ? (r.reason || '') : '';
   $('#addMsg').textContent = '';
-  renderAddSide(); $('#addDlg').showModal();
+  if (price){ OF.price = price; OF.type = 'limit'; }
+  if (side) OF.side = side;
+  renderAddSide();
+  if (!recOpen()) $('#addDlg').showModal();
+  setRecTab(tab); setRecMarket(m);
+}
+function openAddDlg(edit){ openRec('rec', { edit }); }
+function setRecTab(t){
+  REC.tab = t; LS.set('quantera:recTab', t);
+  $$('#recTabs [data-rt]').forEach(b => b.classList.toggle('on', b.dataset.rt === t));
+  $('#recPaneRec').classList.toggle('hidden', t !== 'rec'); $('#recPanePaper').classList.toggle('hidden', t !== 'paper');
+  if (t === 'paper'){ if (REC.m && REC.m !== S.sel) select(REC.m); renderOrderForm(); }
+  recPriceLine();
+}
+async function setRecMarket(m){
+  if (!S.byMarket.has(m)) return;
+  const changed = REC.m !== m; REC.m = m;
+  const inst = S.byMarket.get(m), q = S.quotes.get(m) || {};
+  $('#recName').textContent = inst.name; $('#recTf').textContent = `${(CONFIG.timeframes.find(t => t.id === S.tf) || {}).label || S.tf} · ${m.slice(4)}`;
+  $('#recPx').innerHTML = q.price ? `<span class="${toneOf(q.changeRate)}">${fmtPrice(q.price)} ${fmtPct(q.changeRate)}</span>` : '';
+  if (!REC.chart && window.LightweightCharts){
+    const LC = window.LightweightCharts;
+    REC.chart = LC.createChart($('#recChart'), { autoSize: true, localization: { locale: 'ko-KR', priceFormatter: p => fmtPrice(p) }, layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#9A9AA3', fontSize: 12, fontFamily: 'JetBrains Mono, monospace' },
+      grid: { vertLines: { color: '#24242A' }, horzLines: { color: '#24242A' } }, rightPriceScale: { borderColor: '#24242A' }, timeScale: { borderColor: '#24242A', timeVisible: S.tf !== '1d' },
+      crosshair: { mode: 0 }, handleScroll: false, handleScale: false });
+    REC.series = REC.chart.addCandlestickSeries({ upColor: '#F04452', downColor: '#4C8DFF', borderVisible: false, wickUpColor: '#F04452', wickDownColor: '#4C8DFF', priceFormat: { type: 'price', precision: 0, minMove: 1 } });
+  }
+  if (changed){ REC.centered = null; $('#recOb').innerHTML = '<div class="empty">호가 불러오는 중…</div>'; if (REC.series) REC.series.setData([]); }
+  if (REC.series && changed){
+    try{
+      const c = await upbit.getCandles(m, S.tf, { count: 90 });
+      if (REC.m !== m) return;
+      const prec = c.length ? decimalsOf(c[c.length - 1].c) : 0;
+      REC.series.applyOptions({ priceFormat: { type: 'price', precision: prec, minMove: 1 / 10 ** prec } });
+      REC.series.setData(c.map(k => ({ time: k.time, open: k.o, high: k.h, low: k.l, close: k.c })));
+      REC.chart.timeScale().fitContent();
+    }catch(e){}
+  }
+  recPriceLine();
+  clearInterval(REC.poll);
+  const pull = () => { if (!recOpen()) return clearInterval(REC.poll); if (REC.m !== S.sel || !$('#recOb .ob-row')) upbit.getOrderbook(REC.m).then(ob => ob && ob.market === REC.m && renderRecOb(ob)).catch(() => {}); };
+  pull(); REC.poll = setInterval(pull, 2000);
+}
+const decimalsOf = p => p >= 100 ? 0 : p >= 10 ? 2 : p >= 1 ? 3 : p >= 0.01 ? 4 : 8;
+function recPriceLine(){
+  if (!REC.series) return;
+  if (REC.line){ try { REC.series.removePriceLine(REC.line); } catch(e){} REC.line = null; }
+  const v = REC.tab === 'rec' ? num($('#addForm').elements.price.value) : num(OF.price);
+  if (v > 0) REC.line = REC.series.createPriceLine({ price: v, color: '#C6F432', lineStyle: 2, lineWidth: 1, axisLabelVisible: true, title: REC.tab === 'rec' ? '기록가' : '주문가' });
+}
+function renderRecOb(ob){
+  const el = $('#recOb'); if (!el || !ob) return;
+  const n = isPhone() ? 8 : 10, units = ob.units.slice(0, n);
+  const max = Math.max(...units.map(u => Math.max(u.askSize, u.bidSize)), 1e-9);
+  const q = S.quotes.get(ob.market) || {}, pc = q.prevClose || null, tone = p => pc ? toneOf(p - pc) : '';
+  const row = (side, p, sz) => { const cur = q.price != null && Math.abs(p - q.price) < 1e-9;
+    return `<div class="ob-row ${side}${cur ? ' cur' : ''}" data-p="${p}"><i style="width:${sz / max * 100}%"></i><span class="p mono ${tone(p)}">${fmtPrice(p)}</span><span class="sz mono">${fmtQty(sz)}</span></div>`; };
+  el.innerHTML = units.slice().reverse().map(u => row('ask', u.ask, u.askSize)).join('') + units.map(u => row('bid', u.bid, u.bidSize)).join('');
+  if (REC.centered !== ob.market){ REC.centered = ob.market; requestAnimationFrame(() => { el.scrollTop = (el.scrollHeight - el.clientHeight) / 2; }); }
+  if (q.price) $('#recPx').innerHTML = `<span class="${toneOf(q.changeRate)}">${fmtPrice(q.price)} ${fmtPct(q.changeRate)}</span>`;
+}
+function bindRec(){
+  $('#recTabs').addEventListener('click', e => { const b = e.target.closest('[data-rt]'); if (b) setRecTab(b.dataset.rt); });
+  $('#recClose').addEventListener('click', () => $('#addDlg').close());
+  $('#addDlg').addEventListener('close', () => { clearInterval(REC.poll); REC.centered = null; });
+  $('#bookRecBtn').addEventListener('click', () => openRec(LS.get('quantera:recTab', 'rec')));
+  $('#recOb').addEventListener('click', e => {
+    const row = e.target.closest('.ob-row'); if (!row) return;
+    const p = Math.round(+row.dataset.p * 1e8) / 1e8;
+    if (REC.tab === 'rec'){ $('#addForm').elements.price.value = p; }
+    else { OF.price = p; OF.type = 'limit'; renderOrderForm(); }
+    recPriceLine();
+  });
+  $('#addForm').elements.price.addEventListener('input', recPriceLine);
+  $('#orderBox').addEventListener('input', e => { if (e.target.dataset.f === 'price') recPriceLine(); });
+  $('#addForm').elements.sym.addEventListener('change', e => { const i = findInst(e.target.value); if (i && i.market !== REC.m){ setRecMarket(i.market); const p = priceOf(i.symbol); if (p && !$('#addForm').dataset.edit) $('#addForm').elements.price.value = p; } });
+  $('#addDlg').addEventListener('click', e => { if (e.target === $('#addDlg')) $('#addDlg').close(); });
 }
 function renderAddSide(){ const v = $('#addForm').elements.side.value; $$('#addForm [data-aside]').forEach(b => b.classList.toggle('on', b.dataset.aside === v)); }
 function findInst(text){
@@ -944,7 +1067,8 @@ function findInst(text){
   return S.instruments.find(i => code ? i.market.slice(4).toLowerCase() === code : (i.name.toLowerCase() === t || i.market.slice(4).toLowerCase() === t || i.market.toLowerCase() === t)) || null;
 }
 function bindJournalEdit(){
-  $('#jAddBtn').addEventListener('click', () => openAddDlg());
+  $('#jAddBtn').addEventListener('click', () => openRec('rec'));
+  bindRec();
   $('#addSyms').innerHTML = '';
   $('#addForm').addEventListener('click', e => {
     const b = e.target.closest('[data-aside]'); if (b){ e.preventDefault(); $('#addForm').elements.side.value = b.dataset.aside; renderAddSide(); }
@@ -955,6 +1079,7 @@ function bindJournalEdit(){
     if (e.submitter && e.submitter.value === 'cancel') return;
     e.preventDefault();
     const f = $('#addForm').elements, msg = t => $('#addMsg').textContent = t;
+    if (!db.user){ msg('기록 저장은 로그인 후에 할 수 있어요. 모의 주문은 로그인 없이도 돼요.'); $('#loginDlg').showModal(); return; }
     const inst = findInst(f.sym.value); if (!inst) return msg('종목을 목록에서 골라 주세요. (예: 비트코인 (BTC))');
     const price = num(f.price.value); if (!(price > 0)) return msg('가격을 넣어 주세요.');
     let qty = num(f.qty.value); if (!(qty > 0) && num(f.amount.value) > 0) qty = num(f.amount.value) / price;
@@ -1131,14 +1256,18 @@ function bindUi(){
     if (news) renderNews(); if (j === 'orders') renderOrders(); if (j === 'day'){ S.dayMonth = S.dayMonth || 0; renderDaily($('#dayBody')); }
     if (j === 'journal') renderJournal();
   });
-  $('#wlTabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (!b) return; S.tab = b.dataset.tab; $$('#wlTabs .pill').forEach(x => x.classList.toggle('on', x === b)); renderWatch();
-    if ((S.tab === 'surge' || S.tab === 'dump') && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {}); });
+  $('#wlTabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (!b) return; S.tab = b.dataset.tab; $$('#wlTabs .pill').forEach(x => x.classList.toggle('on', x === b)); renderWatch(); });
   $('#wlBody').addEventListener('toggle', e => { if (e.target.classList && e.target.classList.contains('surge-stats')) LS.set(e.target.hasAttribute('data-bt') ? 'quantera:btStatsOpen' : 'quantera:surgeStatsOpen', e.target.open); }, true);
-  $('#surgeBar').addEventListener('click', e => {
+  $('#sdWrap').addEventListener('click', e => {
     if (e.target.closest('[data-surge-ack]')) return ackSurge();
-    const go = e.target.closest('[data-surge-go]');
-    if (go){ const tab = go.dataset.surgeGo || 'surge'; S.search = ''; $('#search').value = ''; S.tab = tab; $$('#wlTabs .pill').forEach(x => x.classList.toggle('on', x.dataset.tab === tab)); if (document.body.dataset.view) setView('trade'); setMobile('list'); renderWatch(); }
+    if (e.target.closest('[data-sd-close]')){ S.sdOpen = null; renderSurgeBar(); renderSdDrop(); return; }
+    const c = e.target.closest('[data-sd]'); if (c) return toggleSd(c.dataset.sd);
+    const r = e.target.closest('[data-sdm]');
+    if (r){ const m = r.dataset.sdm; ackSurge(m); S.sdOpen = null; renderSdDrop(); renderSurgeBar(); if (document.body.dataset.view) setView('trade'); select(m); if (isPhone()) setMobile('trade'); }
   });
+  $('#sdDrop').addEventListener('toggle', e => { if (e.target.classList && e.target.classList.contains('surge-stats')) LS.set('quantera:surgeStatsOpen', e.target.open); }, true);
+  document.addEventListener('pointerdown', e => { if (S.sdOpen && !e.target.closest('#sdWrap')){ S.sdOpen = null; renderSdDrop(); renderSurgeBar(); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.sdOpen){ S.sdOpen = null; renderSdDrop(); renderSurgeBar(); } });
   $('#wlBody').addEventListener('click', async e => {
     const st = e.target.closest('[data-star]');
     if (st){ e.stopPropagation(); const sym = st.dataset.star; const on = !S.watch.has(sym); S.watch = new Set(await setWatch(sym, on)); renderWatch(); return; }
@@ -1167,6 +1296,7 @@ function setUi(patch, { noSave = false } = {}){
   applyUi(JSON.stringify(UI) !== before);
 }
 function applyUi(changed = true){
+  $$('#jAcct [data-acct]').forEach(b => b.classList.toggle('on', b.dataset.acct === S.acct));
   document.body.classList.toggle('no-paper', !UI.paperOn);
   if (!UI.paperOn && S.acct === 'paper') setAcct('real');
   else if (changed){ renderOrderForm(); renderJournal(); }
@@ -1271,8 +1401,7 @@ const CFG_FIELDS = [
   ['검증', [['minSamples', '최소 표본 수', 1], ['holdDays', '보유 기간(일)', 1], ['feePct', '왕복 수수료(%)', 1]]]
 ];
 function appCfgHtml(){
-  return `<h4>화면 · 기록 <span class="muted" style="font-weight:400">계정에 저장 · PC와 폰이 같아요</span></h4>
-    <label>모의투자 쓰기 <span class="muted">(끄면 주문 칸·모의 기록이 숨어요)</span><input type="checkbox" name="ui_paperOn" ${UI.paperOn ? 'checked' : ''}></label>
+  return `<h4>화면 · 기록 <span class="muted" style="">계정에 저장 · PC와 폰이 같아요</span></h4>
     <label>거래일지 추세선 기간<select name="ui_sparkDays">${[30, 60, 90, 180].map(d => `<option value="${d}"${+UI.sparkDays === d ? ' selected' : ''}>${d}일</option>`).join('')}</select></label>
     <label>알람 소리 미리 듣기<span class="row-btns"><button type="button" class="pill sm" data-preview="up">급등</button><button type="button" class="pill sm" data-preview="down">급락</button></span></label>
     <label>모의 데이터<span class="row-btns"><button type="button" class="pill sm danger" data-wipe>전부 삭제</button></span></label>
@@ -1287,7 +1416,7 @@ function connCfgHtml(){
     : connState.fresh ? `<div class="conn-code">${esc(connState.fresh)}</div><span class="muted small">지금만 보여요. 도우미 첫 실행 때 붙여 넣으세요.</span>`
     : L && L.length ? `<span class="muted">연결됨 · 마지막 ${L[0].last_used_at ? new Date(L[0].last_used_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) + ` (${L[0].last_added || 0}건 추가)` : '아직 안 올라옴'}</span>`
     : '<span class="muted">아직 없어요.</span>';
-  return `<div id="connSec"><h4>업비트 자동 올리기 <span class="muted" style="font-weight:400">PC 도우미용 연결 코드</span></h4>
+  return `<div id="connSec"><h4>업비트 자동 올리기 <span class="muted" style="">PC 도우미용 연결 코드</span></h4>
     <div class="conn-row">${body}<span class="row-btns">${db.user && L !== 'missing' ? `<button type="button" class="pill sm" data-conn="new">${L && L.length ? '새 코드' : '코드 만들기'}</button>${L && L.length ? '<button type="button" class="pill sm danger" data-conn="off">연결 끊기</button>' : ''}` : ''}</span></div></div>`;
 }
 async function refreshConn(){
@@ -1331,7 +1460,7 @@ function bindCfg(){
     if (e.target.closest('[data-wipe]')){
       e.preventDefault();
       if (!confirm('모의투자 데이터를 전부 지울까요?\n잔고·미체결 주문·예약 매도·모의 체결 기록이 이 기기와 계정에서 모두 지워져요. 실제 기록은 그대로예요.')) return;
-      const st = paper.wipe(); await uiRemote.clearPaper(st);
+      const st = paper.wipe(); await uiRemote.clearPaper(st); setUi({ paperOn: false });
       recompute(); renderOrderForm(); renderJournal(); renderStatus(); if (isOrdersOpen()) renderOrders();
       toast('모의 데이터를 모두 지웠어요.');
       return;
@@ -1347,7 +1476,7 @@ function bindCfg(){
       c[k] = unit === 'text' ? el.value : unit === 'bool' ? el.checked : (isFinite(+el.value) ? +el.value * unit : { ...SCREEN_DEFAULTS, ...SURGE_DEFAULTS }[k]);
     }
     saveScreenCfg(c);
-    setUi({ paperOn: $('#cfgBody [name="ui_paperOn"]').checked, sparkDays: +$('#cfgBody [name="ui_sparkDays"]').value || 30 });
+    setUi({ sparkDays: +$('#cfgBody [name="ui_sparkDays"]').value || 30 });
     // 기준이 바뀌면 이미 받은 캔들(캐시)로 다시 계산 — 업비트 추가 요청 없음
     const ms = [...S.results.keys()]; S.results.clear(); gsDirty = true;
     await analyzeList(ms);
@@ -1361,7 +1490,7 @@ function setMobile(m){
   if (!['list', 'trade', 'journal'].includes(m)) m = 'list';
   document.body.dataset.m = m;
   $$('.mtabs button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
-  closeSheet();
+
   if (m === 'trade'){ setMt(document.body.dataset.mt || 'book'); if (chart) requestAnimationFrame(() => chart.refit()); }
   if (m === 'journal'){ const on = $('#jTabs .pill.on'); if (on && on.dataset.j === 'day') $('#jTabs [data-j="journal"]').click(); }
   if (m !== 'list') document.body.classList.remove('m-search');
@@ -1377,12 +1506,7 @@ async function renderMNews(){
   const j = await loadNews();
   el.innerHTML = `<div class="m-sec-t">${esc(nameOf(S.sel))} 관련 공지·공시</div>` + newsHtml(newsFor(j.items || [], S.byMarket.get(S.sel)), esc, { empty: '최근 이 종목 관련 공지·공시가 없어요.', limit: 20 });
 }
-function openSheet(side){
-  if (!UI.paperOn) return;
-  OF.side = side; OF.err = ''; renderOrderForm();
-  document.body.classList.add('m-sheet');
-}
-function closeSheet(){ document.body.classList.remove('m-sheet'); }
+function openSheet(side){ openRec('paper', { side }); }
 function renderBell(){
   const n = (surgeMuted() ? 0 : unseen.size + unseenDump.size);
   const el = $('#bellN'); if (el){ el.textContent = n || ''; el.classList.toggle('on', !!n); }
@@ -1390,14 +1514,13 @@ function renderBell(){
   const nm = m => (S.byMarket.get(m) || {}).name || m;
   const item = (src, m, cls) => { const e = src.get(m), q = S.quotes.get(m) || {}; return `<button class="bell-row" data-bell="${m}"><span class="badge ${cls}">${cls === 'surge' ? '급등' : '급락'}</span><b>${esc(nm(m))}</b><span class="muted">${agoKo(Date.now() - e.at)} · ${fmtPct(e.pct)}</span><span class="grow"></span><span class="mono ${toneOf(q.changeRate)}">${fmtPrice(q.price)}</span></button>`; };
   const up = [...surge.events.keys()].sort((a, b) => surge.get(b).at - surge.get(a).at), dn = [...dump.events.keys()].sort((a, b) => dump.get(b).at - dump.get(a).at);
-  $('#bellBody').innerHTML = muteCtlHtml() + (up.length || dn.length ? up.map(m => item(surge, m, 'surge')).join('') + dn.map(m => item(dump, m, 'dump')).join('')
-    : `<div class="empty">지금 잡힌 급등·급락이 없어요. 앱이 켜져 있는 동안 1초마다 검사해요.</div>`);
+  const sec = (ms, src, cls, lab) => `<div class="bell-sec ${cls}"><span class="${cls === 'dump' ? 'down' : 'up'}">● ${lab} ${ms.length}</span></div>` + (ms.length ? ms.map(m => item(src, m, cls)).join('') : `<div class="muted bell-none">지금 잡힌 ${lab}${lab === '급등' ? '이' : '이'} 없어요.</div>`);
+  $('#bellBody').innerHTML = muteCtlHtml() + sec(up, surge, 'surge', '급등') + sec(dn, dump, 'dump', '급락');
 }
 setInterval(renderBell, 2000);
 function bindMobile(){
   $('#mtTabs').addEventListener('click', e => { const b = e.target.closest('[data-mt]'); if (b) setMt(b.dataset.mt); });
-  $('#mOrderBar').addEventListener('click', e => { const b = e.target.closest('[data-mo]'); if (b) openSheet(b.dataset.mo); });
-  $('#mSheetBg').addEventListener('click', closeSheet);
+  $('#mOrderBar').addEventListener('click', e => { const b = e.target.closest('[data-mo]'); if (b) openRec(b.dataset.mo); });
   $('#mCfgBtn').addEventListener('click', () => openCfg());
   $('#mSearchBtn').addEventListener('click', () => { setMobile('list'); document.body.classList.toggle('m-search'); if (document.body.classList.contains('m-search')) $('#search').focus(); else { $('#search').value = ''; S.search = ''; renderWatch(); } });
   $('#mBellBtn').addEventListener('click', () => { $('#bellDlg').showModal(); ackSurge(); renderBell(); renderNews(); });
