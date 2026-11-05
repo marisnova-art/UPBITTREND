@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#050506">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" type="image/png" href="./icons/favicon-64.png">
@@ -143,6 +143,92 @@
     <button class="on" data-m="list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>종목</button>
     <button data-m="trade"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16M8 15l4-5 3 3 5-6"/></svg>매매</button>
     <button data-m="journal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18H6zM9 8h6M9 12h6"/></svg>거래</button>
+  </nav>
+</div>
+
+<!-- ================= 폰 전용 화면 (900px 미만). 한 화면에 한 가지만 크게, 나머지는 ☰ 메뉴 ================= -->
+<div id="mApp" class="m-app" data-page="home" hidden>
+  <header class="m-top">
+    <button class="m-ib" id="mBack" aria-label="뒤로" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <button class="m-ib" id="mMenuBtn" aria-label="메뉴"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div class="m-ttl" id="mTitle">QUANTERA</div>
+    <button class="m-ib sound-btn" data-sound></button>
+    <button class="m-ib" id="mFind" aria-label="종목 검색"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4-4"/></svg></button>
+  </header>
+
+  <!-- 첫 화면: 급등·급락 + 내 종목 -->
+  <section class="m-page" data-p="home">
+    <div class="m-sec" id="mSurgeSec"></div>
+    <div class="m-sec">
+      <div class="m-sec-h"><span class="m-h">내 종목</span><span class="muted">관심 · 보유</span><span class="grow"></span><button class="m-link" data-go="list" data-tab="all">전체 보기</button></div>
+      <div id="mMine"></div>
+    </div>
+    <div class="m-foot muted" id="mScanLine"></div>
+  </section>
+
+  <!-- 목록 (전체 · 눌림 · 바닥 · 신규 · 최근 · 재매수) -->
+  <section class="m-page" data-p="list">
+    <div class="m-chips" id="mListTabs"></div>
+    <div id="mListNote"></div>
+    <div id="mList"></div>
+  </section>
+
+  <!-- 검색 -->
+  <section class="m-page" data-p="search">
+    <div class="m-search"><input id="mSearch" type="search" placeholder="종목 이름이나 코드" autocomplete="off" enterkeyhint="search"></div>
+    <div id="mSearchList"></div>
+  </section>
+
+  <!-- 종목 상세 -->
+  <section class="m-page" data-p="coin">
+    <div class="m-coin" id="mCoinHead"></div>
+    <div class="m-ctabs" id="mCoinTabs"><button data-cp="chart" class="on">차트</button><button data-cp="book">호가</button><button data-cp="insp">분석</button><button data-cp="day">일별</button><button data-cp="news">소식</button></div>
+    <div class="m-cpane" data-cp="chart" id="mCpChart"></div>
+    <div class="m-cpane" data-cp="book" id="mCpBook"></div>
+    <div class="m-cpane" data-cp="insp" id="mCpInsp"></div>
+    <div class="m-cpane" data-cp="day" id="mCpDay"></div>
+    <div class="m-cpane" data-cp="news" id="mCpNews"></div>
+    <div class="m-act"><button class="rec" data-mo="rec">＋ 기록</button><button class="ppr" data-mo="paper">모의 주문</button></div>
+  </section>
+
+  <!-- 거래일지 -->
+  <section class="m-page" data-p="journal">
+    <div class="m-jhead" id="mJHead"></div>
+    <div id="mJBody"></div>
+  </section>
+
+  <!-- 업비트 소식 -->
+  <section class="m-page" data-p="news"><div id="mNewsAll"><div class="empty">불러오는 중…</div></div></section>
+
+  <!-- ☰ 메뉴 -->
+  <div class="m-dim" id="mDim"></div>
+  <nav class="m-menu" id="mMenu" aria-label="메뉴">
+    <div class="m-menu-h"><span class="logo"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C6F432" stroke-width="2.4" aria-hidden="true"><path d="M4 17l5-6 4 4 7-9"/></svg></i>QUANTERA</span></div>
+    <div class="m-menu-g">
+      <button data-go="home">홈 <span class="muted">급등·급락 · 내 종목</span></button>
+      <button data-go="search">종목 검색</button>
+    </div>
+    <div class="m-menu-g"><div class="m-menu-t">종목 보기</div>
+      <button data-go="list" data-tab="all">전체 종목</button>
+      <button data-go="list" data-tab="pullback">눌림 매수</button>
+      <button data-go="list" data-tab="bottom">바닥 반등</button>
+      <button data-go="list" data-tab="new">신규 상장</button>
+      <button data-go="list" data-tab="recent">최근 본 종목</button>
+      <button data-go="list" data-tab="rebuy">재매수 후보</button>
+      <button data-act="scan">전체 스캔 다시 하기</button>
+    </div>
+    <div class="m-menu-g"><div class="m-menu-t">기록</div>
+      <button data-go="journal">거래일지</button>
+      <button data-act="rec">＋ 기록 추가</button>
+      <button data-act="paper">모의 주문</button>
+      <button data-act="upbit">업비트 가져오기</button>
+    </div>
+    <div class="m-menu-g">
+      <button data-go="news">업비트 소식</button>
+      <button data-act="cfg">설정</button>
+      <button data-act="login" id="mLoginItem">로그인</button>
+      <button data-act="install" id="mInstallItem" hidden>앱 설치</button>
+    </div>
   </nav>
 </div>
 

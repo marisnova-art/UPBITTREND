@@ -1252,6 +1252,7 @@ function bindUi(){
   bindImport();
   bindJournalEdit();
   bindMobile();
+  initPhone();
   document.addEventListener('click', e => { const b = e.target.closest('[data-mute]'); if (!b) return; e.stopPropagation(); setSurgeMute(+b.dataset.mute); }, true);
   renderMuteBtns();
   document.addEventListener('click', e => { const b = e.target.closest('[data-sound]'); if (!b) return; LS.set(SOUND_KEY, !soundOff()); renderSoundBtn(); if (!soundOff()) beep('up'); toast(soundOff() ? '알람 소리를 껐어요. 감지·알림 표시는 계속돼요.' : '알람 소리를 켰어요.'); });
@@ -1495,6 +1496,7 @@ function bindCfg(){
 // ---------------------------------------------------------------- 폰 화면: 종목 · 매매 · 거래 (+ 위쪽 🔔 알림, ⚙ 설정, 검색)
 const isPhone = () => matchMedia('(max-width: 899px)').matches;
 function setMobile(m){
+  if (PH.on){ if (m === 'trade' || m === 'chart') mGo('coin'); else if (m === 'journal') mGo('journal'); return; }
   m = { home: 'list', watch: 'list', chart: 'trade', alerts: 'list' }[m] || m;
   if (!['list', 'trade', 'journal'].includes(m)) m = 'list';
   document.body.dataset.m = m;
@@ -1540,6 +1542,170 @@ function bindMobile(){
   const cancel = () => { if (lp && lp !== 'done') clearTimeout(lp); };
   $('#jBody').addEventListener('touchmove', cancel, { passive: true });
   $('#jBody').addEventListener('touchend', e => { if (lp === 'done'){ e.preventDefault(); } cancel(); lp = null; });
+}
+
+
+// ================================================================ 폰 전용 화면
+// PC는 HTS처럼 여러 칸을 한 화면에, 폰은 한 화면에 한 가지만 크게. 나머지는 ☰ 메뉴.
+// PC 칸에서 쓰던 요소(차트·호가·분석·거래일지)는 폰일 때 아래 화면으로 옮겨 그대로 씀.
+const PH = { page: 'home', tab: 'all', cp: LS.get('quantera:mCp', 'chart'), on: false };
+const M_TITLES = { home: 'QUANTERA', list: '종목', search: '종목 검색', journal: '거래일지', news: '업비트 소식' };
+const M_TABS = [['all', '전체'], ['pullback', '눌림'], ['bottom', '바닥'], ['new', '신규'], ['recent', '최근'], ['rebuy', '재매수']];
+function initPhone(){
+  if (!isPhone()) return;
+  PH.on = true;
+  document.body.classList.add('phone');
+  $('#mApp').hidden = false;
+  document.body.appendChild($('#toasts'));
+  // 차트 · 호가 · 분석 · 일별 · 소식 · 거래일지를 폰 화면으로 옮김
+  $('#mCpChart').append($('#tfTabs'), $('#chartWrap'));
+  $('#mCpBook').append($('#obBody'), $('#obTot'), $('.tr-box'));
+  $('#mCpInsp').append($('#inspBody'));
+  $('#mCpDay').append($('#mDay'));
+  $('#mCpNews').append($('#mNews'));
+  $('#mJHead').append($('#jSummary'), $('#jAcct'), $('#jAddBtn'), $('#upImportBtn'));
+  $('#mJBody').append($('#jBody'));
+  $('#jBody').classList.remove('hidden');
+  bindPhone();
+  const st = history.state && history.state.mp;
+  mShow(st ? st.page : 'home', st || {});
+  history.replaceState({ mp: { page: PH.page, tab: PH.tab } }, '');
+  setInterval(mTick, 1500);
+}
+// 화면 바꾸기 (뒤로 가기 버튼·안드로이드 뒤로 키가 되도록 기록에 남김)
+function mGo(page, opt = {}){
+  mCloseMenu();
+  if (page === PH.page && page !== 'list') return mShow(page, opt);
+  mShow(page, opt);
+  history.pushState({ mp: { page, tab: PH.tab } }, '');
+}
+function mShow(page, opt = {}){
+  if (opt.tab) PH.tab = opt.tab;
+  PH.page = page;
+  $('#mApp').dataset.page = page;
+  $('#mBack').hidden = page === 'home';
+  $('#mTitle').textContent = page === 'list' ? (M_TABS.find(t => t[0] === PH.tab) || [, '종목'])[1] + ' 종목' : page === 'coin' ? nameOf(S.sel) : M_TITLES[page] || 'QUANTERA';
+  window.scrollTo(0, 0);
+  if (page === 'search'){ setTimeout(() => $('#mSearch').focus(), 50); }
+  if (page === 'coin') mSetCp(PH.cp);
+  if (page === 'journal') renderJournal();
+  if (page === 'news') renderNews().then(() => { $('#mNewsAll').innerHTML = $('#newsBody').innerHTML; });
+  mRender();
+}
+addEventListener('popstate', e => { if (!PH.on) return; const st = e.state && e.state.mp; mCloseMenu(); mShow(st ? st.page : 'home', st || {}); });
+function mOpenCoin(m){ select(m); mGo('coin'); }
+function mSetCp(cp){
+  PH.cp = cp; LS.set('quantera:mCp', cp);
+  $$('#mCoinTabs button').forEach(b => b.classList.toggle('on', b.dataset.cp === cp));
+  $$('#mApp .m-cpane').forEach(p => p.classList.toggle('on', p.dataset.cp === cp));
+  document.body.dataset.mt = cp;
+  if (cp === 'chart' && chart) requestAnimationFrame(() => chart.refit());
+  if (cp === 'day') renderDaily($('#mDay'));
+  if (cp === 'news') renderMNews();
+  if (cp === 'book'){ const b = $('#obBody'); requestAnimationFrame(() => { b.scrollIntoView({ block: 'nearest' }); }); }
+}
+// 한 줄: 이름 · 현재가 · 등락률, 아래 줄에 가이드 한 줄 (또는 거래대금)
+function mRow(i, sub){
+  const q = S.quotes.get(i.market) || {}, L = live(i.market), t = toneOf(q.changeRate);
+  const badge = L.stance === 'buy_zone' ? `<span class="badge accent">${TYPE_KO[L.type]}</span>` : surge.get(i.market) ? '<span class="badge surge">급등</span>' : dump.get(i.market) ? '<span class="badge dump">급락</span>' : isNewListing(i.market) ? '<span class="badge warn">신규</span>' : '';
+  const line = sub != null ? sub : (L.text && L.stance !== 'blocked' ? esc(L.text) : `${i.market.slice(4)} · 거래대금 ${fmtKrwShort(q.value24h)}`);
+  return `<button class="m-row" data-mm="${i.market}"><span class="m-l"><span class="m-n">${esc(i.name)}${badge}</span><span class="m-s">${line}</span></span><span class="m-r mono ${t}" data-mq="${i.market}"><span>${fmtPrice(q.price)}</span><span>${fmtPct(q.changeRate)}</span></span></button>`;
+}
+function mSurgeHtml(){
+  const muted = surgeMuted();
+  const sec = (kind, label, cls) => {
+    const src = kind === 'dump' ? dump : surge, ms = sdList(kind), un = kind === 'dump' ? unseenDump : unseen;
+    const nNew = muted ? 0 : ms.filter(m => un.has(m)).length;
+    const rows = ms.slice(0, 8).map(m => { const i = S.byMarket.get(m); return i ? mRow(i, `<span data-k="${kind}" data-ago="${m}">${surgeText(m, src.get(m))}</span>`) : ''; }).join('');
+    return `<div class="m-sd ${nNew ? (kind === 'dump' ? 'blink-dn' : 'blink') : ''}"><div class="m-sec-h"><span class="m-h ${ms.length ? cls : 'muted'}">● ${label} ${ms.length}</span>${nNew ? `<span class="sd-new">새 ${nNew}</span>` : ''}<span class="grow"></span>${nNew ? `<button class="m-btn" data-ack-kind="${kind}">확인</button>` : ''}</div>${rows || `<div class="m-none">지금 잡힌 ${label}이 없어요.</div>`}</div>`;
+  };
+  return sec('surge', '급등', 'up') + sec('dump', '급락', 'down')
+    + `<div class="m-mute"><span class="${muted ? 'muted' : 'accent'}">● 알림 ${muted ? muteText() : '켜짐'}</span><span class="grow"></span>${muted ? '<button class="m-btn" data-mute="0">다시 켜기</button>' : '<button class="m-btn" data-mute="30">30분 끄기</button><button class="m-btn" data-mute="-1">끄기</button>'}</div>`;
+}
+function mMineHtml(){
+  const held = new Map(S.ledger.positions.map(p => [upbit.toMarket(p.symbol), p]));
+  const ms = [...new Set([...held.keys(), ...[...S.watch].map(upbit.toMarket)])].filter(m => S.byMarket.has(m));
+  if (!ms.length) return `<div class="m-none">관심 종목이 없어요. 종목을 열고 ☆를 누르면 여기에 모여요.</div>`;
+  return ms.map(m => { const p = held.get(m), q = S.quotes.get(m) || {};
+    const sub = p && q.price ? `보유 · 평단 ${fmtPrice(p.avg)} 대비 <span class="${toneOf(q.price - p.avg)}">${fmtPct((q.price / p.avg - 1) * 100)}</span>` : null;
+    return mRow(S.byMarket.get(m), sub); }).join('');
+}
+let mLastList = '';
+function mRender(){
+  if (!PH.on) return;
+  const pg = PH.page;
+  if (pg === 'home'){
+    $('#mSurgeSec').innerHTML = mSurgeHtml();
+    $('#mMine').innerHTML = mMineHtml();
+    $('#mScanLine').textContent = $('#scanText') ? '스캔 · ' + $('#scanText').textContent : '';
+  } else if (pg === 'list'){
+    $('#mListTabs').innerHTML = M_TABS.map(([k, v]) => `<button class="${k === PH.tab ? 'on' : ''}" data-tab="${k}">${v}</button>`).join('');
+    const save = S.search; S.search = '';
+    const list = listFor(PH.tab); S.search = save;
+    const key = PH.tab + list.map(i => i.market).join();
+    if (key !== mLastList){
+      mLastList = key;
+      $('#mListNote').innerHTML = PH.tab === 'bottom' ? bottomTabHtml() : '';
+      $('#mList').innerHTML = list.length ? list.slice(0, 200).map(i => mRow(i, PH.tab === 'recent' ? recentText(i.market) : undefined)).join('') : `<div class="m-none">${{ pullback: '지금 조건에 맞는 눌림 매수 종목이 없어요. ☰ → 전체 스캔을 하면 모든 종목에서 찾아요.', bottom: '지금 조건에 맞는 바닥 반등 종목이 없어요.', new: '최근 30일 안에 새로 상장된 종목이 없어요.', recent: '아직 본 종목이 없어요.', rebuy: '재매수 후보가 없어요.' }[PH.tab] || '종목이 없어요.'}</div>`;
+    } else mPatch($('#mList'));
+  } else if (pg === 'search'){
+    const s = $('#mSearch').value.trim().toLowerCase();
+    const list = s ? S.instruments.filter(i => i.name.toLowerCase().includes(s) || i.market.toLowerCase().includes(s) || (i.nameEn || '').toLowerCase().includes(s)) : recent.map(x => S.byMarket.get(x.m)).filter(Boolean).slice(0, 20);
+    $('#mSearchList').innerHTML = (s ? '' : '<div class="m-sec-h"><span class="muted">최근 본 종목</span></div>') + (list.length ? list.slice(0, 80).map(i => mRow(i)).join('') : `<div class="m-none">${s ? '검색 결과가 없어요.' : '이름이나 코드를 넣어 주세요.'}</div>`);
+  } else if (pg === 'coin') mCoinHead();
+}
+function mPatch(root){
+  for (const el of $$('[data-mq]', root)){ const q = S.quotes.get(el.dataset.mq); if (!q) continue; el.className = `m-r mono ${toneOf(q.changeRate)}`; el.innerHTML = `<span>${fmtPrice(q.price)}</span><span>${fmtPct(q.changeRate)}</span>`; }
+}
+function mCoinHead(){
+  const i = S.byMarket.get(S.sel); if (!i) return;
+  const q = S.quotes.get(S.sel) || {}, L = live(S.sel), on = S.watch.has(i.symbol);
+  $('#mTitle').textContent = i.name;
+  $('#mCoinHead').innerHTML = `<div class="m-coin-p mono ${toneOf(q.changeRate)}"><span class="m-big">${fmtPrice(q.price)}</span><span>${fmtPct(q.changeRate)}</span></div>
+    <div class="m-coin-s"><span class="muted mono">${i.market}</span><span class="muted">거래대금 ${fmtKrwShort(q.value24h)}</span><span class="grow"></span><button class="m-btn${on ? ' on' : ''}" data-mstar="${i.symbol}">${on ? '★ 관심' : '☆ 관심'}</button></div>
+    ${L.text && L.stance !== 'blocked' ? `<div class="m-coin-g">${esc(L.text)}</div>` : ''}`;
+}
+function mTick(){
+  if (!PH.on) return;
+  if (PH.page === 'home'){ if (!document.activeElement || !document.activeElement.closest('#mApp')) mRender(); }
+  else if (PH.page === 'list' || PH.page === 'search') mPatch($('#mApp'));
+  else if (PH.page === 'coin') mCoinHead();
+  const li = $('#mLoginItem'); if (li) li.textContent = $('#loginBtn').textContent;
+  const ii = $('#mInstallItem'); if (ii) ii.hidden = $('#installBtn').classList.contains('hidden');
+}
+function mOpenMenu(){ $('#mApp').classList.add('menu-open'); }
+function mCloseMenu(){ $('#mApp').classList.remove('menu-open'); }
+function bindPhone(){
+  const app = $('#mApp');
+  $('#mMenuBtn').addEventListener('click', mOpenMenu);
+  $('#mDim').addEventListener('click', mCloseMenu);
+  $('#mBack').addEventListener('click', () => history.length > 1 ? history.back() : mShow('home'));
+  $('#mFind').addEventListener('click', () => mGo('search'));
+  let st; $('#mSearch').addEventListener('input', () => { clearTimeout(st); st = setTimeout(mRender, 120); });
+  $('#mCoinTabs').addEventListener('click', e => { const b = e.target.closest('[data-cp]'); if (b){ mSetCp(b.dataset.cp); window.scrollTo(0, 0); } });
+  app.addEventListener('click', async e => {
+    const go = e.target.closest('[data-go]');
+    if (go){ mGo(go.dataset.go, { tab: go.dataset.tab }); return; }
+    const tb = e.target.closest('#mListTabs [data-tab]');
+    if (tb){ PH.tab = tb.dataset.tab; mLastList = ''; history.replaceState({ mp: { page: 'list', tab: PH.tab } }, ''); mShow('list'); return; }
+    const ack = e.target.closest('[data-ack-kind]'); if (ack){ ackKind(ack.dataset.ackKind); mRender(); return; }
+    const star = e.target.closest('[data-mstar]');
+    if (star){ const sym = star.dataset.mstar; S.watch = new Set(await setWatch(sym, !S.watch.has(sym))); mCoinHead(); return; }
+    const mo = e.target.closest('[data-mo]'); if (mo){ openRec(mo.dataset.mo); return; }
+    const act = e.target.closest('[data-act]');
+    if (act){ mCloseMenu(); const a = act.dataset.act;
+      if (a === 'scan'){ toggleScan(false); toast('전체 스캔을 시작했어요. 끝나면 눌림·바닥 목록이 채워져요.'); }
+      else if (a === 'rec' || a === 'paper') openRec(a);
+      else if (a === 'upbit') $('#upImportBtn').click();
+      else if (a === 'cfg') openCfg();
+      else if (a === 'login') $('#loginBtn').click();
+      else if (a === 'install') $('#installBtn').click();
+      return; }
+    const row = e.target.closest('[data-mm]'); if (row){ mOpenCoin(row.dataset.mm); return; }
+  });
+  app.addEventListener('toggle', e => { if (e.target.classList && e.target.classList.contains('surge-stats')) LS.set(e.target.hasAttribute('data-bt') ? 'quantera:btStatsOpen' : 'quantera:surgeStatsOpen', e.target.open); }, true);
+  // 폰 ↔ PC 폭이 바뀌면 화면 구성이 달라서 새로 불러옴
+  matchMedia('(max-width: 899px)').addEventListener('change', () => location.reload());
 }
 
 // ---------------------------------------------------------------- 앱 설치 (PWA)
