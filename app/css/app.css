@@ -1172,3 +1172,5 @@ dialog input[type=checkbox]{width:16px;height:16px;margin:0;flex:0 0 auto}
   .jc-acts{width:72px;justify-content:flex-end}
 }
 @media (max-width: 899px){ .jc-2,.jc-2.four{grid-template-columns:29% 15% 32% 24%} }
+@media (max-width: 899px){ .jc-2,.jc-2.four{grid-template-columns:25% 27% 27% 21%} .jc-2 div{padding-right:8px} }
+@media (max-width: 899px){ .m-jc{padding:12px} .jc-2,.jc-2.four{grid-template-columns:27% 25% 27% 21%} .jc-2 div{padding-right:6px} }

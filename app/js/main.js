@@ -1159,14 +1159,14 @@ function mJCard(r, gone){
   const src = { carry_over: '기초 이월', manual: '직접 입력', paper: '모의', upbit_import: '업비트', real: '실거래' };
   const when = new Date(r.executed_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
   // 모든 카드가 같은 4칸: 체결가 · 수량 · (매수 금액 | 매도 실현손익) · (현재가 대비 | 매도 후)
-  const c3 = buy ? ['금액', won(r.price * r.qty) + '원', '', ''] : ['실현손익', r.realized != null && !gone ? signWon(Math.round(r.realized)) : '-', toneOf(r.realized), r.realizedPct != null && !gone ? fmtPct(r.realizedPct) : ''];
+  const c3 = buy ? ['금액 (원)', won(r.price * r.qty), '', ''] : ['실현손익', r.realized != null && !gone ? signWon(Math.round(r.realized)) : '-', toneOf(r.realized), r.realizedPct != null && !gone ? fmtPct(r.realizedPct) : ''];
   const c4 = gone || r.vsNow == null ? '<b class="mono">-</b>' : `<b class="mono ${toneOf(r.vsNow)}" data-lv="vs" data-s="${r.symbol}" data-p="${r.price}">${fmtPct(r.vsNow)}</b>`;
   const ic = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
   const acts = r.id == null ? '' : gone ? `<button class="jc-ib" data-restore="${r.hiddenBy.id}" data-tid="${r.id}" aria-label="복구">${ic('<path d="M4 12a8 8 0 1 0 3-6.2"/><path d="M4 4v5h5"/>')}</button>`
     : `${r.source === 'manual' ? `<button class="jc-ib" data-edit="${r.id}" aria-label="수정">${ic('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>')}</button>` : ''}<button class="jc-ib del" data-hide="${r.id}" aria-label="지우기">${ic('<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>')}</button>`;
   return `<div class="m-jc ${buy ? 'r-buy' : 'r-sell'}${gone ? ' gone' : ''}" data-mm="${m}">
     <div class="jc-1">${mLogo(m)}<span class="m-l"><span class="m-n">${esc(nameOf(m))}<span class="jc-side ${buy ? 'up' : 'down'}">${buy ? '매수' : '매도'}</span></span><span class="m-s">${when} · ${esc([src[r.source] || r.source, r.strategy].filter(Boolean).join(' · '))}</span></span>${sparkHtml(r)}${acts ? `<span class="jc-acts">${acts}</span>` : ''}</div>
-    <div class="jc-2"><div><span>체결가</span><b class="mono">${fmtPrice(r.price)}</b></div><div><span>수량</span><b class="mono">${(+r.qty).toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</b></div><div><span>${c3[0]}</span><b class="mono ${c3[2]}">${c3[1]}${c3[3] ? ` <small>${c3[3]}</small>` : ''}</b></div><div><span>${buy ? '현재가 대비' : '매도 후'}</span>${c4}</div></div>
+    <div class="jc-2"><div><span>체결가</span><b class="mono">${fmtPrice(r.price)}</b></div><div><span>수량</span><b class="mono" title="${(+r.qty).toLocaleString('ko-KR', { maximumFractionDigits: 8 })}">${(+r.qty).toLocaleString('ko-KR', { maximumFractionDigits: 4 })}</b></div><div><span>${c3[0]}</span><b class="mono ${c3[2]}">${c3[1]}${c3[3] ? ` <small>${c3[3]}</small>` : ''}</b></div><div><span>${buy ? '현재가 대비' : '매도 후'}</span>${c4}</div></div>
     ${r.reason ? `<div class="jc-3"><span class="jc-r">${esc(r.reason)}</span></div>` : ''}
   </div>`;
 }
