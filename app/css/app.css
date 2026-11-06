@@ -1157,3 +1157,18 @@ dialog input[type=checkbox]{width:16px;height:16px;margin:0;flex:0 0 auto}
   .jc-2.four{grid-template-columns:.9fr .8fr 1.2fr .9fr}
   .badge{height:18px}
 }
+
+/* 거래일지 배경 더 진하게 + 폰 카드 칸 맞춤 */
+.jt tr.r-buy td{background:rgba(240,68,82,.14)} .jt tr.r-sell td{background:rgba(76,141,255,.14)}
+.jt tr.r-buy:hover td{background:rgba(240,68,82,.22)} .jt tr.r-sell:hover td{background:rgba(76,141,255,.22)}
+@media (max-width: 899px){
+  .m-jc.r-buy{background:linear-gradient(170deg,rgba(240,68,82,.16),rgba(240,68,82,.06) 60%)}
+  .m-jc.r-sell{background:linear-gradient(170deg,rgba(76,141,255,.16),rgba(76,141,255,.06) 60%)}
+  .jc-2,.jc-2.four{grid-template-columns:24% 18% 32% 26%;gap:0}
+  .jc-2 div{padding-right:6px}
+  .jc-2 div:last-child{text-align:right;align-items:flex-end;padding-right:0}
+  .jc-1 .m-l{flex:0 0 40%;max-width:40%}
+  .jc-1 .spark{flex:1 1 0;min-width:0}
+  .jc-acts{width:72px;justify-content:flex-end}
+}
+@media (max-width: 899px){ .jc-2,.jc-2.four{grid-template-columns:29% 15% 32% 24%} }
