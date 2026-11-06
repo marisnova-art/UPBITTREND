@@ -387,8 +387,9 @@ function renderWatch(){
     const L = live(i.market);
     const bar = L.stance === 'buy_zone' ? 'entry' : ['chase', 'broken', 'failed'].includes(L.stance) ? 'warn' : '';
     const sv = surge.get(i.market), dv = dump.get(i.market);
-    const badges = [sv ? '<span class="badge surge">급등</span>' : '', dv ? '<span class="badge dump">급락</span>' : '', L.stance === 'buy_zone' ? `<span class="badge accent">${TYPE_KO[L.type]}</span>` : '', rebuy.has(i.market) ? '<span class="badge accent">재매수</span>' : '', isNewListing(i.market) ? '<span class="badge warn">신규</span>' : '',
-      q.suspended ? '<span class="badge warn">거래정지</span>' : '', i.warning ? '<span class="badge warn">유의</span>' : '', (i.caution || []).length ? '<span class="badge line">주의</span>' : ''].join('');
+    const badgeList = [sv ? '<span class="badge surge">급등</span>' : '', dv ? '<span class="badge dump">급락</span>' : '', L.stance === 'buy_zone' ? `<span class="badge accent">${TYPE_KO[L.type]}</span>` : '', rebuy.has(i.market) ? '<span class="badge accent">재매수</span>' : '', isNewListing(i.market) ? '<span class="badge warn">신규</span>' : '',
+      q.suspended ? '<span class="badge warn">거래정지</span>' : '', i.warning ? '<span class="badge warn">유의</span>' : '', (i.caution || []).length ? '<span class="badge line">주의</span>' : ''].filter(Boolean);
+    const badges = capBadges(badgeList);
     return `<div class="wl-row${S.sel === i.market ? ' sel' : ''}" data-m="${i.market}">
       <span class="bar ${bar}" data-tip="${BAR_TIPS[bar]}"></span>
       <div style="min-width:0">
@@ -770,6 +771,12 @@ function patchLive(root){
     if (el.textContent !== txt){ el.textContent = txt; if (tone != null) el.className = 'mono ' + tone; }
   }
 }
+// 배지가 많으면 앞의 2개만, 나머지는 "+N" (마우스를 올리면 전부)
+function capBadges(list){
+  if (list.length <= 2) return list.join('');
+  const rest = list.slice(2).map(b => b.replace(/<[^>]+>/g, '')).join(' · ');
+  return list.slice(0, 2).join('') + `<span class="badge more" data-tip="${esc(rest)}">+${list.length - 2}</span>`;
+}
 function holdHtml(pos, cur){
   return `보유 <b>${pos.qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</b> · 평단 <b>${fmtPrice(pos.avg)}</b><br>평가손익 <b class="${toneOf(pos.pnl)}">${pos.pnl != null ? (pos.pnl > 0 ? '+' : '') + won(pos.pnl) + '원' : '-'}</b> <span class="${toneOf(pos.pnl)}">${cur ? fmtPct((cur / pos.avg - 1) * 100) : ''}</span>`;
 }
@@ -1117,7 +1124,7 @@ function renderJournalRows(isPaper){
   const name = s => (S.byMarket.get(upbit.toMarket(s)) || {}).name || s;
   const src = { carry_over: '기초 이월', manual: '직접 입력', paper: '모의', upbit_import: '업비트', real: '실거래' };
   const when = t => new Date(t).toLocaleString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
-  const head = `<thead><tr><th class="l">종목</th><th class="l">추세</th><th class="l">구분</th><th>체결가</th><th>수량</th><th>수수료</th><th>실현손익</th><th>수익률</th><th>현재가 대비</th><th class="l">출처·전략</th><th class="l">판단 이유</th><th class="l">일시</th><th class="l">ID</th><th></th></tr></thead>`;
+  const head = `<thead><tr><th class="l">종목</th><th class="l">추세</th><th class="l">구분</th><th>체결가</th><th>수량</th><th>수수료</th><th>실현손익</th><th>수익률</th><th data-tip="매수: 산 가격 대비 지금 가격 · 매도: 판 뒤 지금까지 가격 변화 (+면 판 뒤 더 올랐다는 뜻)">현재가 대비</th><th class="l">출처·전략</th><th class="l">판단 이유</th><th class="l">일시</th><th class="l">ID</th><th></th></tr></thead>`;
   const tr = (r, gone) => `<tr class="${r.side === 'buy' ? 'r-buy' : 'r-sell'}${gone ? ' gone' : ''}" data-m="${upbit.toMarket(r.symbol)}">
       <td class="l sym">${mLogo(upbit.toMarket(r.symbol), 'xs')}${esc(name(r.symbol))}</td>
       <td class="l spk">${sparkHtml(r)}</td>
@@ -1127,7 +1134,7 @@ function renderJournalRows(isPaper){
       <td class="mono">${Math.round(r.fee || 0).toLocaleString('ko-KR')}</td>
       <td class="mono ${toneOf(r.realized)}">${!gone && r.realized != null ? (r.realized > 0 ? '+' : '') + Math.round(r.realized).toLocaleString('ko-KR') : ''}</td>
       <td class="mono ${toneOf(r.realizedPct)}">${!gone && r.realizedPct != null ? fmtPct(r.realizedPct) : ''}</td>
-      <td class="mono ${toneOf(r.vsNow)}"${!gone && r.side === 'buy' ? ` data-lv="vs" data-s="${r.symbol}" data-p="${r.price}"` : ''}>${!gone && r.side === 'buy' && r.vsNow != null ? fmtPct(r.vsNow) : ''}</td>
+      <td>${gone || r.vsNow == null ? '' : `${r.side === 'sell' ? '<span class="muted after">판 뒤</span>' : ''}<span class="mono ${toneOf(r.vsNow)}" data-lv="vs" data-s="${r.symbol}" data-p="${r.price}">${fmtPct(r.vsNow)}</span>`}</td>
       <td class="l">${esc([src[r.source] || r.source, r.strategy].filter(Boolean).join(' · '))}</td>
       <td class="l reason" title="${esc(r.reason || '')}">${esc(r.reason || '')}</td>
       <td class="l mono when">${when(r.executed_at)}</td>
@@ -1158,7 +1165,7 @@ function mJCard(r, gone){
     : `${r.source === 'manual' ? `<button class="jc-ib" data-edit="${r.id}" aria-label="수정">${ic('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>')}</button>` : ''}<button class="jc-ib del" data-hide="${r.id}" aria-label="지우기">${ic('<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>')}</button>`;
   return `<div class="m-jc ${buy ? 'r-buy' : 'r-sell'}${gone ? ' gone' : ''}" data-mm="${m}">
     <div class="jc-1">${mLogo(m)}<span class="m-l"><span class="m-n">${esc(nameOf(m))}<span class="jc-side ${buy ? 'up' : 'down'}">${buy ? '매수' : '매도'}</span></span><span class="m-s">${when} · ${esc([src[r.source] || r.source, r.strategy].filter(Boolean).join(' · '))}</span></span>${sparkHtml(r)}${acts ? `<span class="jc-acts">${acts}</span>` : ''}</div>
-    <div class="jc-2"><div><span>체결가</span><b class="mono">${fmtPrice(r.price)}</b></div><div><span>수량</span><b class="mono">${(+r.qty).toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</b></div><div><span>${third[0]}</span><b class="mono ${third[2]}"${!gone && buy && r.realized == null ? ` data-lv="vs" data-s="${r.symbol}" data-p="${r.price}"` : ''}>${third[1]}${third[3] ? ` <small>${third[3]}</small>` : ''}</b></div></div>
+    <div class="jc-2${!gone && !buy && r.vsNow != null ? ' four' : ''}"><div><span>체결가</span><b class="mono">${fmtPrice(r.price)}</b></div><div><span>수량</span><b class="mono">${(+r.qty).toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</b></div><div><span>${third[0]}</span><b class="mono ${third[2]}"${!gone && buy && r.realized == null ? ` data-lv="vs" data-s="${r.symbol}" data-p="${r.price}"` : ''}>${third[1]}${third[3] ? ` <small>${third[3]}</small>` : ''}</b></div>${!gone && !buy && r.vsNow != null ? `<div><span>판 뒤 변화</span><b class="mono ${toneOf(r.vsNow)}" data-lv="vs" data-s="${r.symbol}" data-p="${r.price}">${fmtPct(r.vsNow)}</b></div>` : ''}</div>
     ${r.reason ? `<div class="jc-3"><span class="jc-r">${esc(r.reason)}</span></div>` : ''}
   </div>`;
 }

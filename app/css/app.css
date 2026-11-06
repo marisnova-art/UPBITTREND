@@ -1144,3 +1144,16 @@ dialog input[type=checkbox]{width:16px;height:16px;margin:0;flex:0 0 auto}
   .jc-1 .m-s{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .jc-1 .spark{margin-left:4px}
 }
+
+/* 배지 작게 (2026-11-06) */
+.badge{height:16px;padding:0 5px;border-radius:6px;line-height:1}
+.badge.more{background:transparent;border:1px solid var(--line);color:var(--muted);cursor:help}
+/* 거래일지: 왼쪽 막대 대신 줄 전체에 옅은 매수/매도 배경 */
+.jt tr.r-buy td{background:rgba(240,68,82,.07)} .jt tr.r-sell td{background:rgba(76,141,255,.07)}
+.jt tr.r-buy td:first-child,.jt tr.r-sell td:first-child{box-shadow:none}
+.jt tr.r-buy:hover td{background:rgba(240,68,82,.13)} .jt tr.r-sell:hover td{background:rgba(76,141,255,.13)}
+.jt td .after{margin-right:6px;font-size:var(--f-s)}
+@media (max-width: 899px){
+  .jc-2.four{grid-template-columns:.9fr .8fr 1.2fr .9fr}
+  .badge{height:18px}
+}
