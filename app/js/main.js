@@ -1153,12 +1153,13 @@ function mJCard(r, gone){
   const when = new Date(r.executed_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
   const third = !gone && r.realized != null ? ['실현손익', `${signWon(Math.round(r.realized))}`, toneOf(r.realized), r.realizedPct != null ? fmtPct(r.realizedPct) : '']
     : !gone && buy && r.vsNow != null ? ['현재가 대비', fmtPct(r.vsNow), toneOf(r.vsNow), ''] : ['수수료', won(r.fee || 0) + '원', '', ''];
-  const acts = r.id == null ? '' : gone ? `<button class="m-btn" data-restore="${r.hiddenBy.id}" data-tid="${r.id}">복구</button>`
-    : `${r.source === 'manual' ? `<button class="m-btn" data-edit="${r.id}">수정</button>` : ''}<button class="m-btn" data-hide="${r.id}">지우기</button>`;
+  const ic = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+  const acts = r.id == null ? '' : gone ? `<button class="jc-ib" data-restore="${r.hiddenBy.id}" data-tid="${r.id}" aria-label="복구">${ic('<path d="M4 12a8 8 0 1 0 3-6.2"/><path d="M4 4v5h5"/>')}</button>`
+    : `${r.source === 'manual' ? `<button class="jc-ib" data-edit="${r.id}" aria-label="수정">${ic('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>')}</button>` : ''}<button class="jc-ib del" data-hide="${r.id}" aria-label="지우기">${ic('<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>')}</button>`;
   return `<div class="m-jc ${buy ? 'r-buy' : 'r-sell'}${gone ? ' gone' : ''}" data-mm="${m}">
-    <div class="jc-1">${mLogo(m)}<span class="m-l"><span class="m-n">${esc(nameOf(m))}<span class="jc-side ${buy ? 'up' : 'down'}">${buy ? '매수' : '매도'}</span></span><span class="m-s">${when} · ${esc([src[r.source] || r.source, r.strategy].filter(Boolean).join(' · '))}</span></span>${sparkHtml(r)}</div>
+    <div class="jc-1">${mLogo(m)}<span class="m-l"><span class="m-n">${esc(nameOf(m))}<span class="jc-side ${buy ? 'up' : 'down'}">${buy ? '매수' : '매도'}</span></span><span class="m-s">${when} · ${esc([src[r.source] || r.source, r.strategy].filter(Boolean).join(' · '))}</span></span>${sparkHtml(r)}${acts ? `<span class="jc-acts">${acts}</span>` : ''}</div>
     <div class="jc-2"><div><span>체결가</span><b class="mono">${fmtPrice(r.price)}</b></div><div><span>수량</span><b class="mono">${(+r.qty).toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</b></div><div><span>${third[0]}</span><b class="mono ${third[2]}"${!gone && buy && r.realized == null ? ` data-lv="vs" data-s="${r.symbol}" data-p="${r.price}"` : ''}>${third[1]}${third[3] ? ` <small>${third[3]}</small>` : ''}</b></div></div>
-    ${r.reason || acts ? `<div class="jc-3"><span class="jc-r">${r.reason ? esc(r.reason) : ''}</span>${acts}</div>` : ''}
+    ${r.reason ? `<div class="jc-3"><span class="jc-r">${esc(r.reason)}</span></div>` : ''}
   </div>`;
 }
 // ---------------------------------------------------------------- 거래일지 추세선 (일봉 종가 실루엣 + 거래 지점)
