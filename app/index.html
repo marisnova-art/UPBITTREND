@@ -156,7 +156,6 @@
 <div id="mApp" class="m-app" data-page="home" hidden>
   <header class="m-top">
     <button class="m-ib" id="mBack" aria-label="뒤로" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
-    <button class="m-ib" id="mMenuBtn" aria-label="메뉴"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     <div class="m-ttl" id="mTitle">QUANTERA</div>
     <button class="m-ib sound-btn" data-sound></button>
     <button class="m-ib" id="mFind" aria-label="종목 검색"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4-4"/></svg></button>
@@ -212,6 +211,7 @@
 
   <!-- 하단 캡슐 바 (퀵 메뉴) -->
   <nav class="m-dock" id="mDock" aria-label="빠른 메뉴">
+    <button id="mMenuBtn" aria-label="전체 메뉴"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span>메뉴</span></button>
     <button data-go="home" data-dk="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7v9H4z"/><path d="M10 20v-6h4v6"/></svg><span>홈</span></button>
     <button data-go="list" data-tab="all" data-dk="list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg><span>종목</span></button>
     <button data-go="hold" data-dk="hold"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="3"/><path d="M3 10h18M16 15h2"/></svg><span>자산</span></button>

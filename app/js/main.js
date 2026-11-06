@@ -672,7 +672,7 @@ function renderOrderbook(ob){
   if (!ob){ if (!$('#obBody').children.length) $('#obBody').innerHTML = '<div class="empty">호가 불러오는 중…</div>'; return; }
   if (ob.market !== S.sel) return;
   if (recOpen() && ob.market === REC.m) renderRecOb(ob);
-  const units = ob.units.slice(0, 15);
+  const units = ob.units.slice(0, PH.on ? 6 : 15);   // 폰: 위아래 6칸씩만 (한 화면에 차트와 같이)
   const max = Math.max(...units.map(u => Math.max(u.askSize, u.bidSize)), 1e-9);
   const q = S.quotes.get(S.sel) || {}, pc = q.prevClose || (q.price && q.changeRate != null ? q.price / (1 + q.changeRate / 100) : null);
   // 업비트처럼: 위(파는 쪽, 높은 가격) 빨강 · 아래(사는 쪽) 파랑. 가격 글자는 전일 종가 대비 색. 현재가와 같은 줄만 테두리 + 등락률
@@ -1955,7 +1955,7 @@ addEventListener('popstate', e => { if (!PH.on) return; const st = e.state && e.
 function mOpenCoin(m){ select(m); mGo('coin'); }
 function mSetCp(cp){
   if (cp === 'book') cp = 'chart';   // 차트와 호가는 한 화면
-  PH.cp = cp; LS.set('quantera:mCp', cp);
+  PH.cp = cp; LS.set('quantera:mCp', cp); $('#mApp').dataset.cp = cp;
   $$('#mCoinTabs button').forEach(b => b.classList.toggle('on', b.dataset.cp === cp));
   $$('#mApp .m-cpane').forEach(p => p.classList.toggle('on', p.dataset.cp === cp));
   document.body.dataset.mt = cp;

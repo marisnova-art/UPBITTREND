@@ -1042,3 +1042,53 @@ dialog input[type=checkbox]{width:16px;height:16px;margin:0;flex:0 0 auto}
   .addf .field:has(input[type="datetime-local"])>span{display:none}
   .addf .field input[type="datetime-local"]{width:100%;text-align:left}
 }
+
+/* 폰 2차 (2026-11-06): ☰는 하단 바로, 종목 차트·호가는 스크롤 없이 한 화면 */
+@media (max-width: 899px){
+  .m-top{height:52px}
+  .m-top .m-ttl{padding-left:12px}
+  .m-top #mBack:not([hidden])+.m-ttl{padding-left:0}
+  .m-ib{width:44px;height:44px}
+  .m-ib svg{width:26px;height:26px}
+  .m-chips,.m-search,.m-ctabs{top:calc(53px + var(--sat))}
+  .m-dock{grid-template-columns:repeat(6,1fr);left:10px;right:10px;padding:0 4px}
+  .m-dock button{margin:7px 1px}
+
+  /* 종목 · 차트·호가 탭: 화면 높이에 딱 맞춤 */
+  body.phone .m-app[data-page="coin"][data-cp="chart"]{display:flex;flex-direction:column;height:100dvh;overflow:hidden;box-sizing:border-box;padding-bottom:calc(80px + env(safe-area-inset-bottom))}
+  .m-app[data-page="coin"][data-cp="chart"] .m-top{flex:none;position:relative}
+  .m-app[data-page="coin"][data-cp="chart"] [data-p="coin"]{display:flex!important;flex-direction:column;flex:1;min-height:0}
+  .m-app[data-page="coin"][data-cp="chart"] .m-coin-g{display:none}
+  .m-app[data-page="coin"][data-cp="chart"] .m-ctabs{position:relative;top:0}
+  .m-coin{padding:8px 14px 8px}
+  .m-coin-top{gap:10px}
+  .m-coin-p{flex-direction:row;align-items:center;flex-wrap:wrap;gap:4px 8px}
+  .m-coin-p .m-big{font-size:20px}
+  .m-logo.lg{flex-basis:32px;width:32px;height:32px}
+  .m-coin-b{margin-top:8px;gap:6px}
+  .m-coin-b .m-btn{height:30px;font-size:var(--f-s)}
+  .m-ctabs button{height:36px}
+  #mCpChart.on{display:flex;flex-direction:column;flex:1;min-height:0;padding-bottom:0}
+  #mCpChart #tfTabs{flex:none;padding:6px 12px;gap:4px}
+  #mCpChart #tfTabs .pill{height:26px;padding:0 10px}
+  #mCpChart #chartWrap{flex:1 1 auto;height:auto;min-height:150px}
+  #mCpBook{flex:none;display:grid;grid-template-columns:55% 45%;grid-template-rows:auto auto;border-top:1px solid var(--line)}
+  #mCpBook .m-sub-h{display:none}
+  #mCpBook #obBody{grid-column:1;grid-row:1;font-size:var(--f-s);border-right:1px solid var(--line)}
+  #mCpBook .ob-row{height:19px;grid-template-columns:1fr auto}
+  #mCpBook .ob-row span{padding:0 8px}
+  #mCpBook .ob-row em{font-size:var(--f-s);margin-left:4px}
+  #mCpBook .ob-tot{grid-column:1;grid-row:2;padding:4px 8px;font-size:var(--f-s);gap:6px;border-right:1px solid var(--line)}
+  #mCpBook .tr-box{grid-column:2;grid-row:1/3;border-top:0;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+  #mCpBook .tr-head{padding:4px 8px;font-size:var(--f-s);flex:none}
+  #mCpBook .tr-list{flex:1;min-height:0;overflow:hidden;font-size:var(--f-s)}
+  #mCpBook .tr-row{height:19px;padding:0 8px;grid-template-columns:1fr auto}
+  #mCpBook .tr-row span:first-child{display:none}
+}
+@media (max-width: 899px){
+  #mCpBook{height:254px;grid-template-rows:minmax(0,1fr) auto;overflow:hidden}
+  #mCpBook #obBody{overflow:hidden}
+  #mCpBook .tr-head{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+  #mCpBook .tr-head .grow{display:none}
+}
+@media (max-width: 899px){ #mCpBook .tr-head #trStr{margin-left:6px} }
