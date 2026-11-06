@@ -1092,3 +1092,40 @@ dialog input[type=checkbox]{width:16px;height:16px;margin:0;flex:0 0 auto}
   #mCpBook .tr-head .grow{display:none}
 }
 @media (max-width: 899px){ #mCpBook .tr-head #trStr{margin-left:6px} }
+
+/* 코인 아이콘: PC·폰 공통 */
+.m-logo{position:relative;flex:0 0 36px;width:36px;height:36px;border-radius:50%;background:color-mix(in srgb,var(--lc) 18%,var(--panel));color:var(--lc);display:inline-flex;align-items:center;justify-content:center;font-style:normal;overflow:hidden;vertical-align:middle}
+.m-logo b{font-weight:500;font-size:var(--f-m)}
+.m-logo span{position:absolute;inset:0;background-size:cover;background-position:center}
+.m-logo.xs{flex-basis:18px;width:18px;height:18px;margin-right:6px} .m-logo.xs b{font-size:10px}
+.wl-name .m-logo.xs{margin-right:0}
+.sd-row .m-logo.xs{flex:0 0 22px;width:22px;height:22px;margin:0 8px 0 0}
+.jt td.sym{white-space:nowrap}
+#mTitle .logo{display:inline-flex;align-items:center;gap:10px;font-size:var(--f-l)}
+#mTitle .logo i{width:28px;height:28px}
+/* 폰 거래일지 카드 (홈과 같은 모양) */
+@media (max-width: 899px){
+  #mJBody{padding:0 12px}
+  .m-jhead{border-bottom:0;padding:12px 12px 10px}
+  .m-jl{display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
+  .m-jc{padding:12px 14px;border:1px solid var(--line);border-radius:18px;background:var(--panel)}
+  .m-jc.r-buy{background:linear-gradient(170deg,rgba(240,68,82,.08),var(--panel) 45%)}
+  .m-jc.r-sell{background:linear-gradient(170deg,rgba(76,141,255,.08),var(--panel) 45%)}
+  .m-jc.gone{opacity:.55}
+  .jc-1{display:flex;align-items:center;gap:12px}
+  .jc-1 .m-n{gap:8px}
+  .jc-1 .spark{flex:0 0 72px;width:72px;height:26px}
+  .jc-side{font-size:var(--f-s);padding:2px 8px;border-radius:999px}
+  .jc-side.up{background:rgba(240,68,82,.16)} .jc-side.down{background:rgba(76,141,255,.16)}
+  .jc-2{display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+  .jc-2 div{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .jc-2 span{font-size:var(--f-s);color:var(--muted)}
+  .jc-2 b{font-weight:500;font-size:var(--f-m);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .jc-2 small{font-size:var(--f-s)}
+  .jc-3{display:flex;align-items:center;gap:6px;margin-top:10px}
+  .jc-r{flex:1;min-width:0;font-size:var(--f-s);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+}
+@media (max-width: 899px){
+  #mJBody #jBody{padding:0!important;margin:0}
+  .jc-2 b small{display:block;margin-top:2px}
+}

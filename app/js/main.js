@@ -228,7 +228,7 @@ function renderSdDrop(force){
   const sec = (kind, label, cls) => {
     const src = kind === 'dump' ? dump : surge, ms = sdList(kind), un = kind === 'dump' ? unseenDump : unseen;
     const rows = ms.map(m => { const q = S.quotes.get(m) || {}, e = src.get(m);
-      return `<button class="sd-row${un.has(m) ? (kind === 'dump' ? ' blink-dn' : ' blink') : ''}" data-sdm="${m}"><span class="sd-l"><span class="sd-n">${esc(sdNm(m))}</span><span class="muted" data-k="${kind}" data-ago="${m}">${surgeText(m, e)}</span></span><span class="mono sd-px ${toneOf(q.changeRate)}" data-px="${m}">${fmtPrice(q.price)}<br>${fmtPct(q.changeRate)}</span></button>`; }).join('');
+      return `<button class="sd-row${un.has(m) ? (kind === 'dump' ? ' blink-dn' : ' blink') : ''}" data-sdm="${m}">${mLogo(m, 'xs')}<span class="sd-l"><span class="sd-n">${esc(sdNm(m))}</span><span class="muted" data-k="${kind}" data-ago="${m}">${surgeText(m, e)}</span></span><span class="mono sd-px ${toneOf(q.changeRate)}" data-px="${m}">${fmtPrice(q.price)}<br>${fmtPct(q.changeRate)}</span></button>`; }).join('');
     const nNew = surgeMuted() ? 0 : ms.filter(m => un.has(m)).length;
     const mute = surgeMuted() ? `<button class="pill sm on-warn" data-mute="0" title="${muteText()}">알림 켜기</button>` : `<button class="pill sm" data-mute="30" title="30분 동안 급등·급락 소리·팝업 끄기 (감지·목록은 계속)">30분 끄기</button>`;
     return `<section class="sd-sec k-${cls}" id="sdSec-${kind}"><div class="sd-dhead${nNew ? (kind === 'dump' ? ' blink-dn' : ' blink') : ''}"><span class="sd-ttl ${ms.length ? cls : 'muted'}">● ${label} ${ms.length}${nNew ? ` <span class="sd-new">새 ${nNew}</span>` : ''}</span><span class="grow"></span><button class="pill sm" data-ack-kind="${kind}"${nNew ? '' : ' disabled'}>확인</button>${mute}</div>
@@ -392,7 +392,7 @@ function renderWatch(){
     return `<div class="wl-row${S.sel === i.market ? ' sel' : ''}" data-m="${i.market}">
       <span class="bar ${bar}" data-tip="${BAR_TIPS[bar]}"></span>
       <div style="min-width:0">
-        <div class="wl-name"><button class="star${S.watch.has(i.symbol) ? ' on' : ''}" data-star="${i.symbol}" aria-label="관심">${S.watch.has(i.symbol) ? '★' : '☆'}</button><b>${esc(i.name)}</b>${badges}</div>
+        <div class="wl-name"><button class="star${S.watch.has(i.symbol) ? ' on' : ''}" data-star="${i.symbol}" aria-label="관심">${S.watch.has(i.symbol) ? '★' : '☆'}</button>${mLogo(i.market, 'xs')}<b>${esc(i.name)}</b>${badges}</div>
         <div class="wl-peter">${S.tab === 'recent' && !S.search ? recentText(i.market) : r && L.stance !== 'blocked' ? esc(L.text || r.peter) :`<span class="mono">${i.market}</span> · ${fmtKrwShort(q.value24h)}`}</div>
       </div>
       <div class="wl-px mono"><div class="p ${toneOf(q.changeRate)}" data-px="${i.market}">${fmtPrice(q.price)}</div><div class="c ${toneOf(q.changeRate)}" data-cr="${i.market}">${fmtPct(q.changeRate)}</div></div>
@@ -420,7 +420,7 @@ function scanTableHtml(list){
   return `<table class="ot scan-t"><thead><tr><th class="l">종목</th>${th('price', '현재가')}${th('chg', '등락')}${th('value', '거래대금')}${th('stance', '판단', 'l')}<th class="l">신호</th><th>매수 구간</th>${th('gap', '구간과 거리')}${th('tp', '1차 목표')}${th('sl', '손절')}${th('win', '과거 승률')}${th('hit', `바닥 +${cfg.btTp}% 도달`)}<th class="l">피터 한 줄</th></tr></thead><tbody>
     ${rows.map(x => { const { i, q, L, s, g, b2 } = x; const t = toneOf(q.changeRate);
       return `<tr class="sc-row${S.sel === i.market ? ' sel' : ''}" data-m="${i.market}">
-        <td class="l"><button class="star${watchSet.has(i.symbol) ? ' on' : ''}" data-star="${i.symbol}" aria-label="관심">${watchSet.has(i.symbol) ? '★' : '☆'}</button><b>${esc(i.name)}</b> <span class="mono muted">${i.market.replace('KRW-', '')}</span>${isNewListing(i.market) ? ' <span class="badge warn">신규</span>' : ''}${i.warning ? ' <span class="badge warn">유의</span>' : ''}</td>
+        <td class="l"><button class="star${watchSet.has(i.symbol) ? ' on' : ''}" data-star="${i.symbol}" aria-label="관심">${watchSet.has(i.symbol) ? '★' : '☆'}</button>${mLogo(i.market, 'xs')}<b>${esc(i.name)}</b> <span class="mono muted">${i.market.replace('KRW-', '')}</span>${isNewListing(i.market) ? ' <span class="badge warn">신규</span>' : ''}${i.warning ? ' <span class="badge warn">유의</span>' : ''}</td>
         <td class="mono p ${t}" data-px="${i.market}">${fmtPrice(q.price)}</td><td class="mono c ${t}">${fmtPct(q.changeRate)}</td>
         <td class="mono">${fmtKrwShort(q.value24h)}</td>
         <td class="l"><span class="st-${L.stance}">${STANCE_KO[L.stance] || ''}</span></td>
@@ -1012,7 +1012,7 @@ function renderHold(){
   if (!H.pos.length){ box.innerHTML = holdSumHtml(H) + `<div class="empty">${H.isPaper ? '모의 보유 종목이 없어요.' : '지금 보유 중인 종목이 없어요.'}</div>` + note; return; }
   box.innerHTML = holdSumHtml(H) + `<table class="ot hold-t"><thead><tr><th class="l">종목</th><th>보유 수량</th><th>평단</th><th>현재가</th><th>오늘</th><th>매수금액</th><th>평가금액</th><th>평가손익</th><th>수익률</th><th>비중</th><th>실현손익</th><th></th></tr></thead><tbody>
     ${H.pos.map(p => `<tr class="sc-row" data-hm="${upbit.toMarket(p.symbol)}" data-hs="${esc(p.symbol)}">
-      <td class="l"><b class="hold-nm">${esc(nameOf(upbit.toMarket(p.symbol)))}</b> <span class="mono muted">${upbit.toMarket(p.symbol).replace('KRW-', '')}</span></td>
+      <td class="l">${mLogo(upbit.toMarket(p.symbol), 'xs')}<b class="hold-nm">${esc(nameOf(upbit.toMarket(p.symbol)))}</b> <span class="mono muted">${upbit.toMarket(p.symbol).replace('KRW-', '')}</span></td>
       <td class="mono">${p.qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</td>
       <td class="mono">${fmtPrice(p.avg)}</td>
       <td class="mono ${toneOf(p.chg)}">${fmtPrice(p.cur)}</td>
@@ -1119,7 +1119,7 @@ function renderJournalRows(isPaper){
   const when = t => new Date(t).toLocaleString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
   const head = `<thead><tr><th class="l">종목</th><th class="l">추세</th><th class="l">구분</th><th>체결가</th><th>수량</th><th>수수료</th><th>실현손익</th><th>수익률</th><th>현재가 대비</th><th class="l">출처·전략</th><th class="l">판단 이유</th><th class="l">일시</th><th class="l">ID</th><th></th></tr></thead>`;
   const tr = (r, gone) => `<tr class="${r.side === 'buy' ? 'r-buy' : 'r-sell'}${gone ? ' gone' : ''}" data-m="${upbit.toMarket(r.symbol)}">
-      <td class="l sym">${esc(name(r.symbol))}</td>
+      <td class="l sym">${mLogo(upbit.toMarket(r.symbol), 'xs')}${esc(name(r.symbol))}</td>
       <td class="l spk">${sparkHtml(r)}</td>
       <td class="l ${r.side === 'buy' ? 'up' : 'down'} side">${r.side === 'buy' ? '매수' : '매도'}</td>
       <td class="mono">${fmtPrice(r.price)}</td>
@@ -1134,12 +1134,33 @@ function renderJournalRows(isPaper){
       <td class="l mono muted">${esc(r.trade_no)}</td>
       <td class="acts">${r.id == null ? '' : gone ? `<button data-restore="${r.hiddenBy.id}" data-tid="${r.id}">복구</button>`
         : `${r.source === 'manual' ? `<button data-edit="${r.id}">수정</button>` : ''}<button data-hide="${r.id}">지우기</button>`}</td></tr>`;
+  if (PH.on){
+    $('#jBody').innerHTML = `<div class="m-jl">${rows.map(r => mJCard(r, false)).join('')}</div>` +
+      (S.showHidden && hidden.length ? `<div class="m-sec-h"><span class="m-h">지운 기록</span><span class="muted">${hidden.length}건 · 손익 계산에서 빠짐</span></div><div class="m-jl">${hidden.map(r => mJCard(r, true)).join('')}</div>` : '');
+    loadSparks(rows.concat(S.showHidden ? hidden : []));
+    return;
+  }
   $('#jBody').innerHTML = `<table class="jt">${head}<tbody>${rows.map(r => tr(r, false)).join('')}</tbody></table>` +
     (S.showHidden && hidden.length ? `<div class="ot-title">지운 기록 <span class="muted">${hidden.length}건 · 손익 계산에서 빠져 있어요. "복구"로 되돌릴 수 있어요.</span></div><table class="jt gone-t">${head}<tbody>${hidden.map(r => tr(r, true)).join('')}</tbody></table>` : '');
   labelTables($('#jBody'));
   loadSparks(rows.concat(S.showHidden ? hidden : []));
 }
 
+// 폰 거래일지 카드: 로고 · 이름 · 매수/매도 · 추세선, 아래에 가격·수량·손익
+function mJCard(r, gone){
+  const m = upbit.toMarket(r.symbol), buy = r.side === 'buy';
+  const src = { carry_over: '기초 이월', manual: '직접 입력', paper: '모의', upbit_import: '업비트', real: '실거래' };
+  const when = new Date(r.executed_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+  const third = !gone && r.realized != null ? ['실현손익', `${signWon(Math.round(r.realized))}`, toneOf(r.realized), r.realizedPct != null ? fmtPct(r.realizedPct) : '']
+    : !gone && buy && r.vsNow != null ? ['현재가 대비', fmtPct(r.vsNow), toneOf(r.vsNow), ''] : ['수수료', won(r.fee || 0) + '원', '', ''];
+  const acts = r.id == null ? '' : gone ? `<button class="m-btn" data-restore="${r.hiddenBy.id}" data-tid="${r.id}">복구</button>`
+    : `${r.source === 'manual' ? `<button class="m-btn" data-edit="${r.id}">수정</button>` : ''}<button class="m-btn" data-hide="${r.id}">지우기</button>`;
+  return `<div class="m-jc ${buy ? 'r-buy' : 'r-sell'}${gone ? ' gone' : ''}" data-mm="${m}">
+    <div class="jc-1">${mLogo(m)}<span class="m-l"><span class="m-n">${esc(nameOf(m))}<span class="jc-side ${buy ? 'up' : 'down'}">${buy ? '매수' : '매도'}</span></span><span class="m-s">${when} · ${esc([src[r.source] || r.source, r.strategy].filter(Boolean).join(' · '))}</span></span>${sparkHtml(r)}</div>
+    <div class="jc-2"><div><span>체결가</span><b class="mono">${fmtPrice(r.price)}</b></div><div><span>수량</span><b class="mono">${(+r.qty).toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</b></div><div><span>${third[0]}</span><b class="mono ${third[2]}"${!gone && buy && r.realized == null ? ` data-lv="vs" data-s="${r.symbol}" data-p="${r.price}"` : ''}>${third[1]}${third[3] ? ` <small>${third[3]}</small>` : ''}</b></div></div>
+    ${r.reason || acts ? `<div class="jc-3"><span class="jc-r">${r.reason ? esc(r.reason) : ''}</span>${acts}</div>` : ''}
+  </div>`;
+}
 // ---------------------------------------------------------------- 거래일지 추세선 (일봉 종가 실루엣 + 거래 지점)
 const sparkCache = new Map();   // market|days → { day, closes:[{t,c}] } (하루에 한 번만 받음)
 const sparkKey = m => `${m}|${+UI.sparkDays || 30}`;
@@ -1678,7 +1699,7 @@ function stratTablesHtml(R){
     <div class="stg-mlist">${recent.map(t => `<div class="m-row" data-mm="${t.m}"><div><b>${esc(nameOf(t.m))}</b><span class="muted">${t.t.slice(2).replace(/-/g, '.')} · ${fmtPrice(t.entry)} · ${t.days}일</span></div><div class="mono ${toneOf(t.ret)}">${why(t)} ${fmtPct(t.ret, 1)}</div></div>`).join('')}</div>`;
   return `<div class="stg-cols"><div><h4 class="stg-h">종목별 <span class="muted">머리글을 누르면 정렬 · 줄을 누르면 차트로</span></h4>
     <table class="ot stg-t"><thead><tr><th class="l">종목</th>${th('n', '신호')}${th('hit', '익절 도달')}${th('sl', '손절')}${th('open', '진행 중')}${th('avg', '1건 평균')}${th('sum', '합계 수익')}${th('med', '보통 기간')}${th('worst', '가장 빠진 폭')}<th class="l">지금</th></tr></thead><tbody>
-    ${rows.map(x => { const L = live(x.m); return `<tr class="sc-row" data-stm="${x.m}"><td class="l"><b>${esc(nameOf(x.m))}</b> <span class="mono muted">${x.m.replace('KRW-', '')}</span></td><td class="mono">${x.n}</td><td class="mono">${x.hit.toFixed(0)}%</td><td class="mono">${x.sl || ''}</td><td class="mono ${x.open ? 'warn' : ''}">${x.open || ''}</td><td class="mono ${toneOf(x.avg)}">${fmtPct(x.avg, 2)}</td><td class="mono ${toneOf(x.sum)}">${x.sum * amt / 100 >= 0 ? '+' : ''}${won(x.sum * amt / 100)}원</td><td class="mono">${x.med != null ? x.med + '일' : ''}</td><td class="mono down">${fmtPct(x.worst, 1)}</td><td class="l">${L.stance === 'buy_zone' && L.type === STG.type ? `<span class="badge accent">${TYPE_KO[L.type]}</span>` : ''}</td></tr>`; }).join('')}
+    ${rows.map(x => { const L = live(x.m); return `<tr class="sc-row" data-stm="${x.m}"><td class="l">${mLogo(x.m, 'xs')}<b>${esc(nameOf(x.m))}</b> <span class="mono muted">${x.m.replace('KRW-', '')}</span></td><td class="mono">${x.n}</td><td class="mono">${x.hit.toFixed(0)}%</td><td class="mono">${x.sl || ''}</td><td class="mono ${x.open ? 'warn' : ''}">${x.open || ''}</td><td class="mono ${toneOf(x.avg)}">${fmtPct(x.avg, 2)}</td><td class="mono ${toneOf(x.sum)}">${x.sum * amt / 100 >= 0 ? '+' : ''}${won(x.sum * amt / 100)}원</td><td class="mono">${x.med != null ? x.med + '일' : ''}</td><td class="mono down">${fmtPct(x.worst, 1)}</td><td class="l">${L.stance === 'buy_zone' && L.type === STG.type ? `<span class="badge accent">${TYPE_KO[L.type]}</span>` : ''}</td></tr>`; }).join('')}
     </tbody></table></div>
     <div><h4 class="stg-h">최근 신호 <span class="muted">${recent.length}건</span></h4>
     <table class="ot stg-t"><thead><tr><th class="l">신호일</th><th class="l">종목</th><th>매수가</th><th class="l">결과</th><th>수익</th><th>기간</th><th>빠진 폭</th></tr></thead><tbody>
@@ -1942,6 +1963,7 @@ function mShow(page, opt = {}){
   const dk = { coin: 'list', search: 'list' }[page] || page;
   $$('#mDock [data-dk]').forEach(b => b.classList.toggle('on', b.dataset.dk === dk));
   $('#mTitle').textContent = page === 'list' ? (M_TABS.find(t => t[0] === PH.tab) || [, '종목'])[1] + ' 종목' : page === 'coin' ? nameOf(S.sel) : M_TITLES[page] || 'QUANTERA';
+  if (page === 'home') $('#mTitle').innerHTML = '<span class="logo"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C6F432" stroke-width="2.4" aria-hidden="true"><path d="M4 17l5-6 4 4 7-9"/></svg></i>QUANTERA</span>';
   window.scrollTo(0, 0);
   if (page === 'search'){ setTimeout(() => $('#mSearch').focus(), 50); }
   if (page === 'coin') mSetCp(PH.cp);
