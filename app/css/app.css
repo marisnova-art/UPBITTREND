@@ -1257,3 +1257,31 @@ body.phone input,body.phone select,body.phone textarea,.addf .field input[type="
 .cfg-actions .grow{flex:1}
 .cfg h4{font-size:var(--f-m)!important;margin-top:18px}
 @media (max-width: 899px){ .cfg-actions{background:var(--bg);padding:10px 0 8px} }
+
+/* ================= 2026-11-11 6차 ================= */
+.qchip{border:1px solid var(--line-2);background:transparent;color:var(--muted);cursor:pointer}
+.qchip.on{color:var(--bg);background:var(--text);border-color:var(--text)}
+.sd-view{display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding:8px 10px;border-bottom:1px solid var(--line);font-size:var(--f-s)}
+.sd-view .grow{flex:1}
+.sd-sep{width:1px;height:14px;background:var(--line-2);margin:0 4px}
+.kp{display:block;font-size:var(--f-s);color:var(--text-2)}
+.kp:empty{display:none}
+.kp.warn{color:var(--warn)}
+#chKimp{display:inline;margin-left:4px}
+.m-coin-s .kp{display:inline;margin-left:6px}
+/* 매물대 상세 카드 */
+.vp-tip{position:absolute;z-index:6;min-width:200px;padding:10px 12px;border-radius:14px;background:var(--panel);border:1px solid var(--line-2);box-shadow:0 8px 24px rgba(0,0,0,.5);font-size:var(--f-s);pointer-events:none}
+.vp-tip .h{margin-bottom:6px;color:var(--accent);font-weight:700}
+.vp-tip .r{display:flex;justify-content:space-between;gap:16px;height:22px;align-items:center}
+.vp-tip .r span{color:var(--muted)} .vp-tip .r b{font-family:var(--mono)}
+.vp-tip .note{margin-top:4px;color:var(--muted)}
+/* AI 요약: 모델 · 사용량 */
+.ai-model{margin-left:4px;padding:0 6px;border-radius:6px;border:1px solid var(--line-2);color:var(--text-2);font-size:var(--f-s);white-space:nowrap}
+.ai-use{margin-top:10px;font-size:var(--f-s);color:var(--text-2)}
+.ai-use-t{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.ai-use-b{height:4px;border-radius:999px;background:var(--line);overflow:hidden}
+.ai-use-b i{display:block;height:100%;background:var(--accent);border-radius:999px}
+.ai-use.warn .ai-use-b i{background:var(--warn)} .ai-use.warn .ai-use-t span:last-child{color:var(--warn)}
+.ai-use.full .ai-use-b i{background:var(--up)} .ai-use.full .ai-use-t span:last-child{color:var(--up)}
+@media (max-width: 899px){ .sd-view{padding:8px 16px} .sd-view .qchip{height:30px} }
+.ai-h{flex-wrap:wrap;row-gap:6px} .ai-h b,.ai-h .muted{white-space:nowrap}
