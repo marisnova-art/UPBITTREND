@@ -1,4 +1,4 @@
-// 해외 선행 감지 + 김프 — 바이낸스(USDT 마켓) 실시간 시세와 업비트 원화 가격을 비교합니다.
+// 해외 선행 감지 + 국프(국내 프리미엄) — 바이낸스(USDT 마켓) 실시간 시세와 업비트 원화 가격을 비교합니다.
 // 환율은 업비트 KRW-USDT 가격(실제로 코인을 옮길 때의 환율)을 씁니다.
 // 해외 선행: 최근 leadSec초 동안 해외가 leadPct% 이상 움직였는데 업비트가 덜 따라와 차이가 leadGap% 이상이면 잡음.
 // 적중률: 잡힌 순간 업비트에서 샀다면(하락이면 팔았다면) leadCheckMin분 안에 차이를 얼마나 따라잡았는지 기록 (이 기기, 최근 300건).
@@ -10,7 +10,9 @@ export const LEAD_DEFAULTS = {
   leadPct: 1.5,         // 해외가 이 % 이상 움직이면
   leadGap: 0.8,         // 업비트와의 차이가 이 % 이상이면 신호
   leadCheckMin: 5,      // 적중률: 이 시간(분) 안에 따라잡았는지
-  kimpOn: true,         // 김프 표시
+  kimpOn: true,         // 국프 표시
+  swingPp: 2,           // 국프 급변: 이 %p 이상 변하면
+  swingMin: 10,         //          이 시간(분) 안에
   sndLead: 'high'       // 알림음: 해외 선행
 };
 const WS_URL = 'wss://stream.binance.com:9443/ws/!miniTicker@arr';
@@ -23,6 +25,10 @@ export function createOverseas(getCfg, getQuote){
   const tracking = new Map();  // market → 적중률 추적 중
   let log = LS.get(LOG_KEY, []) || [];
   let ws = null, status = 'off', lastMsg = 0, timer = null;
+  // 국프 기록: 15초마다 한 번씩, 65분치 (1시간 변화·급변 계산용)
+  const kHist = new Map();     // market → [{t, k}]
+  const swings = new Map();    // market → { at, last, dir, from, to, delta }
+  let lastSample = 0, swingFresh = [];
 
   function connect(){
     if (!getCfg().leadOn && !getCfg().kimpOn) return;
@@ -56,7 +62,8 @@ export function createOverseas(getCfg, getQuote){
   // 1초마다: 기록을 쌓고 신호를 찾음. 새로 잡힌 market 목록을 돌려줌
   function check(markets){
     const c = getCfg(), now = Date.now(), fresh = [];
-    if (!c.leadOn || !px.size || Date.now() - lastMsg > 15000) return fresh;
+    if (!px.size || Date.now() - lastMsg > 15000) return fresh;
+    if (!c.leadOn){ if (now - lastSample >= 15000){ lastSample = now; sampleKimp(markets, now, c); } return fresh; }
     const win = c.leadSec * 1000;
     for (const m of markets){
       if (m === 'KRW-USDT') continue;
@@ -79,8 +86,35 @@ export function createOverseas(getCfg, getQuote){
     }
     const keep = (getCfg().surgeKeepMin || 30) * 60000;
     for (const [m, e] of events) if (now - e.last > keep) events.delete(m);
+    if (now - lastSample >= 15000){ lastSample = now; sampleKimp(markets, now, c); }
+    for (const [m, e] of swings) if (now - e.last > keep) swings.delete(m);
     for (const r of [...tracking.values()]) if (now - r.at > c.leadCheckMin * 60000 + 30000){ const q = getQuote(r.m); finish(r, q ? q.price : r.entry, c); }
     return fresh;
+  }
+  function sampleKimp(markets, now, c){
+    const win = (c.swingMin || 10) * 60000;
+    for (const m of markets){
+      const k = kimp(m); if (k == null) continue;
+      let h = kHist.get(m); if (!h){ h = []; kHist.set(m, h); }
+      h.push({ t: now, k });
+      while (h.length && now - h[0].t > 65 * 60000) h.shift();
+      // 급변: 최근 swingMin분 안의 가장 낮은(높은) 국프에서 지금까지 swingPp%p 이상
+      const w = h.filter(x => now - x.t <= win); if (w.length < 3) continue;
+      const lo = Math.min(...w.map(x => x.k)), hi = Math.max(...w.map(x => x.k));
+      const up = k - lo, dn = k - hi;
+      const dir = up >= c.swingPp ? 1 : dn <= -c.swingPp ? -1 : 0; if (!dir) continue;
+      const from = dir > 0 ? lo : hi, e = swings.get(m);
+      if (!e || e.dir !== dir){ swings.set(m, { at: now, last: now, dir, from, to: k, delta: k - from }); swingFresh.push(m); }
+      else { e.last = now; e.to = k; if (Math.abs(k - e.from) > Math.abs(e.delta)) e.delta = k - e.from; }
+    }
+  }
+  // 국프 변화: 지금 - min분 전 (기록이 모자라면 null)
+  function kimpChange(m, min = 60){
+    const h = kHist.get(m); if (!h || h.length < 2) return null;
+    const now = h[h.length - 1], target = now.t - min * 60000;
+    if (h[0].t > target + 60000) return null;
+    let old = h[0]; for (const x of h){ if (x.t <= target) old = x; else break; }
+    return now.k - old.k;
   }
   function follow(r, p, now, c){
     const mv = (p / r.entry - 1) * 100 * r.dir;   // 신호 방향으로 움직인 %
@@ -99,5 +133,6 @@ export function createOverseas(getCfg, getQuote){
     const caught = log.filter(x => x.best >= x.gap / 2).length;
     return { n, caught, rate: caught / n * 100, avgBest: log.reduce((a, x) => a + x.best, 0) / n, avgEnd: log.reduce((a, x) => a + x.end, 0) / n - 0.1, up: log.filter(x => x.dir > 0).length };
   }
-  return { check, kimp, overseasKrw, events, get: m => events.get(m), stats, log: () => log, tracking, status: () => status, has: m => px.has(m.slice(4)) };
+  const takeSwing = () => { const f = swingFresh; swingFresh = []; return f; };
+  return { check, kimp, kimpChange, swings, takeSwing, getSwing: m => swings.get(m), overseasKrw, events, get: m => events.get(m), stats, log: () => log, tracking, status: () => status, has: m => px.has(m.slice(4)) };
 }
