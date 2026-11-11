@@ -63,6 +63,7 @@
         <button class="pill" data-tab="new">신규</button>
         <button class="pill" data-tab="surge">급등</button>
         <button class="pill" data-tab="dump">급락</button>
+        <button class="pill" data-tab="lead" data-tip="해외 선행: 바이낸스에서 먼저 크게 움직였는데 업비트가 아직 덜 따라온 코인">선행</button>
       </div>
       <div class="body" id="wlBody"></div>
       <div class="scanbar"><button class="pill" id="scanBtn">전체 스캔</button><div class="progress"><i id="scanProg"></i></div><span id="scanText">대기</span></div>
@@ -83,7 +84,7 @@
         <header>
           <div class="chart-head">
             <h2 id="chName">-</h2><span class="muted mono" id="chCode"></span>
-            <span class="px mono" id="chPrice">-</span><span class="mono" id="chChg"></span>
+            <span class="px mono" id="chPrice">-</span><span class="mono" id="chChg"></span><span class="mono kp" id="chKimp" title="김프: 바이낸스 가격(업비트 USDT 환율 적용)보다 업비트가 몇 % 비싼지"></span>
             <span id="chBadges"></span>
           </div>
           <div class="grow"></div>

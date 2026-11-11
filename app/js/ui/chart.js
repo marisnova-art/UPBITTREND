@@ -177,45 +177,66 @@ export function createChart(el, legendEl, infoEl){
     legend.push(['20선', C.ma20], ['60선', C.ma60]);
     if (legendEl) legendEl.innerHTML = legend.map(([t, c]) => `<span style="color:${c}">${t}</span>`).join('') +
       (lines.length ? `<button class="lbl-toggle${showLabels ? ' on' : ''}" data-lbl aria-pressed="${showLabels}">라벨 ${showLabels ? 'ON' : 'OFF'}</button>` : '') +
-      `<button class="lbl-toggle${showVp ? ' on' : ''}" data-vp aria-pressed="${showVp}" data-tip="매물대: 화면에 보이는 기간 동안 가격대별로 거래가 얼마나 쌓였는지 오른쪽 가로 막대로 보여요. 라임색이 가장 많이 거래된 가격대예요.">매물대 ${showVp ? 'ON' : 'OFF'}</button>`;
+      `<button class="lbl-toggle${showVp ? ' on' : ''}" data-vp aria-pressed="${showVp}" data-tip="매물대: 화면에 보이는 기간 동안 가격대별로 거래대금(원)이 얼마나 쌓였는지 오른쪽 가로 막대로 보여요. 라임색이 가장 많이 거래된 가격대, 상위 3개엔 금액과 비중. 막대에 마우스를 올리면 자세히.">매물대 ${showVp ? 'ON' : 'OFF'}</button>`;
   }
-  // 매물대(볼륨 프로파일): 지금 화면에 보이는 봉들의 거래량을 가격 구간별로 합쳐 오른쪽에 가로 막대로.
-  // 가장 많이 쌓인 구간(POC)은 라임색. 라벨 ON처럼 '매물대' 버튼으로 켜고 끔.
+  // 매물대(볼륨 프로파일): 지금 화면에 보이는 봉들의 거래대금(원)을 가격 구간별로 합쳐 오른쪽에 가로 막대로.
+  // 가장 많이 쌓인 구간(POC)은 라임색. 상위 3개 막대엔 "약 120억 · 18%". 막대에 마우스를 올리거나 누르면 상세 카드.
   const VP_KEY = 'quantera:chartVp';
   let showVp = (() => { try { return localStorage.getItem(VP_KEY) === '1'; } catch(e){ return false; } })();
   const vpCv = document.createElement('canvas'); vpCv.className = 'vp-cv';
   if (getComputedStyle(el).position === 'static') el.style.position = 'relative';   // 이미 absolute면 그대로 (폰)
   el.appendChild(vpCv);
-  let vpRaf = 0;
+  const vpTip = document.createElement('div'); vpTip.className = 'vp-tip'; vpTip.hidden = true; el.appendChild(vpTip);
+  let vpRaf = 0, vpGeo = [];
   const vpLater = () => { if (!vpRaf) vpRaf = requestAnimationFrame(() => { vpRaf = 0; drawVp(); }); };
   function drawVp(){
     const W = el.clientWidth, H = el.clientHeight, dpr = window.devicePixelRatio || 1;
     if (vpCv.width !== Math.round(W * dpr) || vpCv.height !== Math.round(H * dpr)){ vpCv.width = Math.round(W * dpr); vpCv.height = Math.round(H * dpr); vpCv.style.width = W + 'px'; vpCv.style.height = H + 'px'; }
     const g = vpCv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
-    if (!showVp || !data.length) return;
+    vpGeo = [];
+    if (!showVp || !data.length){ vpTip.hidden = true; return; }
     const r = chart.timeScale().getVisibleLogicalRange(); if (!r) return;
     const a = Math.max(0, Math.floor(r.from)), b = Math.min(data.length - 1, Math.ceil(r.to)); if (b <= a) return;
     let lo = Infinity, hi = -Infinity;
     for (let i = a; i <= b; i++){ lo = Math.min(lo, data[i].l); hi = Math.max(hi, data[i].h); }
     if (!(hi > lo)) return;
     const N = 32, step = (hi - lo) / N, bins = new Array(N).fill(0);
-    for (let i = a; i <= b; i++){   // 봉의 거래량을 그 봉의 저가~고가 구간에 고르게 나눔
-      const d = data[i]; if (!d.v) continue;
+    for (let i = a; i <= b; i++){   // 봉의 거래대금을 그 봉의 저가~고가 구간에 고르게 나눔
+      const d = data[i], val = d.value || d.v * (d.h + d.l) / 2; if (!val) continue;
       const i0 = Math.max(0, Math.min(N - 1, Math.floor((d.l - lo) / step))), i1 = Math.max(0, Math.min(N - 1, Math.floor((d.h - lo) / step)));
-      const share = d.v / (i1 - i0 + 1); for (let k = i0; k <= i1; k++) bins[k] += share;
+      const share = val / (i1 - i0 + 1); for (let k = i0; k <= i1; k++) bins[k] += share;
     }
-    const max = Math.max(...bins); if (!max) return;
-    const poc = bins.indexOf(max);
+    const max = Math.max(...bins), total = bins.reduce((x, y) => x + y, 0); if (!max) return;
+    const top3 = bins.map((v, k) => [v, k]).sort((x, y) => y[0] - x[0]).slice(0, 3).map(x => x[1]);
     const scaleW = chart.priceScale('right').width() || 60, right = W - scaleW - 2, maxW = Math.min(180, (W - scaleW) * 0.24);
+    g.font = "12px 'JetBrains Mono', monospace"; g.textBaseline = 'middle'; g.textAlign = 'right';
     for (let k = 0; k < N; k++){
       if (!bins[k]) continue;
       const y1 = candles.priceToCoordinate(lo + step * (k + 1)), y0 = candles.priceToCoordinate(lo + step * k);
       if (y1 == null || y0 == null) continue;
-      const top = Math.min(y0, y1) + 1, h = Math.max(1, Math.abs(y0 - y1) - 2), w = bins[k] / max * maxW;
-      g.fillStyle = k === poc ? 'rgba(198,244,50,.32)' : 'rgba(237,237,239,.11)';
+      const top = Math.min(y0, y1) + 1, h = Math.max(1, Math.abs(y0 - y1) - 2), w = bins[k] / max * maxW, poc = k === top3[0];
+      g.fillStyle = poc ? 'rgba(198,244,50,.32)' : 'rgba(237,237,239,.11)';
       g.fillRect(right - w, top, w, h);
+      vpGeo.push({ top, h, x0: right - Math.max(w, 24), x1: right, lo: lo + step * k, hi: lo + step * (k + 1), val: bins[k], share: bins[k] / total * 100, rank: top3.indexOf(k) });
+      if (top3.includes(k) && top + h / 2 > 10 && top + h / 2 < H - 10){
+        const txt = `약 ${krw(bins[k])} · ${(bins[k] / total * 100).toFixed(0)}%`;
+        g.fillStyle = poc ? '#C6F432' : '#C9C9CF';
+        g.fillText(txt, right - w - 6, top + h / 2);
+      }
     }
   }
+  function vpHover(x, y){
+    if (!showVp){ vpTip.hidden = true; return; }
+    const b = vpGeo.find(z => y >= z.top - 1 && y <= z.top + z.h + 1 && x >= z.x0 - 4 && x <= z.x1 + 2);
+    if (!b){ vpTip.hidden = true; return; }
+    vpTip.innerHTML = `<div class="h">매물대${b.rank === 0 ? ' · 가장 많음' : b.rank > 0 ? ` · ${b.rank + 1}위` : ''}</div><div class="r"><span>가격대</span><b>${fmt(b.lo)} ~ ${fmt(b.hi)}</b></div><div class="r"><span>거래대금</span><b>약 ${krw(b.val)}원</b></div><div class="r"><span>비중</span><b>${b.share.toFixed(1)}%</b></div><div class="note">화면에 보이는 기간 기준</div>`;
+    vpTip.hidden = false;
+    const tw = vpTip.offsetWidth, th = vpTip.offsetHeight;
+    vpTip.style.left = Math.max(4, b.x0 - tw - 8) + 'px'; vpTip.style.top = Math.max(4, Math.min(el.clientHeight - th - 4, y - th / 2)) + 'px';
+  }
+  el.addEventListener('mousemove', e => { const rc = el.getBoundingClientRect(); vpHover(e.clientX - rc.left, e.clientY - rc.top); });
+  el.addEventListener('mouseleave', () => { vpTip.hidden = true; });
+  el.addEventListener('touchstart', e => { const t = e.touches[0], rc = el.getBoundingClientRect(); vpHover(t.clientX - rc.left, t.clientY - rc.top); }, { passive: true });
   chart.timeScale().subscribeVisibleLogicalRangeChange(vpLater);
   if (window.ResizeObserver) new ResizeObserver(vpLater).observe(el);
   el.addEventListener('wheel', vpLater, { passive: true });

@@ -4,14 +4,37 @@
 const SB_URL = 'https://owrtvchfcrpiwielyqvo.supabase.co';
 const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im93cnR2Y2hmY3JwaXdpZWx5cXZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NzcxODMsImV4cCI6MjEwNTI1MzE4M30.gLS438ACEIb9H_Art1HicRomcZO3CT0ctfpau93fPoc';
 const MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+const MODEL_NAME = 'Llama 3.3 70B';
+// Workers AI 무료 한도: 하루 10,000 뉴런 (UTC 0시 = 한국 오전 9시 초기화).
+// 이 모델 요금표 기준 1백만 토큰당 입력 26,668 · 출력 204,805 뉴런
+const LIMIT = 10000, N_IN = 26668 / 1e6, N_OUT = 204805 / 1e6;
+const sbHead = auth => ({ apikey: SB_ANON, authorization: auth, 'content-type': 'application/json' });
+// 오늘(UTC 0시 이후) 이 사용자의 사용량 합계. 표가 없으면 null
+async function usageToday(auth){
+  const since = new Date(); since.setUTCHours(0, 0, 0, 0);
+  const r = await fetch(`${SB_URL}/rest/v1/q_ai_usage?select=neurons&at=gte.${since.toISOString()}`, { headers: sbHead(auth) });
+  if (!r.ok) return null;
+  const rows = await r.json();
+  return { count: rows.length, neurons: Math.round(rows.reduce((a, x) => a + (+x.neurons || 0), 0)), limit: LIMIT, model: MODEL_NAME, resetAt: since.getTime() + 86400000 };
+}
+async function checkUser(request){
+  const auth = request.headers.get('authorization') || '';
+  if (!/^Bearer\s+\S+/.test(auth)) return null;
+  const u = await fetch(SB_URL + '/auth/v1/user', { headers: { apikey: SB_ANON, authorization: auth } });
+  return u.ok ? auth : null;
+}
+// GET: 오늘 사용량만
+export async function onRequestGet({ request }) {
+  const auth = await checkUser(request);
+  if (!auth) return json({ error: 'login' }, 401);
+  return json({ usage: await usageToday(auth), model: MODEL_NAME });
+}
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 
 export async function onRequestPost({ request, env }) {
   if (!env.AI) return json({ error: 'no_ai', message: 'AI 연결이 아직 준비되지 않았어요.' }, 503);
-  const auth = request.headers.get('authorization') || '';
-  if (!/^Bearer\s+\S+/.test(auth)) return json({ error: 'login', message: '로그인하면 쓸 수 있어요.' }, 401);
-  const u = await fetch(SB_URL + '/auth/v1/user', { headers: { apikey: SB_ANON, authorization: auth } });
-  if (!u.ok) return json({ error: 'login', message: '로그인이 만료됐어요. 다시 로그인해 주세요.' }, 401);
+  const auth = await checkUser(request);
+  if (!auth) return json({ error: 'login', message: '로그인이 필요하거나 만료됐어요. 다시 로그인해 주세요.' }, 401);
   let body; try { body = await request.json(); } catch { return json({ error: 'bad' }, 400); }
   const facts = (Array.isArray(body.facts) ? body.facts : []).map(x => String(x).slice(0, 300)).slice(0, 40);
   if (!facts.length) return json({ error: 'bad' }, 400);
@@ -27,7 +50,13 @@ export async function onRequestPost({ request, env }) {
     const r = await env.AI.run(MODEL, { messages: [{ role: 'system', content: system }, { role: 'user', content: user }], max_tokens: 500, temperature: 0.3 });
     const text = String((r && (r.response || r.result && r.result.response)) || '').trim();
     if (!text) return json({ error: 'empty', message: 'AI가 빈 답을 줬어요. 잠시 뒤 다시 해 주세요.' }, 502);
-    return json({ text, model: MODEL, at: Date.now() });
+    // 사용량 기록: AI가 토큰 수를 주면 그대로, 없으면 글자 수로 어림
+    const us = (r && r.usage) || {};
+    const inTok = +us.prompt_tokens || Math.round((system.length + user.length) / 1.6), outTok = +us.completion_tokens || Math.round(text.length / 1.3);
+    const neurons = inTok * N_IN + outTok * N_OUT;
+    await fetch(SB_URL + '/rest/v1/q_ai_usage', { method: 'POST', headers: { ...sbHead(auth), prefer: 'return=minimal' },
+      body: JSON.stringify({ model: MODEL, market, in_tokens: inTok, out_tokens: outTok, neurons: Math.round(neurons * 10) / 10 }) }).catch(() => {});
+    return json({ text, model: MODEL, modelName: MODEL_NAME, at: Date.now(), cost: Math.round(neurons), usage: await usageToday(auth).catch(() => null) });
   } catch (e) {
     const m = String(e && e.message || e);
     return json({ error: 'ai', message: /limit|quota|neuron/i.test(m) ? '오늘 무료 AI 사용량을 다 썼어요. 내일 다시 쓸 수 있어요.' : 'AI 요약을 만들지 못했어요: ' + m.slice(0, 120) }, 502);

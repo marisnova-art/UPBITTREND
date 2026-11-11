@@ -8,6 +8,7 @@ import { STAGE_KO } from './analysis/trend.js';
 import { screenCfg, saveScreenCfg, SCREEN_DEFAULTS, summarize, summarizeBottom } from './analysis/screen.js';
 import { computeLedger, pastBuys } from './analysis/ledger.js';
 import { createSurge, SURGE_DEFAULTS, agoKo } from './analysis/surge.js';
+import { createOverseas, LEAD_DEFAULTS } from './analysis/overseas.js';
 import { loadNews, newsFor, newsHtml } from './news.js';
 import { createChart } from './ui/chart.js';
 import { initTips, BAR_TIPS } from './ui/tips.js';
@@ -40,8 +41,9 @@ function addRecent(m){
   LS.set(RECENT_KEY, recent);
 }
 if (!LS.get('quantera:mig1', false)){ const c = screenCfg(); if (c.surgeRepeat === 5){ c.surgeRepeat = 15; saveScreenCfg(c); } LS.set('quantera:mig1', true); }
-const allCfg = () => ({ ...SURGE_DEFAULTS, ...screenCfg() });
+const allCfg = () => ({ ...SURGE_DEFAULTS, ...LEAD_DEFAULTS, ...screenCfg() });
 const surge = createSurge(allCfg);
+const ovs = createOverseas(allCfg, m => S.quotes.get(m));   // 해외 선행 + 김프 (바이낸스)
 const priceOf = sym => { const q = S.quotes.get(upbit.toMarket(sym)); return q ? q.price : null; };
 const paper = createPaper({ priceOf, remote: paperRemote });
 
@@ -136,20 +138,44 @@ setInterval(() => {
 // 1초마다 검사. 새로 잡히면 소리 + 위쪽 알림. 확인(종목 클릭 또는 '모두 확인') 전까지 계속 울리고 목록에서 깜빡임.
 const unseen = new Set(), unseenDump = new Set();
 const dump = createSurge(allCfg, -1);
-// 종목 탭의 급등·급락: 최근 24시간 동안 알림이 뜬 종목 기록 (오른쪽 급등·급락 칸은 지금 막 잡힌 것만, 30분 뒤 사라짐)
-const SDH_KEY = 'quantera:sdHist';
+// 종목 탭의 급등·급락: 알림이 뜬 종목 기록 (7일 보관). 기간(오늘 9시부터·24시간·48시간·7일)과 정렬(최근·횟수)을 고름.
+// 오른쪽 급등·급락 칸은 지금 막 잡힌 것만, 30분 뒤 사라짐
+const SDH_KEY = 'quantera:sdHist', SDH_KEEP = 7 * 86400000;
 let sdHist = (() => { const h = LS.get(SDH_KEY, {}) || {}; return { surge: h.surge || {}, dump: h.dump || {} }; })();
+const SDP = { today: '오늘', '24h': '24시간', '48h': '48시간', '7d': '7일' };
+let sdView = { period: '24h', sort: 'recent', ...(LS.get('quantera:sdView', {}) || {}) };
+function sdSince(){
+  const now = Date.now();
+  if (sdView.period === 'today'){ const d = new Date(); d.setUTCHours(0, 0, 0, 0); return d.getTime(); }   // 한국 오전 9시 = UTC 0시
+  return now - ({ '24h': 1, '48h': 2, '7d': 7 }[sdView.period] || 1) * 86400000;
+}
 function sdHistAdd(kind, ms){
   const now = Date.now();
-  for (const m of ms){ const q = S.quotes.get(m) || {}, e = (kind === 'dump' ? dump : surge).get(m) || {}; const old = sdHist[kind][m]; sdHist[kind][m] = { at: now, price: old && now - old.at < 3600000 ? old.price : q.price, pct: e.pct, n: old && now - old.at < 86400000 ? (old.n || 1) + 1 : 1 }; }
-  for (const k of ['surge', 'dump']) for (const m in sdHist[k]) if (now - sdHist[k][m].at > 86400000) delete sdHist[k][m];
+  for (const m of ms){
+    const q = S.quotes.get(m) || {}, e = (kind === 'dump' ? dump : surge).get(m) || {}, old = sdHist[kind][m];
+    const ts = [...((old && old.ts) || (old ? [old.at] : [])), now].filter(t => now - t < SDH_KEEP).slice(-60);
+    sdHist[kind][m] = { at: now, price: old && now - old.at < 3600000 ? old.price : q.price, pct: e.pct, ts };
+  }
+  for (const k of ['surge', 'dump']) for (const m in sdHist[k]) if (now - sdHist[k][m].at > SDH_KEEP) delete sdHist[k][m];
   LS.set(SDH_KEY, sdHist);
 }
-const sdHistList = kind => Object.entries(sdHist[kind]).filter(([, x]) => Date.now() - x.at < 86400000).sort((a, b) => b[1].at - a[1].at).map(([m]) => m);
+const sdCount = (kind, m) => { const x = sdHist[kind][m], since = sdSince(); return x ? ((x.ts || [x.at]).filter(t => t >= since).length) : 0; };
+const sdHistList = kind => { const since = sdSince();
+  return Object.entries(sdHist[kind]).filter(([, x]) => x.at >= since)
+    .sort((a, b) => sdView.sort === 'count' ? (sdCount(kind, b[0]) - sdCount(kind, a[0]) || b[1].at - a[1].at) : b[1].at - a[1].at).map(([m]) => m); };
+function sdViewHtml(kind){
+  const n = sdHistList(kind).length;
+  return `<div class="sd-view"><span class="muted">${kind === 'dump' ? '급락' : '급등'} 알림 ${n}종목</span><span class="grow"></span>${Object.entries(SDP).map(([k, v]) => `<button class="qchip${sdView.period === k ? ' on' : ''}" data-sdp="${k}">${v}</button>`).join('')}<span class="sd-sep"></span><button class="qchip${sdView.sort === 'recent' ? ' on' : ''}" data-sds="recent">최근순</button><button class="qchip${sdView.sort === 'count' ? ' on' : ''}" data-sds="count">횟수순</button></div>`;
+}
+document.addEventListener('click', e => {
+  const p = e.target.closest('[data-sdp]'), so = e.target.closest('[data-sds]'); if (!p && !so) return;
+  if (p) sdView.period = p.dataset.sdp; if (so) sdView.sort = so.dataset.sds;
+  LS.set('quantera:sdView', sdView); renderWatch(); if (PH.on && PH.page === 'list') mRender(true);
+});
 function sdHistText(kind, m){
   const x = sdHist[kind][m]; if (!x) return '';
-  const q = S.quotes.get(m) || {}, chg = x.price && q.price ? (q.price / x.price - 1) * 100 : null;
-  return `${agoKo(Date.now() - x.at)} ${kind === 'dump' ? '급락' : '급등'}${x.n > 1 ? ` (24시간 ${x.n}번)` : ''}${x.price ? ` · 그때 ${fmtPrice(x.price)}` : ''}${chg != null ? ` → 지금 <span class="${toneOf(chg)}">${fmtPct(chg)}</span>` : ''}`;
+  const q = S.quotes.get(m) || {}, chg = x.price && q.price ? (q.price / x.price - 1) * 100 : null, n = sdCount(kind, m);
+  return `${agoKo(Date.now() - x.at)} ${kind === 'dump' ? '급락' : '급등'}${n > 1 ? ` (${SDP[sdView.period]} ${n}번)` : ''}${x.price ? ` · 그때 ${fmtPrice(x.price)}` : ''}${chg != null ? ` → 지금 <span class="${toneOf(chg)}">${fmtPct(chg)}</span>` : ''}`;
 }
 // 알림 잠시 끄기(급등·급락 같이): 감지·목록·적중률 기록은 계속, 소리·팝업·바탕화면 알림만 멈춤
 const MUTE_KEY = 'quantera:surgeMute';
@@ -197,7 +223,7 @@ const SOUNDS = {
   high: ['높은 삐-삐', [[0, 1319], [0.18, 1319]]],
   none: ['소리 없음', []]
 };
-const KIND_SND = { surge: 'sndSurge', dump: 'sndDump', sell: 'sndSell', etc: 'sndEtc' };
+const KIND_SND = { surge: 'sndSurge', dump: 'sndDump', sell: 'sndSell', lead: 'sndLead', etc: 'sndEtc' };
 function beep(kind = 'surge', force = false, preset){
   if (soundOff() && !force) return;
   kind = { up: 'surge', down: 'dump', one: 'etc' }[kind] || kind;   // 예전 이름도 받음
@@ -302,6 +328,7 @@ setInterval(() => {
 // 보유 종목에 목표가를 걸어 두면, 현재가가 그 이상이 됐을 때 "매수가 대비 +x%"와 함께 알림.
 // 확인 전까지 반복 간격마다 최대 alarmMax번. 가격이 목표가 아래로 내려갔다가 다시 닿으면 새로 알림.
 // 목표가는 계정(prefs.ui.sellAlerts)에 저장 → PC·폰 같음. 앱이 켜져 있을 때만 울려요.
+let saChartKey = '';
 const SA = new Map();   // symbol → { count, last, acked }
 const sellTargets = () => UI.sellAlerts || {};
 function heldPos(sym){
@@ -328,6 +355,7 @@ function checkSellAlerts(cfg){
     if (st.count === 1 && 'Notification' in window && Notification.permission === 'granted'){ try { new Notification('매도 예약가 도달', { body: msg, tag: 'quantera-sell-' + sym, icon: './icons/icon-192.png' }); } catch(e){} }
   }
   if (changed || SA.size) renderSaBar();
+  if (S.sel){ const x = saInfo(upbit.toSymbol(S.sel)); const k = x ? upbit.toSymbol(S.sel) + x.tgt + x.hit : ''; if (k !== saChartKey) applyGuideToChart(); }
 }
 function renderSaBar(){
   let bar = $('#saBar');
@@ -363,6 +391,44 @@ document.addEventListener('click', e => {
   const k = e.target.closest('[data-sa-ack]'); if (k){ const st = SA.get(k.dataset.saAck); if (st) st.acked = true; renderSaBar(); return; }
   const o = e.target.closest('[data-sa-open]'); if (o){ if (PH.on) mOpenCoin(o.dataset.saOpen); else { setView('trade'); select(o.dataset.saOpen); } }
 }, true);
+
+// ---------------------------------------------------------------- 해외 선행 + 김프
+function kimpHtml(m){
+  if (!allCfg().kimpOn) return '';
+  const k = ovs.kimp(m);
+  return `<span class="kp mono ${k == null ? 'muted' : k >= 3 ? 'warn' : ''}" data-kp="${m}" title="김프: 바이낸스 가격(업비트 USDT 환율 적용)보다 업비트가 몇 % 비싼지">${k == null ? '' : '김프 ' + fmtPct(k)}</span>`;
+}
+function patchKimp(root = document){
+  if (!allCfg().kimpOn) return;
+  for (const el of $$('[data-kp]', root)){ const k = ovs.kimp(el.dataset.kp); const t = k == null ? '' : '김프 ' + fmtPct(k); if (el.textContent !== t){ el.textContent = t; el.className = `kp mono ${k == null ? 'muted' : k >= 3 ? 'warn' : ''}`; } }
+}
+function leadText(m){
+  const e = ovs.get(m); if (!e) return '';
+  const q = S.quotes.get(m) || {}, since = q.price && e.pAt ? (q.price / e.pAt - 1) * 100 : null;
+  return `${agoKo(Date.now() - e.at)} 해외 <span class="${toneOf(e.ov)}">${fmtPct(e.ov)}</span> · 업비트 <span class="${toneOf(e.up)}">${fmtPct(e.up)}</span> · 차이 ${e.gap.toFixed(1)}%${since != null ? ` · 이후 <span class="${toneOf(since)}">${fmtPct(since)}</span>` : ''}`;
+}
+function leadStatsHtml(){
+  const st = ovs.stats(), c = allCfg(), live = ovs.tracking.size;
+  const body = st.n ? `<table><thead><tr><th>건수</th><th>따라잡음</th><th>최대 이동</th><th>${c.leadCheckMin}분 뒤</th></tr></thead><tbody><tr><td>${st.n}</td><td class="${st.rate >= 60 ? 'up' : ''}">${st.rate.toFixed(0)}%</td><td>${fmtPct(st.avgBest)}</td><td class="${toneOf(st.avgEnd)}">${fmtPct(st.avgEnd)}</td></tr></tbody></table>`
+    : `<div class="muted small">아직 끝난 기록이 없어요. 잡힌 뒤 ${c.leadCheckMin}분이 지나면 쌓여요.</div>`;
+  return `<details class="surge-stats"${LS.get('quantera:leadStatsOpen', true) ? ' open' : ''}><summary>해외 선행 적중률 <span class="muted">${st.n || 0}건 완료${live ? ` · ${live}건 추적 중` : ''} · 바이낸스 ${ovs.status() === 'live' ? '연결됨' : '연결 중'}</span></summary>${body}
+    <div class="muted small">잡힌 순간 업비트에서 샀다면(하락이면 팔았다면) ${c.leadCheckMin}분 안에 차이의 절반 이상 따라왔는지 · "${c.leadCheckMin}분 뒤"는 수수료 0.1% 뺀 평균 · 이 기기에 저장</div></details>`;
+}
+function onLead(fresh){
+  if (!fresh.length) return;
+  const muted = surgeMuted(), c = allCfg();
+  for (const m of fresh.slice(0, 3)){ const e = ovs.get(m); toast(`🌐 해외 선행 · ${nameOf(m)} 해외 ${fmtPct(e.ov)} · 업비트 ${fmtPct(e.up)} (차이 ${e.gap.toFixed(1)}%)`, e.dir > 0 ? 'up' : 'down'); }
+  if (!muted && c.surgeAlarm) beep('lead');
+  if (!muted && 'Notification' in window && Notification.permission === 'granted'){ try { new Notification('해외 선행 감지', { body: fresh.map(m => { const e = ovs.get(m); return `${nameOf(m)} 해외 ${fmtPct(e.ov)} · 업비트 ${fmtPct(e.up)}`; }).join(', '), tag: 'quantera-lead', renotify: true, icon: './icons/icon-192.png' }); } catch(e){} }
+  if (S.tab === 'lead') renderWatch();
+  if (PH.on && PH.page === 'list' && PH.tab === 'lead') mRender(true);
+}
+setInterval(() => {
+  onLead(ovs.check(S.instruments.map(i => i.market)));
+  patchKimp();
+  if (S.tab === 'lead' && !S.search) for (const el of $$('.wl-peter[data-lead]', $('#wlBody'))) el.innerHTML = leadText(el.dataset.lead);
+  if (S.sel){ const el = $('#chKimp'); if (el){ const k = allCfg().kimpOn ? ovs.kimp(S.sel) : null; el.textContent = k == null ? '' : '김프 ' + fmtPct(k); } }
+}, 1000);
 
 function surgeText(m, e){
   const q = S.quotes.get(m) || {}, since = q.price && e.pAt ? (q.price / e.pAt - 1) * 100 : 0;
@@ -469,6 +535,7 @@ function listFor(tab){
   else if (tab === 'new') list = list.filter(i => isNewListing(i.market));
   else if (tab === 'recent' && !S.search) return recent.map(x => S.byMarket.get(x.m)).filter(Boolean);
   else if ((tab === 'surge' || tab === 'dump') && !S.search) return sdHistList(tab).map(m => S.byMarket.get(m)).filter(Boolean);
+  else if (tab === 'lead' && !S.search) return [...ovs.events.keys()].sort((a, b) => ovs.get(b).at - ovs.get(a).at).map(m => S.byMarket.get(m)).filter(Boolean);
   else if (tab === 'rebuy'){ const rb = new Set(S.ledger.rebuy.map(r => upbit.toMarket(r.symbol))); list = list.filter(i => rb.has(i.market)); }
   if (S.search){ const s = S.search.toLowerCase(); list = S.instruments.filter(i => i.name.toLowerCase().includes(s) || i.market.toLowerCase().includes(s) || (i.nameEn || '').toLowerCase().includes(s)); }
   const val = i => (S.quotes.get(i.market) || {}).value24h || 0;
@@ -479,11 +546,11 @@ function renderWatch(){
   $('#wlCount').textContent = list.length;
   const rebuy = new Set(S.ledger.rebuy.map(r => upbit.toMarket(r.symbol)));
   if (!list.length){
-    const msg = { fav: '관심 종목이 없어요. 전체 탭에서 ☆를 눌러 추가하세요.', hold: '보유 종목이 없어요. 로그인하면 기존 보유 종목이 기초 이월로 보여요.', pullback: '지금 조건에 맞는 눌림 매수 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', bottom: '지금 조건에 맞는 바닥 반등 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', new: '최근 30일 안에 새로 상장된 종목이 없어요.', recent: '아직 본 종목이 없어요. 종목을 열면 여기에 본 순서대로 남아요.', dump: `최근 24시간 동안 급락 알림이 뜬 코인이 없어요. 급등과 같은 기준(최근 ${allCfg().surgeSec}초 거래대금 ${allCfg().surgeVol}배 이상)에 가격이 ${Math.max(allCfg().surgePct, 0.5)}% 이상 내리면 잡혀요.${allCfg().dumpOn ? '' : ' (지금 설정에서 급락 감지가 꺼져 있어요)'}`, surge: `최근 24시간 동안 급등 알림이 뜬 코인이 없어요. 앱이 켜져 있는 동안 1초마다 검사해요. (최근 ${allCfg().surgeSec}초 거래대금이 평소의 ${allCfg().surgeVol}배 이상)`, rebuy: '재매수 후보가 없어요. 이익을 내고 판 종목이 그때 매수가보다 싸지면 여기에 떠요.' };
-    $('#wlBody').innerHTML = (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + `<div class="empty">${S.search ? '검색 결과가 없어요.' : msg[S.tab] || ''}</div>`; return;
+    const msg = { fav: '관심 종목이 없어요. 전체 탭에서 ☆를 눌러 추가하세요.', hold: '보유 종목이 없어요. 로그인하면 기존 보유 종목이 기초 이월로 보여요.', pullback: '지금 조건에 맞는 눌림 매수 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', bottom: '지금 조건에 맞는 바닥 반등 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', new: '최근 30일 안에 새로 상장된 종목이 없어요.', recent: '아직 본 종목이 없어요. 종목을 열면 여기에 본 순서대로 남아요.', dump: `${SDP[sdView.period]} 동안 급락 알림이 뜬 코인이 없어요. 급등과 같은 기준(최근 ${allCfg().surgeSec}초 거래대금 ${allCfg().surgeVol}배 이상)에 가격이 ${Math.max(allCfg().surgePct, 0.5)}% 이상 내리면 잡혀요.${allCfg().dumpOn ? '' : ' (지금 설정에서 급락 감지가 꺼져 있어요)'}`, surge: `${SDP[sdView.period]} 동안 급등 알림이 뜬 코인이 없어요. 앱이 켜져 있는 동안 1초마다 검사해요. (최근 ${allCfg().surgeSec}초 거래대금이 평소의 ${allCfg().surgeVol}배 이상)`, rebuy: '재매수 후보가 없어요. 이익을 내고 판 종목이 그때 매수가보다 싸지면 여기에 떠요.', lead: `지금 해외가 먼저 움직인 코인이 없어요. 최근 ${allCfg().leadSec}초 동안 바이낸스 가격이 ${allCfg().leadPct}% 넘게 움직였는데 업비트가 ${allCfg().leadGap}% 넘게 덜 따라오면 잡혀요.${allCfg().leadOn ? '' : ' (설정에서 해외 선행 감지가 꺼져 있어요)'}` };
+    $('#wlBody').innerHTML = (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + ((S.tab === 'surge' || S.tab === 'dump') && !S.search ? sdViewHtml(S.tab) : '') + (S.tab === 'lead' && !S.search ? leadStatsHtml() : '') + `<div class="empty">${S.search ? '검색 결과가 없어요.' : msg[S.tab] || ''}</div>`; return;
   }
   if (document.body.dataset.view === 'scan' && !isPhone()){ $('#wlBody').innerHTML = (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + scanTableHtml(list); return; }
-  $('#wlBody').innerHTML = (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + list.slice(0, 300).map(i => {
+  $('#wlBody').innerHTML = (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + ((S.tab === 'surge' || S.tab === 'dump') && !S.search ? sdViewHtml(S.tab) : '') + (S.tab === 'lead' && !S.search ? leadStatsHtml() : '') + list.slice(0, 300).map(i => {
     const q = S.quotes.get(i.market) || {}, r = S.results.get(i.market);
     const L = live(i.market);
     const bar = L.stance === 'buy_zone' ? 'entry' : ['chase', 'broken', 'failed'].includes(L.stance) ? 'warn' : '';
@@ -495,9 +562,9 @@ function renderWatch(){
       <span class="bar ${bar}" data-tip="${BAR_TIPS[bar]}"></span>
       <div style="min-width:0">
         <div class="wl-name"><button class="star${S.watch.has(i.symbol) ? ' on' : ''}" data-star="${i.symbol}" aria-label="관심">${S.watch.has(i.symbol) ? '★' : '☆'}</button>${mLogo(i.market, 'xs')}<b>${esc(i.name)}</b>${badges}</div>
-        <div class="wl-peter">${(S.tab === 'surge' || S.tab === 'dump') && !S.search ? sdHistText(S.tab, i.market) : S.tab === 'recent' && !S.search ? recentText(i.market) : r && L.stance !== 'blocked' ? esc(L.text || r.peter) :`<span class="mono">${i.market}</span> · ${fmtKrwShort(q.value24h)}`}</div>
+        <div class="wl-peter"${S.tab === 'lead' && !S.search ? ` data-lead="${i.market}"` : ''}>${S.tab === 'lead' && !S.search ? leadText(i.market) : (S.tab === 'surge' || S.tab === 'dump') && !S.search ? sdHistText(S.tab, i.market) : S.tab === 'recent' && !S.search ? recentText(i.market) : r && L.stance !== 'blocked' ? esc(L.text || r.peter) :`<span class="mono">${i.market}</span> · ${fmtKrwShort(q.value24h)}`}</div>
       </div>
-      <div class="wl-px mono"><div class="p ${toneOf(q.changeRate)}" data-px="${i.market}">${fmtPrice(q.price)}</div><div class="c ${toneOf(q.changeRate)}" data-cr="${i.market}">${fmtPct(q.changeRate)}</div></div>
+      <div class="wl-px mono"><div class="p ${toneOf(q.changeRate)}" data-px="${i.market}">${fmtPrice(q.price)}</div><div class="c ${toneOf(q.changeRate)}" data-cr="${i.market}">${fmtPct(q.changeRate)}</div>${kimpHtml(i.market)}</div>
     </div>`;
   }).join('');
 }
@@ -584,6 +651,9 @@ function applyGuideToChart(){
   }
   if (S.acct === 'paper') for (const o of paper.openOrders().filter(o => o.symbol === sym && o.type === 'limit'))
     extra.push({ price: o.price, title: `미체결 ${o.side === 'buy' ? '매수' : '매도'}`, color: '#9A9AA3', style: 2, legend: '미체결' });
+  const sa = saInfo(sym);   // 매도 예약: 라임 점선, 도달하면 주황 실선
+  if (sa) extra.push({ price: sa.tgt, title: `매도 예약${sa.tgtPct != null ? ' ' + fmtPct(sa.tgtPct) : ''}`, color: sa.hit ? '#F5A524' : '#C6F432', style: sa.hit ? 0 : 2, width: sa.hit ? 2 : 1, legend: '매도 예약' });
+  saChartKey = sa ? sym + sa.tgt + sa.hit : '';
   chart && chart.setGuide(effGuide(S.sel), pastBuys(S.ledger.rows, sym), extra);
 }
 function renderHead(){
@@ -728,11 +798,36 @@ function aiFacts(r){
   for (const n of notes) out.push(`내 메모: ${String(n.body).slice(0, 200)}`);
   return out;
 }
+// AI 사용량 (오늘, 하루 무료 10,000 뉴런). 서버에서 받아 1분 동안 재사용
+let aiUsage = null, aiUsageAt = 0, aiUsageBusy = false;
+async function loadAiUsage(force){
+  if (!db.user || aiUsageBusy || (!force && Date.now() - aiUsageAt < 60000)) return;
+  aiUsageBusy = true;
+  try{
+    const { data } = await db.client.auth.getSession();
+    const res = await fetch('/api/peter-summary', { headers: { authorization: 'Bearer ' + (data && data.session ? data.session.access_token : '') } });
+    const j = await res.json().catch(() => ({}));
+    if (res.ok){ aiUsage = j.usage || { missing: true }; aiUsageAt = Date.now(); const el = $('#aiUse'); if (el) el.outerHTML = aiUseHtml(); }
+  }catch(e){}
+  aiUsageBusy = false;
+}
+function aiUseHtml(){
+  const u = aiUsage;
+  if (!db.user) return '<div class="ai-use" id="aiUse"></div>';
+  if (!u) return '<div class="ai-use muted" id="aiUse">오늘 사용량 확인 중…</div>';
+  if (u.missing) return '<div class="ai-use muted" id="aiUse">사용량 기록 표가 아직 없어요 (Supabase에 phase4-ai-usage.sql 실행 필요).</div>';
+  const pct = Math.min(100, u.neurons / u.limit * 100), cls = pct >= 100 ? 'full' : pct >= 80 ? 'warn' : '';
+  const left = Math.max(0, u.limit - u.neurons), avg = u.count ? u.neurons / u.count : 120;
+  return `<div class="ai-use ${cls}" id="aiUse" data-tip="Cloudflare Workers AI 무료 한도: 하루 10,000 뉴런, 매일 오전 9시 초기화. 요약 1번에 약 100~150 뉴런. 퀀테라에서 쓴 양만 세요.">
+    <div class="ai-use-t"><span>오늘 ${u.count}회 · 약 ${u.neurons.toLocaleString('ko-KR')} / ${u.limit.toLocaleString('ko-KR')} 뉴런</span><span>${pct >= 100 ? '오늘 무료 한도를 다 썼어요' : `${pct.toFixed(0)}% · 약 ${Math.floor(left / avg)}번 더`}</span></div>
+    <div class="ai-use-b"><i style="width:${pct.toFixed(1)}%"></i></div></div>`;
+}
 function aiSumHtml(){
+  loadAiUsage();
   const sym = upbit.toSymbol(S.sel), c = LS.get(AI_KEY(sym), null);
   const when = c ? new Date(c.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '';
-  return `<div class="ai-sum" id="aiSum"><div class="ai-h"><b>피터 써머리</b><span class="muted">AI 요약 · 참고용${c ? ' · ' + when : ''}</span><span class="grow"></span><button class="pill sm${c ? '' : ' accent'}" id="aiBtn">${c ? '다시 만들기' : 'AI 요약 만들기'}</button></div>
-    ${c ? `<p>${esc(c.text)}</p>` : `<p class="muted">이 종목의 추세·변동폭·내 거래·메모를 모아 한 단락으로 정리해요. ${db.user ? '' : '로그인하면 쓸 수 있어요.'}</p>`}</div>`;
+  return `<div class="ai-sum" id="aiSum"><div class="ai-h"><b>피터 써머리</b><span class="muted">AI 요약 · 참고용${c ? ' · ' + when : ''}</span><span class="ai-model" data-tip="메타(Meta)의 공개 AI 모델 Llama 3.3 70B를 Cloudflare Workers AI(무료 한도)로 써요">Llama 3.3 70B</span><span class="grow"></span><button class="pill sm${c ? '' : ' accent'}" id="aiBtn">${c ? '다시 만들기' : 'AI 요약 만들기'}</button></div>
+    ${c ? `<p>${esc(c.text)}</p>` : `<p class="muted">이 종목의 추세·변동폭·내 거래·메모를 모아 한 단락으로 정리해요. ${db.user ? '' : '로그인하면 쓸 수 있어요.'}</p>`}${aiUseHtml()}</div>`;
 }
 async function makeAiSum(btn){
   const m = S.sel, sym = upbit.toSymbol(m), r = S.results.get(m);
@@ -746,6 +841,8 @@ async function makeAiSum(btn){
     const j = await res.json().catch(() => ({}));
     if (!res.ok || !j.text) throw new Error(j.message || `AI 요약을 만들지 못했어요 (${res.status})`);
     LS.set(AI_KEY(sym), { text: j.text, at: j.at || Date.now() });
+    if (j.usage){ aiUsage = j.usage; aiUsageAt = Date.now(); if (j.usage.neurons / j.usage.limit >= 0.8) toast(`오늘 AI 무료 사용량의 ${Math.round(j.usage.neurons / j.usage.limit * 100)}%를 썼어요.`, 'warn'); }
+    else if (j.text) aiUsage = { missing: true };
   }catch(err){ toast(err.message || String(err)); }
   if (S.sel === m){ const el = $('#aiSum'); if (el) el.outerHTML = aiSumHtml(); }
 }
@@ -1904,8 +2001,9 @@ const CFG_FIELDS = [
   ['무조건 제외', [['nearHighPct', '60일 고점에서 이 % 안쪽', 1], ['maxRise7d', '7일 상승률(%) 초과', 1], ['maxRiseToday', '오늘 상승률(%) 초과', 1], ['maxGap20', '20일선 이격(%) 초과', 1], ['minValue24h', '24시간 거래대금(억) 미만', 1e8], ['includeWarning', '투자유의 종목도 포함', 'bool']]],
   ['눌림 매수', [['pbMinDrop', '최근 30일 고점 대비 최소 하락(%)', 1], ['pbMaxDrop', '최대 하락(%)', 1], ['pbNearMa', '20·60일선과의 거리(%) 이내', 1], ['pbVolDry', '5일/20일 거래량 비율 이하', 1]]],
   ['바닥 반등', [['btMinDrop', '1년 고점 대비 최소 하락(%)', 1], ['btLowerPct', '1년 범위 하단 이 % 안', 1], ['btNoNewLowDays', '새 저점 없는 기간(일)', 1], ['btVolBurst', '반등 거래량 배수', 1], ['btTp', '바닥 거래 익절(%) — 손절 없음', 1]]],
-  ['알림음', [['surgeAlarm', '소리 알람 켜기', 'bool'], ['alarmVol', '소리 크기 (0~100)', 1], ['surgeRepeat', '확인 전까지 반복 간격(초)', 1], ['alarmMax', '확인 안 하면 최대 울림 횟수', 1], ['sndSurge', '급등', 'sound'], ['sndDump', '급락', 'sound'], ['sndSell', '매도 예약 도달', 'sound'], ['sndEtc', '기타 (모의 체결·익절·손절, 새 업비트 거래)', 'sound']]],
+  ['알림음', [['surgeAlarm', '소리 알람 켜기', 'bool'], ['alarmVol', '소리 크기 (0~100)', 1], ['surgeRepeat', '확인 전까지 반복 간격(초)', 1], ['alarmMax', '확인 안 하면 최대 울림 횟수', 1], ['sndSurge', '급등', 'sound'], ['sndDump', '급락', 'sound'], ['sndSell', '매도 예약 도달', 'sound'], ['sndLead', '해외 선행', 'sound'], ['sndEtc', '기타 (모의 체결·익절·손절, 새 업비트 거래)', 'sound']]],
   ['급등·급락 감지 (1초마다)', [['dumpOn', '급락도 감지 (같은 기준, 가격이 내림)', 'bool'], ['surgeSec', '이 시간(초) 동안의 거래를 봄', 1], ['surgeVol', '평소 같은 시간보다 거래대금 배수', 1], ['surgePct', '그 시간 상승률(%) 이상 (0 = 가격 안 봄)', 1], ['surgeMinValue', '그 시간 최소 거래대금(백만 원)', 1e6], ['surgeKeepMin', '잡힌 뒤 목록 유지(분)', 1], ['surgeCombos', '적중률 조합 (익절/손절, 쉼표로)', 'text'], ['surgeTimeoutMin', '적중률 시간 종료(분)', 1], ['surgeTradeTp', '급등 거래 주문 기본 익절(%)', 1], ['surgeTradeSl', '급등 거래 주문 기본 손절(%)', 1]]],
+  ['해외 선행 · 김프 (바이낸스 기준)', [['leadOn', '해외 선행 감지', 'bool'], ['kimpOn', '김프 표시 (목록·차트 머리)', 'bool'], ['leadSec', '이 시간(초) 동안 비교', 1], ['leadPct', '해외가 이 %(절댓값) 이상 움직이면', 1], ['leadGap', '업비트와 차이가 이 % 이상이면 신호', 1], ['leadCheckMin', '적중률: 이 시간(분) 안에 따라잡았는지', 1]]],
   ['검증', [['minSamples', '최소 표본 수', 1], ['holdDays', '보유 기간(일)', 1], ['feePct', '왕복 수수료(%)', 1]]]
 ];
 function appCfgHtml(){
@@ -1981,14 +2079,14 @@ function bindCfg(){
     }
     if (connClick(e)) return;
   });
-  $('#cfgReset').addEventListener('click', e => { e.preventDefault(); renderCfg({ ...SCREEN_DEFAULTS, ...SURGE_DEFAULTS }); toast('기본값을 채웠어요. "저장"을 눌러야 바뀌어요.'); });
+  $('#cfgReset').addEventListener('click', e => { e.preventDefault(); renderCfg({ ...SCREEN_DEFAULTS, ...SURGE_DEFAULTS, ...LEAD_DEFAULTS }); toast('기본값을 채웠어요. "저장"을 눌러야 바뀌어요.'); });
   $('#cfgForm').addEventListener('click', e => { if (e.target.closest('[data-cfg-close]')){ e.preventDefault(); closeCfg(); } });
   $('#cfgForm').addEventListener('submit', async e => {
     e.preventDefault();
     const c = {};
     for (const [, fs] of CFG_FIELDS) for (const [k, , unit] of fs){
       const el = $(`#cfgBody [name="${k}"]`);
-      c[k] = unit === 'text' || unit === 'sound' ? el.value : unit === 'bool' ? el.checked : (isFinite(+el.value) ? +el.value * unit : { ...SCREEN_DEFAULTS, ...SURGE_DEFAULTS }[k]);
+      c[k] = unit === 'text' || unit === 'sound' ? el.value : unit === 'bool' ? el.checked : (isFinite(+el.value) ? +el.value * unit : { ...SCREEN_DEFAULTS, ...SURGE_DEFAULTS, ...LEAD_DEFAULTS }[k]);
     }
     saveScreenCfg(c);
     setUi({ sparkDays: +$('#cfgBody [name="ui_sparkDays"]').value || 30 });
@@ -2056,7 +2154,7 @@ function bindMobile(){
 // PC 칸에서 쓰던 요소(차트·호가·분석·거래일지)는 폰일 때 아래 화면으로 옮겨 그대로 씀.
 const PH = { page: 'home', tab: 'all', cp: LS.get('quantera:mCp', 'chart'), on: false };
 const M_TITLES = { cfg: '설정', hold: '보유 자산', home: 'QUANTERA', list: '종목', search: '종목 검색', journal: '거래일지', news: '업비트 소식', strat: '전략 검증' };
-const M_TABS = [['all', '전체'], ['pullback', '눌림'], ['bottom', '바닥'], ['new', '신규'], ['surge', '급등'], ['dump', '급락'], ['recent', '최근'], ['rebuy', '재매수']];
+const M_TABS = [['all', '전체'], ['pullback', '눌림'], ['bottom', '바닥'], ['new', '신규'], ['surge', '급등'], ['dump', '급락'], ['lead', '선행'], ['recent', '최근'], ['rebuy', '재매수']];
 function initPhone(){
   if (!isPhone()) return;
   PH.on = true;
@@ -2177,8 +2275,9 @@ function mMineHtml(){
     return mRow(S.byMarket.get(m), sub, true); }).join('');
 }
 let mLastList = '';
-function mRender(){
+function mRender(force){
   if (!PH.on) return;
+  if (force) mLastList = '';
   const pg = PH.page;
   if (pg === 'home'){
     $('#mHero').innerHTML = mHeroHtml();
@@ -2191,11 +2290,11 @@ function mRender(){
     $('#mListTabs').innerHTML = M_TABS.map(([k, v]) => `<button class="${k === PH.tab ? 'on' : ''}" data-tab="${k}">${v}</button>`).join('');
     const save = S.search; S.search = '';
     const list = listFor(PH.tab); S.search = save;
-    const key = PH.tab + list.map(i => i.market).join();
+    const key = PH.tab + list.map(i => i.market).join() + (PH.tab === 'surge' || PH.tab === 'dump' ? sdView.period + sdView.sort : '');
     if (key !== mLastList){
       mLastList = key;
-      $('#mListNote').innerHTML = PH.tab === 'bottom' ? bottomTabHtml() : '';
-      $('#mList').innerHTML = list.length ? list.slice(0, 200).map(i => mRow(i, PH.tab === 'recent' ? recentText(i.market) : PH.tab === 'surge' || PH.tab === 'dump' ? sdHistText(PH.tab, i.market) : undefined)).join('') : `<div class="m-none">${{ surge: '최근 24시간 동안 급등 알림이 뜬 코인이 없어요.', dump: '최근 24시간 동안 급락 알림이 뜬 코인이 없어요.', pullback: '지금 조건에 맞는 눌림 매수 종목이 없어요. ☰ → 전체 스캔을 하면 모든 종목에서 찾아요.', bottom: '지금 조건에 맞는 바닥 반등 종목이 없어요.', new: '최근 30일 안에 새로 상장된 종목이 없어요.', recent: '아직 본 종목이 없어요.', rebuy: '재매수 후보가 없어요.' }[PH.tab] || '종목이 없어요.'}</div>`;
+      $('#mListNote').innerHTML = PH.tab === 'bottom' ? bottomTabHtml() : PH.tab === 'surge' || PH.tab === 'dump' ? sdViewHtml(PH.tab) : PH.tab === 'lead' ? leadStatsHtml() : '';
+      $('#mList').innerHTML = list.length ? list.slice(0, 200).map(i => mRow(i, PH.tab === 'recent' ? recentText(i.market) : PH.tab === 'surge' || PH.tab === 'dump' ? sdHistText(PH.tab, i.market) : PH.tab === 'lead' ? leadText(i.market) : undefined)).join('') : `<div class="m-none">${{ lead: '지금 해외가 먼저 움직인 코인이 없어요.', surge: `${SDP[sdView.period]} 동안 급등 알림이 뜬 코인이 없어요.`, dump: `${SDP[sdView.period]} 동안 급락 알림이 뜬 코인이 없어요.`, pullback: '지금 조건에 맞는 눌림 매수 종목이 없어요. ☰ → 전체 스캔을 하면 모든 종목에서 찾아요.', bottom: '지금 조건에 맞는 바닥 반등 종목이 없어요.', new: '최근 30일 안에 새로 상장된 종목이 없어요.', recent: '아직 본 종목이 없어요.', rebuy: '재매수 후보가 없어요.' }[PH.tab] || '종목이 없어요.'}</div>`;
     } else mPatch($('#mList'));
   } else if (pg === 'search'){
     const s = $('#mSearch').value.trim().toLowerCase();
@@ -2210,7 +2309,7 @@ function mCoinHead(){
   const i = S.byMarket.get(S.sel); if (!i) return;
   const q = S.quotes.get(S.sel) || {}, L = live(S.sel), on = S.watch.has(i.symbol);
   $('#mTitle').textContent = i.name;
-  $('#mCoinHead').innerHTML = `<div class="m-coin-top">${mLogo(i.market, 'lg')}<div class="m-coin-p"><span class="m-big mono ${toneOf(q.changeRate)}">${fmtPrice(q.price)}</span><span class="m-coin-s">${mPct(q)}<span class="muted mono">${i.market.slice(4)}</span><span class="muted">거래대금 ${fmtKrwShort(q.value24h)}</span></span></div></div>
+  $('#mCoinHead').innerHTML = `<div class="m-coin-top">${mLogo(i.market, 'lg')}<div class="m-coin-p"><span class="m-big mono ${toneOf(q.changeRate)}">${fmtPrice(q.price)}</span><span class="m-coin-s">${mPct(q)}<span class="muted mono">${i.market.slice(4)}</span><span class="muted">거래대금 ${fmtKrwShort(q.value24h)}</span>${kimpHtml(i.market)}</span></div></div>
     <div class="m-coin-b"><button class="m-btn${on ? ' on' : ''}" data-mstar="${i.symbol}">${on ? '★ 관심' : '☆ 관심'}</button><button class="m-btn rec" data-mo="rec">＋ 기록</button><button class="m-btn" data-mo="paper">모의</button></div>
     ${L.text && L.stance !== 'blocked' ? `<div class="m-coin-g">${esc(L.text)}</div>` : ''}`;
 }
