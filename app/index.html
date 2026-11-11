@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-title" content="QUANTERA">
 <title>QUANTERA</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@500&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./css/app.css">
 <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js" defer></script>
 <script type="module" src="./js/main.js"></script>
@@ -61,6 +61,8 @@
         <button class="pill" data-tab="pullback">눌림</button>
         <button class="pill" data-tab="bottom">바닥</button>
         <button class="pill" data-tab="new">신규</button>
+        <button class="pill" data-tab="surge">급등</button>
+        <button class="pill" data-tab="dump">급락</button>
       </div>
       <div class="body" id="wlBody"></div>
       <div class="scanbar"><button class="pill" id="scanBtn">전체 스캔</button><div class="progress"><i id="scanProg"></i></div><span id="scanText">대기</span></div>
@@ -124,6 +126,17 @@
     <section class="panel" id="pStrat">
       <header><h2>전략 검증</h2><div class="grow"></div><span class="muted">과거 일봉으로 같은 규칙을 돌려 봐요 · Esc로 돌아가기</span></header>
       <div class="body" id="stratBody"></div>
+    </section>
+
+    <section class="panel" id="pCfg">
+      <header><h2>설정</h2><div class="grow"></div><span class="muted">Esc로 돌아가기</span></header>
+      <div class="body" id="cfgHost">
+        <form id="cfgForm" class="cfg-page" novalidate>
+          <p class="cfg-note">매수 검토 기준·알림 숫자는 이 기기에 저장되고, 저장하면 바로 다시 계산해요. 화면·기록·매도 예약은 계정에 저장돼서 PC와 폰이 같아요.</p>
+          <div id="cfgBody" class="cfg"></div>
+          <div class="cfg-actions"><button type="button" class="pill ghost" id="cfgReset">기본값</button><div class="grow"></div><button type="button" class="pill ghost" data-cfg-close>닫기</button><button type="submit" class="pill accent">저장</button></div>
+        </form>
+      </div>
     </section>
 
     <!-- 폰 전용: 매매 화면 아래 칸 (호가 · 분석 · 소식 · 일별) -->
@@ -204,6 +217,7 @@
 
   <section class="m-page" data-p="hold"><div id="mHold"></div></section>
   <section class="m-page" data-p="strat"><div id="mStrat"></div></section>
+  <section class="m-page" data-p="cfg"><div id="mCfgP"></div></section>
 
   <!-- 업비트 소식 -->
   <section class="m-page" data-p="news"><div id="mNewsAll"><div class="empty">불러오는 중…</div></div></section>
@@ -252,14 +266,7 @@
   </nav>
 </div>
 
-<dialog id="cfgDlg" style="width:min(520px,calc(100vw - 32px))">
-  <form method="dialog" id="cfgForm">
-    <h2>설정</h2>
-    <p>매수 검토 기준 숫자는 바꾸면 바로 다시 계산해요(이 기기에 저장). 화면·기록 설정은 계정에 저장돼요.</p>
-    <div id="cfgBody" class="cfg"></div>
-    <div class="row"><button class="pill ghost" value="reset" id="cfgReset" formnovalidate>기본값</button><div style="flex:1"></div><button class="pill ghost" value="cancel" formnovalidate>닫기</button><button class="pill accent" value="save">저장</button></div>
-  </form>
-</dialog>
+
 
 <dialog id="upDlg" style="width:min(500px,calc(100vw - 32px))">
   <form method="dialog" id="upForm">

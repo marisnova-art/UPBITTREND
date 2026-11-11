@@ -15,6 +15,11 @@ export const SURGE_DEFAULTS = {
   surgeAlarm: true,      // 소리 알람
   surgeRepeat: 15,       // 확인 전까지 이 간격(초)으로 계속 울림
   alarmVol: 40,          // 알람 소리 크기 (0~100)
+  alarmMax: 5,           // 확인 안 해도 이 횟수만큼 울리면 멈춤 (급등·급락·매도 예약 모두)
+  sndSurge: 'up',        // 알림음: 급등
+  sndDump: 'down',       //        급락
+  sndSell: 'triple',     //        매도 예약 도달
+  sndEtc: 'ding',        //        기타 (모의 체결·익절·손절, 새 업비트 거래)
   dumpOn: true,          // 급락도 감지 (같은 기준, 가격이 그만큼 내림)
   surgeCombos: '1/1, 2/2, 2/5, 3/3',   // 익절%/손절% 조합
   surgeTimeoutMin: 30,   // 이 시간(분) 안에 둘 다 안 닿으면 '시간 종료'로 그때 가격 기록
