@@ -51,29 +51,17 @@
   <main class="desk" id="desk">
     <!-- 관심 목록 -->
     <section class="panel" id="pWatch" data-panel="watch">
-      <header><h2>종목</h2><span class="help" data-tip="왼쪽 막대 색&#10;라임: 지금 매수 구간 안 (눌림·바닥 신호)&#10;주황: 주의 — 추격 주의 / 지지 이탈 / 신호 무너짐&#10;없음: 지금 매수 신호 없음 (또는 분석 전)&#10;&#10;배지·탭·항목 이름에 마우스를 올리면 설명이 떠요.">?</span><div class="grow"></div><span class="muted mono" id="wlCount"></span><button class="iconbtn collapse" data-collapse="watch" aria-label="접기">‹</button></header>
+      <header><h2>종목</h2><div class="wl-dd"><button class="wl-ddbtn" id="wlDdBtn" aria-haspopup="menu" title="목록 고르기"><span id="wlDdLbl">관심</span><span class="mono muted" id="wlCount"></span><span class="caret">▾</span></button><div class="wl-menu" id="wlMenu" role="menu" hidden></div></div><span class="help" data-tip="왼쪽 막대 색&#10;라임: 지금 매수 구간 안 (눌림·바닥 신호)&#10;주황: 주의 — 추격 주의 / 지지 이탈 / 신호 무너짐&#10;없음: 지금 매수 신호 없음 (또는 분석 전)&#10;&#10;배지·탭·항목 이름에 마우스를 올리면 설명이 떠요.">?</span><div class="grow"></div><button class="iconbtn collapse" data-collapse="watch" aria-label="접기">‹</button></header>
       <span class="vlabel">종목</span>
-      <div class="tabs" role="tablist" id="wlTabs">
-        <button class="pill" data-tab="all">전체</button>
-        <button class="pill on" data-tab="fav">관심</button>
-        <button class="pill" data-tab="hold">보유</button>
-        <button class="pill" data-tab="recent">최근</button>
-        <button class="pill" data-tab="pullback">눌림</button>
-        <button class="pill" data-tab="bottom">바닥</button>
-        <button class="pill" data-tab="new">신규</button>
-        <button class="pill" data-tab="surge">급등</button>
-        <button class="pill" data-tab="dump">급락</button>
-        <button class="pill" data-tab="lead" data-tip="해외 선행: 바이낸스에서 먼저 크게 움직였는데 업비트가 아직 덜 따라온 코인">선행</button>
-      </div>
       <div class="body" id="wlBody"></div>
       <div class="scanbar"><button class="pill" id="scanBtn">전체 스캔</button><div class="progress"><i id="scanProg"></i></div><span id="scanText">대기</span></div>
     </section>
     <div class="split" data-split="watch"></div>
 
-    <!-- 급등 (위) · 급락 (아래) -->
+    <!-- 급등 · 급락 · 국프 급변 (3칸) -->
     <section class="panel" id="pSurge" data-panel="surge">
-      <header><h2>급등 · 급락</h2><span class="help" data-tip="앱이 켜져 있는 동안 1초마다 모든 코인을 검사해요.&#10;짧은 시간에 거래가 평소보다 크게 몰리면서 오르면 급등, 내리면 급락.&#10;종목을 누르면 차트가 열려요.">?</span><div class="grow"></div><button class="iconbtn collapse" data-collapse="surge" aria-label="접기">‹</button></header>
-      <span class="vlabel">급등 · 급락</span>
+      <header><h2>급등 · 급락 · 국프</h2><span class="help" data-tip="앱이 켜져 있는 동안 1초마다 모든 코인을 검사해요.&#10;짧은 시간에 거래가 평소보다 크게 몰리면서 오르면 급등, 내리면 급락.&#10;국프 급변: 10분 안에 국프가 ±2%p 넘게 바뀐 코인 (오르면 빨강, 내리면 파랑, 소리 없음).&#10;종목을 누르면 차트가 열려요.">?</span><div class="grow"></div><button class="iconbtn collapse" data-collapse="surge" aria-label="접기">‹</button></header>
+      <span class="vlabel">급등 · 급락 · 국프</span>
       <div class="sd-dock" id="sdDock"></div>
     </section>
     <div class="split" data-split="surge"></div>
@@ -84,7 +72,7 @@
         <header>
           <div class="chart-head">
             <h2 id="chName">-</h2><span class="muted mono" id="chCode"></span>
-            <span class="px mono" id="chPrice">-</span><span class="mono" id="chChg"></span><span class="mono kp" id="chKimp" title="김프: 바이낸스 가격(업비트 USDT 환율 적용)보다 업비트가 몇 % 비싼지"></span>
+            <span class="px mono" id="chPrice">-</span><span class="mono" id="chChg"></span><span class="mono kp" id="chKimp" title="국프: 바이낸스 가격(업비트 USDT 환율 적용)보다 업비트가 몇 % 비싼지"></span>
             <span id="chBadges"></span>
           </div>
           <div class="grow"></div>

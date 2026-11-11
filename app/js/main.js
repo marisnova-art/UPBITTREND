@@ -43,7 +43,7 @@ function addRecent(m){
 if (!LS.get('quantera:mig1', false)){ const c = screenCfg(); if (c.surgeRepeat === 5){ c.surgeRepeat = 15; saveScreenCfg(c); } LS.set('quantera:mig1', true); }
 const allCfg = () => ({ ...SURGE_DEFAULTS, ...LEAD_DEFAULTS, ...screenCfg() });
 const surge = createSurge(allCfg);
-const ovs = createOverseas(allCfg, m => S.quotes.get(m));   // 해외 선행 + 김프 (바이낸스)
+const ovs = createOverseas(allCfg, m => S.quotes.get(m));   // 해외 선행 + 국프 (바이낸스)
 const priceOf = sym => { const q = S.quotes.get(upbit.toMarket(sym)); return q ? q.price : null; };
 const paper = createPaper({ priceOf, remote: paperRemote });
 
@@ -136,7 +136,7 @@ setInterval(() => {
 }, 5000);
 // ---------------------------------------------------------------- 급등 감지 + 알람
 // 1초마다 검사. 새로 잡히면 소리 + 위쪽 알림. 확인(종목 클릭 또는 '모두 확인') 전까지 계속 울리고 목록에서 깜빡임.
-const unseen = new Set(), unseenDump = new Set();
+const unseen = new Set(), unseenDump = new Set(), unseenKimp = new Set();
 const dump = createSurge(allCfg, -1);
 // 종목 탭의 급등·급락: 알림이 뜬 종목 기록 (7일 보관). 기간(오늘 9시부터·24시간·48시간·7일)과 정렬(최근·횟수)을 고름.
 // 오른쪽 급등·급락 칸은 지금 막 잡힌 것만, 30분 뒤 사라짐
@@ -183,7 +183,7 @@ const muteUntil = () => { const v = LS.get(MUTE_KEY, 0) || 0; if (v > 0 && v < D
 const surgeMuted = () => muteUntil() !== 0;
 function setSurgeMute(min){
   LS.set(MUTE_KEY, min === 0 ? 0 : min < 0 ? -1 : Date.now() + min * 60000);
-  if (min !== 0){ unseen.clear(); unseenDump.clear(); }
+  if (min !== 0){ unseen.clear(); unseenDump.clear(); unseenKimp.clear(); }
   renderSurgeBar(); renderMuteBtns(); renderSdDrop(true);
   toast(min === 0 ? '급등·급락 알림을 다시 켰어요.' : min < 0 ? '급등·급락 알림을 껐어요. 감지와 목록은 계속돼요.' : `급등·급락 알림을 ${min >= 60 ? min / 60 + '시간' : min + '분'} 동안 껐어요.`);
 }
@@ -245,14 +245,14 @@ function notifySurge(ms, isDump){
   try { new Notification(isDump ? '급락 감지' : '급등 감지', { body: names.join(', ') + (isDump ? ' — 갑자기 매도가 몰리며 내리고 있어요' : ' — 갑자기 거래가 몰리고 있어요'), tag: isDump ? 'quantera-dump' : 'quantera-surge', renotify: true, icon: './icons/icon-192.png' }); } catch(e){}
 }
 function ackSurge(m){
-  if (m){ unseen.delete(m); unseenDump.delete(m); } else { unseen.clear(); unseenDump.clear(); }
+  if (m){ unseen.delete(m); unseenDump.delete(m); unseenKimp.delete(m); } else { unseen.clear(); unseenDump.clear(); unseenKimp.clear(); }
   for (const row of $$('.wl-row.blink', $('#wlBody'))) if (!unseen.has(row.dataset.m) && !unseenDump.has(row.dataset.m)) row.classList.remove('blink');
   renderSurgeBar(); renderSdDrop(true);
 }
 // 위쪽 검색 옆 고정 칩: [● 급등 N 이름 외] [● 급락 N] + 확인 · 30분 끄기. 누르면 아래로 목록
 const sdNm = m => (S.byMarket.get(m) || {}).name || m;
 const sdList = kind => { const src = kind === 'dump' ? dump : surge; return [...src.events.keys()].sort((a, b) => src.get(b).at - src.get(a).at); };
-function ackKind(kind){ (kind === 'dump' ? unseenDump : unseen).clear(); for (const row of $$('.wl-row.blink', $('#wlBody'))) if (!unseen.has(row.dataset.m) && !unseenDump.has(row.dataset.m)) row.classList.remove('blink'); renderSurgeBar(); renderSdDrop(true); }
+function ackKind(kind){ (kind === 'dump' ? unseenDump : kind === 'kimp' ? unseenKimp : unseen).clear(); for (const row of $$('.wl-row.blink', $('#wlBody'))) if (!unseen.has(row.dataset.m) && !unseenDump.has(row.dataset.m)) row.classList.remove('blink'); renderSurgeBar(); renderSdDrop(true); }
 function renderSurgeBar(){
   const box = $('#sdChips'); if (!box) return;
   const muted = surgeMuted();
@@ -271,9 +271,9 @@ function renderSurgeBar(){
 let sdKey = '';
 function renderSdDrop(force){
   const d = $('#sdDock'); if (!d) return;
-  const key = sdList('surge').join() + '|' + sdList('dump').join() + surgeMuted() + [...unseen].join() + [...unseenDump].join() + surge.log().length + '|' + surge.tracking.size;
+  const key = sdList('surge').join() + '|' + sdList('dump').join() + surgeMuted() + [...unseen].join() + [...unseenDump].join() + surge.log().length + '|' + surge.tracking.size + '|' + kimpSwingList().join() + [...unseenKimp].join();
   if (!force && key === sdKey){
-    for (const el of $$('[data-ago]', d)){ const src = el.dataset.k === 'dump' ? dump : surge, e = src.get(el.dataset.ago); if (e) el.textContent = surgeText(el.dataset.ago, e); }
+    for (const el of $$('[data-ago]', d)){ if (el.dataset.k === 'kimp'){ el.innerHTML = kimpSwingText(el.dataset.ago); continue; } const src = el.dataset.k === 'dump' ? dump : surge, e = src.get(el.dataset.ago); if (e) el.textContent = surgeText(el.dataset.ago, e); }
     for (const el of $$('[data-px]', d)){ const q = S.quotes.get(el.dataset.px) || {}; el.className = `mono sd-px ${toneOf(q.changeRate)}`; el.innerHTML = `${fmtPrice(q.price)}<br>${fmtPct(q.changeRate)}`; }
     return;
   }
@@ -287,7 +287,18 @@ function renderSdDrop(force){
     return `<section class="sd-sec k-${cls}" id="sdSec-${kind}"><div class="sd-dhead${nNew ? (kind === 'dump' ? ' blink-dn' : ' blink') : ''}"><span class="sd-ttl ${ms.length ? cls : 'muted'}">● ${label} ${ms.length}${nNew ? ` <span class="sd-new">새 ${nNew}</span>` : ''}</span><span class="grow"></span><button class="pill sm" data-ack-kind="${kind}"${nNew ? '' : ' disabled'}>확인</button>${mute}</div>
       <div class="sd-dbody">${rows || `<div class="empty">지금 잡힌 ${label}이 없어요.</div>`}${kind === 'surge' ? surgeStatsHtml() : ''}</div></section>`;
   };
-  d.innerHTML = sec('surge', '급등', 'up') + sec('dump', '급락', 'down');
+  // 국프 급변: 10분 안에 국프가 ±2%p 넘게 바뀐 코인 (오르면 빨강, 내리면 파랑). 소리 없이 표시만, 30분 보관
+  const kSec = () => {
+    const ms = kimpSwingList(), un = unseenKimp, c = allCfg();
+    const rows = ms.map(m => { const q = S.quotes.get(m) || {}, e = ovs.getSwing(m), bl = un.has(m) ? (e.dir > 0 ? ' blink' : ' blink-dn') : '';
+      return `<button class="sd-row${bl}" data-sdm="${m}">${mLogo(m, 'xs')}<span class="sd-l"><span class="sd-n">${esc(sdNm(m))} <span class="${e.dir > 0 ? 'up' : 'down'}">${e.dir > 0 ? '▲' : '▼'}</span></span><span class="muted" data-k="kimp" data-ago="${m}">${kimpSwingText(m)}</span></span><span class="mono sd-px ${toneOf(q.changeRate)}" data-px="${m}">${fmtPrice(q.price)}<br>${fmtPct(q.changeRate)}</span></button>`; }).join('');
+    const nNew = surgeMuted() ? 0 : ms.filter(m => un.has(m)).length;
+    const mute = surgeMuted() ? `<button class="pill sm on-warn" data-mute="0" title="${muteText()}">알림 켜기</button>` : `<button class="pill sm" data-mute="30" title="30분 동안 표시 깜빡임 끄기 (감지·목록은 계속)">30분 끄기</button>`;
+    const off = !c.kimpOn ? '설정에서 국프 표시가 꺼져 있어요.' : ovs.status() !== 'live' ? '바이낸스 연결 중이에요.' : `지금 국프 급변이 없어요. ${c.swingMin}분 안에 국프가 ±${c.swingPp}%p 넘게 바뀌면 떠요.`;
+    return `<section class="sd-sec k-kimp" id="sdSec-kimp"><div class="sd-dhead${nNew ? ' blink' : ''}"><span class="sd-ttl ${ms.length ? 'accent' : 'muted'}">● 국프 급변 ${ms.length}${nNew ? ` <span class="sd-new">새 ${nNew}</span>` : ''}</span><span class="grow"></span><button class="pill sm" data-ack-kind="kimp"${nNew ? '' : ' disabled'}>확인</button>${mute}</div>
+      <div class="sd-dbody">${rows || `<div class="empty">${off}</div>`}<div class="kp-warn">국프가 갑자기 오르면 국내에서만 과열된 거예요. 이때 따라 사면 비싸게 살 수 있어요 (추격 주의). 소리 없이 표시만 해요.</div></div></section>`;
+  };
+  d.innerHTML = sec('surge', '급등', 'up') + sec('dump', '급락', 'down') + kSec();
 }
 function toggleSd(kind){
   S.sdTab = kind; LS.set('quantera:sdTab', kind);
@@ -392,15 +403,74 @@ document.addEventListener('click', e => {
   const o = e.target.closest('[data-sa-open]'); if (o){ if (PH.on) mOpenCoin(o.dataset.saOpen); else { setView('trade'); select(o.dataset.saOpen); } }
 }, true);
 
-// ---------------------------------------------------------------- 해외 선행 + 김프
+// ---------------------------------------------------------------- 국프 목록 · 국프 급변
+// 국프 = 바이낸스 가격(업비트 USDT 환율 적용)보다 업비트가 몇 % 비싼지. 1시간 변화는 앱이 켜져 있는 동안 기록한 값으로 계산.
+var kimpSort = LS.get('quantera:kimpSort', 'kimp');
+function kimpRowText(m){
+  const k = ovs.kimp(m); if (k == null) return '';
+  const d = ovs.kimpChange(m, 60);
+  return `국프 <span class="${k >= 3 ? 'warn' : k < 0 ? 'down' : ''}">${fmtPct(k)}</span> · 1시간 ${d == null ? '<span class="muted">기록 중</span>' : `<span class="${toneOf(d)}">${d > 0 ? '+' : ''}${d.toFixed(1)}%p</span>`}`;
+}
+function kimpListMarkets(){
+  const ms = S.instruments.map(i => i.market).filter(m => ovs.kimp(m) != null);
+  if (kimpSort === 'chg'){ const c = m => { const d = ovs.kimpChange(m, 60); return d == null ? -1e9 : d; }; return ms.sort((a, b) => c(b) - c(a)); }
+  return ms.sort((a, b) => ovs.kimp(b) - ovs.kimp(a));
+}
+function kimpViewHtml(){
+  const n = kimpListMarkets().length;
+  return `<div class="sd-view"><span class="muted">업비트·바이낸스 둘 다 있는 ${n}종목 · 위쪽일수록 국내가 더 비싸요</span><span class="grow"></span><button class="qchip${kimpSort === 'kimp' ? ' on' : ''}" data-kps="kimp">국프순</button><button class="qchip${kimpSort === 'chg' ? ' on' : ''}" data-kps="chg">1시간 변화순</button></div>`
+    + (ovs.status() === 'live' ? '' : `<div class="empty">바이낸스 연결 중이에요. 연결되면 목록이 채워져요.</div>`);
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-kps]'); if (!b) return;
+  kimpSort = b.dataset.kps; LS.set('quantera:kimpSort', kimpSort); renderWatch(); if (PH.on && PH.page === 'list') mRender(true);
+});
+function kimpSwingText(m){
+  const e = ovs.getSwing(m); if (!e) return '';
+  return `${agoKo(Date.now() - e.at)} · ${fmtPct(e.from)} → ${fmtPct(e.to)} (<span class="${e.delta > 0 ? 'up' : 'down'}">${e.delta > 0 ? '+' : ''}${e.delta.toFixed(1)}%p</span>)`;
+}
+function kimpSwingList(){ return [...ovs.swings.keys()].sort((a, b) => ovs.getSwing(b).at - ovs.getSwing(a).at); }
+let kimpOrderKey = '', kimpTick = 0;
+function onKimpTick(){
+  const fresh = ovs.takeSwing();
+  if (fresh.length && !surgeMuted()) for (const m of fresh) unseenKimp.add(m);   // 소리 없이 표시만
+  for (const m of [...unseenKimp]) if (!ovs.swings.has(m)) unseenKimp.delete(m);
+  if (fresh.length){ renderSdDrop(true); renderBell(); }
+  // 국프 목록: 15초마다 순서가 바뀌었으면 다시 그리기, 아니면 글자만
+  if (++kimpTick % 15 === 0){
+    if (S.tab === 'kimp' && !S.search){ const key = kimpListMarkets().join(); if (key !== kimpOrderKey){ kimpOrderKey = key; renderWatch(); } }
+    if (PH.on && PH.page === 'list' && PH.tab === 'kimp') mRender();
+  }
+  if (S.tab === 'kimp' && !S.search) for (const el of $$('.wl-peter[data-kimprow]', $('#wlBody'))) el.innerHTML = kimpRowText(el.dataset.kimprow);
+}
+// ---------------------------------------------------------------- PC 종목 목록 고르기 (제목 옆 드롭다운)
+const WL_GROUPS = [
+  ['기본', [['all', '전체'], ['fav', '관심'], ['hold', '보유'], ['recent', '최근']]],
+  ['매수 신호', [['pullback', '눌림'], ['bottom', '바닥'], ['new', '신규'], ['rebuy', '재매수']]],
+  ['알림 기록', [['surge', '급등'], ['dump', '급락'], ['lead', '선행']]],
+  ['비교', [['kimp', '국프']]],
+];
+const WL_TIPS = { lead: '해외 선행: 바이낸스에서 먼저 크게 움직였는데 업비트가 아직 덜 따라온 코인', kimp: '국프: 업비트·바이낸스 둘 다 있는 모든 코인을 국내 프리미엄 순서로', rebuy: '이익을 내고 판 종목이 그때 매수가보다 싸진 것' };
+const wlLabel = t => (WL_GROUPS.flatMap(g => g[1]).find(x => x[0] === t) || [, '전체'])[1];
+function tabCount(t){ const save = S.search; S.search = ''; try { return listFor(t).length; } finally { S.search = save; } }
+function renderWlMenu(){
+  const box = $('#wlMenu'); if (!box) return;
+  box.innerHTML = WL_GROUPS.map(([g, items]) => `<div class="wl-mg"><div class="wl-mgh">${g}</div>${items.map(([k, v]) => `<button class="wl-mi${S.tab === k ? ' on' : ''}" data-tab="${k}"${WL_TIPS[k] ? ` title="${WL_TIPS[k]}"` : ''}><span>${v}</span><span class="mono muted">${tabCount(k)}</span></button>`).join('')}</div>`).join('');
+}
+function setTab(t){
+  S.tab = t; const l = $('#wlDdLbl'); if (l) l.textContent = wlLabel(t);
+  const m = $('#wlMenu'); if (m) m.hidden = true;
+  kimpOrderKey = ''; renderWatch();
+}
+// ---------------------------------------------------------------- 해외 선행 + 국프
 function kimpHtml(m){
   if (!allCfg().kimpOn) return '';
   const k = ovs.kimp(m);
-  return `<span class="kp mono ${k == null ? 'muted' : k >= 3 ? 'warn' : ''}" data-kp="${m}" title="김프: 바이낸스 가격(업비트 USDT 환율 적용)보다 업비트가 몇 % 비싼지">${k == null ? '' : '김프 ' + fmtPct(k)}</span>`;
+  return `<span class="kp mono ${k == null ? 'muted' : k >= 3 ? 'warn' : ''}" data-kp="${m}" title="국프: 바이낸스 가격(업비트 USDT 환율 적용)보다 업비트가 몇 % 비싼지">${k == null ? '' : '국프 ' + fmtPct(k)}</span>`;
 }
 function patchKimp(root = document){
   if (!allCfg().kimpOn) return;
-  for (const el of $$('[data-kp]', root)){ const k = ovs.kimp(el.dataset.kp); const t = k == null ? '' : '김프 ' + fmtPct(k); if (el.textContent !== t){ el.textContent = t; el.className = `kp mono ${k == null ? 'muted' : k >= 3 ? 'warn' : ''}`; } }
+  for (const el of $$('[data-kp]', root)){ const k = ovs.kimp(el.dataset.kp); const t = k == null ? '' : '국프 ' + fmtPct(k); if (el.textContent !== t){ el.textContent = t; el.className = `kp mono ${k == null ? 'muted' : k >= 3 ? 'warn' : ''}`; } }
 }
 function leadText(m){
   const e = ovs.get(m); if (!e) return '';
@@ -426,8 +496,9 @@ function onLead(fresh){
 setInterval(() => {
   onLead(ovs.check(S.instruments.map(i => i.market)));
   patchKimp();
+  onKimpTick();
   if (S.tab === 'lead' && !S.search) for (const el of $$('.wl-peter[data-lead]', $('#wlBody'))) el.innerHTML = leadText(el.dataset.lead);
-  if (S.sel){ const el = $('#chKimp'); if (el){ const k = allCfg().kimpOn ? ovs.kimp(S.sel) : null; el.textContent = k == null ? '' : '김프 ' + fmtPct(k); } }
+  if (S.sel){ const el = $('#chKimp'); if (el){ const k = allCfg().kimpOn ? ovs.kimp(S.sel) : null; el.textContent = k == null ? '' : '국프 ' + fmtPct(k); } }
 }, 1000);
 
 function surgeText(m, e){
@@ -535,6 +606,7 @@ function listFor(tab){
   else if (tab === 'new') list = list.filter(i => isNewListing(i.market));
   else if (tab === 'recent' && !S.search) return recent.map(x => S.byMarket.get(x.m)).filter(Boolean);
   else if ((tab === 'surge' || tab === 'dump') && !S.search) return sdHistList(tab).map(m => S.byMarket.get(m)).filter(Boolean);
+  else if (tab === 'kimp' && !S.search) return kimpListMarkets().map(m => S.byMarket.get(m)).filter(Boolean);
   else if (tab === 'lead' && !S.search) return [...ovs.events.keys()].sort((a, b) => ovs.get(b).at - ovs.get(a).at).map(m => S.byMarket.get(m)).filter(Boolean);
   else if (tab === 'rebuy'){ const rb = new Set(S.ledger.rebuy.map(r => upbit.toMarket(r.symbol))); list = list.filter(i => rb.has(i.market)); }
   if (S.search){ const s = S.search.toLowerCase(); list = S.instruments.filter(i => i.name.toLowerCase().includes(s) || i.market.toLowerCase().includes(s) || (i.nameEn || '').toLowerCase().includes(s)); }
@@ -543,14 +615,14 @@ function listFor(tab){
 }
 function renderWatch(){
   const list = listFor(S.tab);
-  $('#wlCount').textContent = list.length;
+  $('#wlCount').textContent = `(${list.length})`; const wl = $('#wlDdLbl'); if (wl) wl.textContent = wlLabel(S.tab);
   const rebuy = new Set(S.ledger.rebuy.map(r => upbit.toMarket(r.symbol)));
   if (!list.length){
-    const msg = { fav: '관심 종목이 없어요. 전체 탭에서 ☆를 눌러 추가하세요.', hold: '보유 종목이 없어요. 로그인하면 기존 보유 종목이 기초 이월로 보여요.', pullback: '지금 조건에 맞는 눌림 매수 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', bottom: '지금 조건에 맞는 바닥 반등 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', new: '최근 30일 안에 새로 상장된 종목이 없어요.', recent: '아직 본 종목이 없어요. 종목을 열면 여기에 본 순서대로 남아요.', dump: `${SDP[sdView.period]} 동안 급락 알림이 뜬 코인이 없어요. 급등과 같은 기준(최근 ${allCfg().surgeSec}초 거래대금 ${allCfg().surgeVol}배 이상)에 가격이 ${Math.max(allCfg().surgePct, 0.5)}% 이상 내리면 잡혀요.${allCfg().dumpOn ? '' : ' (지금 설정에서 급락 감지가 꺼져 있어요)'}`, surge: `${SDP[sdView.period]} 동안 급등 알림이 뜬 코인이 없어요. 앱이 켜져 있는 동안 1초마다 검사해요. (최근 ${allCfg().surgeSec}초 거래대금이 평소의 ${allCfg().surgeVol}배 이상)`, rebuy: '재매수 후보가 없어요. 이익을 내고 판 종목이 그때 매수가보다 싸지면 여기에 떠요.', lead: `지금 해외가 먼저 움직인 코인이 없어요. 최근 ${allCfg().leadSec}초 동안 바이낸스 가격이 ${allCfg().leadPct}% 넘게 움직였는데 업비트가 ${allCfg().leadGap}% 넘게 덜 따라오면 잡혀요.${allCfg().leadOn ? '' : ' (설정에서 해외 선행 감지가 꺼져 있어요)'}` };
-    $('#wlBody').innerHTML = (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + ((S.tab === 'surge' || S.tab === 'dump') && !S.search ? sdViewHtml(S.tab) : '') + (S.tab === 'lead' && !S.search ? leadStatsHtml() : '') + `<div class="empty">${S.search ? '검색 결과가 없어요.' : msg[S.tab] || ''}</div>`; return;
+    const msg = { fav: '관심 종목이 없어요. 전체 탭에서 ☆를 눌러 추가하세요.', hold: '보유 종목이 없어요. 로그인하면 기존 보유 종목이 기초 이월로 보여요.', pullback: '지금 조건에 맞는 눌림 매수 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', bottom: '지금 조건에 맞는 바닥 반등 종목이 없어요. 아래 "전체 스캔"을 하면 모든 종목에서 찾아요.', new: '최근 30일 안에 새로 상장된 종목이 없어요.', recent: '아직 본 종목이 없어요. 종목을 열면 여기에 본 순서대로 남아요.', dump: `${SDP[sdView.period]} 동안 급락 알림이 뜬 코인이 없어요. 급등과 같은 기준(최근 ${allCfg().surgeSec}초 거래대금 ${allCfg().surgeVol}배 이상)에 가격이 ${Math.max(allCfg().surgePct, 0.5)}% 이상 내리면 잡혀요.${allCfg().dumpOn ? '' : ' (지금 설정에서 급락 감지가 꺼져 있어요)'}`, surge: `${SDP[sdView.period]} 동안 급등 알림이 뜬 코인이 없어요. 앱이 켜져 있는 동안 1초마다 검사해요. (최근 ${allCfg().surgeSec}초 거래대금이 평소의 ${allCfg().surgeVol}배 이상)`, rebuy: '재매수 후보가 없어요. 이익을 내고 판 종목이 그때 매수가보다 싸지면 여기에 떠요.', kimp: '아직 국프를 계산할 수 있는 코인이 없어요. 바이낸스 가격이 들어오면 채워져요.', lead: `지금 해외가 먼저 움직인 코인이 없어요. 최근 ${allCfg().leadSec}초 동안 바이낸스 가격이 ${allCfg().leadPct}% 넘게 움직였는데 업비트가 ${allCfg().leadGap}% 넘게 덜 따라오면 잡혀요.${allCfg().leadOn ? '' : ' (설정에서 해외 선행 감지가 꺼져 있어요)'}` };
+    $('#wlBody').innerHTML = (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + ((S.tab === 'surge' || S.tab === 'dump') && !S.search ? sdViewHtml(S.tab) : '') + (S.tab === 'lead' && !S.search ? leadStatsHtml() : '') + (S.tab === 'kimp' && !S.search ? kimpViewHtml() : '') + `<div class="empty">${S.search ? '검색 결과가 없어요.' : msg[S.tab] || ''}</div>`; return;
   }
   if (document.body.dataset.view === 'scan' && !isPhone()){ $('#wlBody').innerHTML = (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + scanTableHtml(list); return; }
-  $('#wlBody').innerHTML = (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + ((S.tab === 'surge' || S.tab === 'dump') && !S.search ? sdViewHtml(S.tab) : '') + (S.tab === 'lead' && !S.search ? leadStatsHtml() : '') + list.slice(0, 300).map(i => {
+  $('#wlBody').innerHTML = (S.tab === 'bottom' && !S.search ? bottomTabHtml() : '') + ((S.tab === 'surge' || S.tab === 'dump') && !S.search ? sdViewHtml(S.tab) : '') + (S.tab === 'lead' && !S.search ? leadStatsHtml() : '') + (S.tab === 'kimp' && !S.search ? kimpViewHtml() : '') + list.slice(0, 300).map(i => {
     const q = S.quotes.get(i.market) || {}, r = S.results.get(i.market);
     const L = live(i.market);
     const bar = L.stance === 'buy_zone' ? 'entry' : ['chase', 'broken', 'failed'].includes(L.stance) ? 'warn' : '';
@@ -562,9 +634,9 @@ function renderWatch(){
       <span class="bar ${bar}" data-tip="${BAR_TIPS[bar]}"></span>
       <div style="min-width:0">
         <div class="wl-name"><button class="star${S.watch.has(i.symbol) ? ' on' : ''}" data-star="${i.symbol}" aria-label="관심">${S.watch.has(i.symbol) ? '★' : '☆'}</button>${mLogo(i.market, 'xs')}<b>${esc(i.name)}</b>${badges}</div>
-        <div class="wl-peter"${S.tab === 'lead' && !S.search ? ` data-lead="${i.market}"` : ''}>${S.tab === 'lead' && !S.search ? leadText(i.market) : (S.tab === 'surge' || S.tab === 'dump') && !S.search ? sdHistText(S.tab, i.market) : S.tab === 'recent' && !S.search ? recentText(i.market) : r && L.stance !== 'blocked' ? esc(L.text || r.peter) :`<span class="mono">${i.market}</span> · ${fmtKrwShort(q.value24h)}`}</div>
+        <div class="wl-peter"${S.tab === 'lead' && !S.search ? ` data-lead="${i.market}"` : S.tab === 'kimp' && !S.search ? ` data-kimprow="${i.market}"` : ''}>${S.tab === 'lead' && !S.search ? leadText(i.market) : S.tab === 'kimp' && !S.search ? kimpRowText(i.market) : (S.tab === 'surge' || S.tab === 'dump') && !S.search ? sdHistText(S.tab, i.market) : S.tab === 'recent' && !S.search ? recentText(i.market) : r && L.stance !== 'blocked' ? esc(L.text || r.peter) :`<span class="mono">${i.market}</span> · ${fmtKrwShort(q.value24h)}`}</div>
       </div>
-      <div class="wl-px mono"><div class="p ${toneOf(q.changeRate)}" data-px="${i.market}">${fmtPrice(q.price)}</div><div class="c ${toneOf(q.changeRate)}" data-cr="${i.market}">${fmtPct(q.changeRate)}</div>${kimpHtml(i.market)}</div>
+      <div class="wl-px mono"><div class="p ${toneOf(q.changeRate)}" data-px="${i.market}">${fmtPrice(q.price)}</div><div class="c ${toneOf(q.changeRate)}" data-cr="${i.market}">${fmtPct(q.changeRate)}</div>${S.tab === 'kimp' && !S.search ? '' : kimpHtml(i.market)}</div>
     </div>`;
   }).join('');
 }
@@ -1732,7 +1804,10 @@ function bindUi(){
     if (news) renderNews(); if (j === 'orders') renderOrders(); if (j === 'day'){ S.dayMonth = S.dayMonth || 0; renderDaily($('#dayBody')); }
     if (j === 'journal') renderJournal();
   });
-  $('#wlTabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (!b) return; S.tab = b.dataset.tab; $$('#wlTabs .pill').forEach(x => x.classList.toggle('on', x === b)); renderWatch(); });
+  $('#wlDdBtn').addEventListener('click', e => { e.stopPropagation(); const m = $('#wlMenu'); m.hidden = !m.hidden; if (!m.hidden) renderWlMenu(); });
+  $('#wlMenu').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) setTab(b.dataset.tab); });
+  document.addEventListener('click', e => { const m = $('#wlMenu'); if (m && !m.hidden && !e.target.closest('.wl-dd')) m.hidden = true; });
+  document.addEventListener('keydown', e => { const m = $('#wlMenu'); if (e.key === 'Escape' && m && !m.hidden){ m.hidden = true; e.stopPropagation(); } }, true);
   $('#wlBody').addEventListener('toggle', e => { if (e.target.classList && e.target.classList.contains('surge-stats')) LS.set(e.target.hasAttribute('data-bt') ? 'quantera:btStatsOpen' : 'quantera:surgeStatsOpen', e.target.open); }, true);
   $('#sdWrap').addEventListener('click', e => {
     if (e.target.closest('[data-surge-ack]')) return ackSurge();
@@ -1794,7 +1869,7 @@ function setView(v, opt = {}){
   if (v === 'settings' && !opt.keep) renderCfg();
   $$('.rail [data-view]').forEach(x => x.classList.toggle('on', x.dataset.view === v));
   if (v === 'trade') delete document.body.dataset.view; else document.body.dataset.view = v;
-  const pickTab = t => { S.tab = t; $$('#wlTabs .pill').forEach(x => x.classList.toggle('on', x.dataset.tab === t)); renderWatch(); };
+  const pickTab = t => setTab(t);
   if (v === 'scan') pickTab(['pullback', 'bottom', 'all', 'fav', 'hold'].includes(S.tab) ? S.tab : 'pullback');
   else if (S.wasScan) renderWatch();
   S.wasScan = v === 'scan';
@@ -2003,7 +2078,7 @@ const CFG_FIELDS = [
   ['바닥 반등', [['btMinDrop', '1년 고점 대비 최소 하락(%)', 1], ['btLowerPct', '1년 범위 하단 이 % 안', 1], ['btNoNewLowDays', '새 저점 없는 기간(일)', 1], ['btVolBurst', '반등 거래량 배수', 1], ['btTp', '바닥 거래 익절(%) — 손절 없음', 1]]],
   ['알림음', [['surgeAlarm', '소리 알람 켜기', 'bool'], ['alarmVol', '소리 크기 (0~100)', 1], ['surgeRepeat', '확인 전까지 반복 간격(초)', 1], ['alarmMax', '확인 안 하면 최대 울림 횟수', 1], ['sndSurge', '급등', 'sound'], ['sndDump', '급락', 'sound'], ['sndSell', '매도 예약 도달', 'sound'], ['sndLead', '해외 선행', 'sound'], ['sndEtc', '기타 (모의 체결·익절·손절, 새 업비트 거래)', 'sound']]],
   ['급등·급락 감지 (1초마다)', [['dumpOn', '급락도 감지 (같은 기준, 가격이 내림)', 'bool'], ['surgeSec', '이 시간(초) 동안의 거래를 봄', 1], ['surgeVol', '평소 같은 시간보다 거래대금 배수', 1], ['surgePct', '그 시간 상승률(%) 이상 (0 = 가격 안 봄)', 1], ['surgeMinValue', '그 시간 최소 거래대금(백만 원)', 1e6], ['surgeKeepMin', '잡힌 뒤 목록 유지(분)', 1], ['surgeCombos', '적중률 조합 (익절/손절, 쉼표로)', 'text'], ['surgeTimeoutMin', '적중률 시간 종료(분)', 1], ['surgeTradeTp', '급등 거래 주문 기본 익절(%)', 1], ['surgeTradeSl', '급등 거래 주문 기본 손절(%)', 1]]],
-  ['해외 선행 · 김프 (바이낸스 기준)', [['leadOn', '해외 선행 감지', 'bool'], ['kimpOn', '김프 표시 (목록·차트 머리)', 'bool'], ['leadSec', '이 시간(초) 동안 비교', 1], ['leadPct', '해외가 이 %(절댓값) 이상 움직이면', 1], ['leadGap', '업비트와 차이가 이 % 이상이면 신호', 1], ['leadCheckMin', '적중률: 이 시간(분) 안에 따라잡았는지', 1]]],
+  ['해외 선행 · 국프 (바이낸스 기준)', [['leadOn', '해외 선행 감지', 'bool'], ['kimpOn', '국프 표시 (목록·차트 머리)', 'bool'], ['swingPp', '국프 급변: 이 %p 이상 바뀌면', 1], ['swingMin', '국프 급변: 이 시간(분) 안에', 1], ['leadSec', '이 시간(초) 동안 비교', 1], ['leadPct', '해외가 이 %(절댓값) 이상 움직이면', 1], ['leadGap', '업비트와 차이가 이 % 이상이면 신호', 1], ['leadCheckMin', '적중률: 이 시간(분) 안에 따라잡았는지', 1]]],
   ['검증', [['minSamples', '최소 표본 수', 1], ['holdDays', '보유 기간(일)', 1], ['feePct', '왕복 수수료(%)', 1]]]
 ];
 function appCfgHtml(){
@@ -2123,7 +2198,7 @@ async function renderMNews(){
 }
 function openSheet(side){ openRec('paper', { side }); }
 function renderBell(){
-  const n = (surgeMuted() ? 0 : unseen.size + unseenDump.size);
+  const n = (surgeMuted() ? 0 : unseen.size + unseenDump.size + unseenKimp.size);
   const el = $('#bellN'); if (el){ el.textContent = n || ''; el.classList.toggle('on', !!n); }
   const dlg = $('#bellDlg'); if (!dlg || !dlg.open) return;
   const nm = m => (S.byMarket.get(m) || {}).name || m;
@@ -2154,7 +2229,7 @@ function bindMobile(){
 // PC 칸에서 쓰던 요소(차트·호가·분석·거래일지)는 폰일 때 아래 화면으로 옮겨 그대로 씀.
 const PH = { page: 'home', tab: 'all', cp: LS.get('quantera:mCp', 'chart'), on: false };
 const M_TITLES = { cfg: '설정', hold: '보유 자산', home: 'QUANTERA', list: '종목', search: '종목 검색', journal: '거래일지', news: '업비트 소식', strat: '전략 검증' };
-const M_TABS = [['all', '전체'], ['pullback', '눌림'], ['bottom', '바닥'], ['new', '신규'], ['surge', '급등'], ['dump', '급락'], ['lead', '선행'], ['recent', '최근'], ['rebuy', '재매수']];
+const M_TABS = [['all', '전체'], ['pullback', '눌림'], ['bottom', '바닥'], ['new', '신규'], ['surge', '급등'], ['dump', '급락'], ['lead', '선행'], ['kimp', '국프'], ['recent', '최근'], ['rebuy', '재매수']];
 function initPhone(){
   if (!isPhone()) return;
   PH.on = true;
@@ -2290,11 +2365,11 @@ function mRender(force){
     $('#mListTabs').innerHTML = M_TABS.map(([k, v]) => `<button class="${k === PH.tab ? 'on' : ''}" data-tab="${k}">${v}</button>`).join('');
     const save = S.search; S.search = '';
     const list = listFor(PH.tab); S.search = save;
-    const key = PH.tab + list.map(i => i.market).join() + (PH.tab === 'surge' || PH.tab === 'dump' ? sdView.period + sdView.sort : '');
+    const key = PH.tab + list.map(i => i.market).join() + (PH.tab === 'surge' || PH.tab === 'dump' ? sdView.period + sdView.sort : '') + (PH.tab === 'kimp' ? kimpSort + Math.floor(Date.now() / 15000) : '');
     if (key !== mLastList){
       mLastList = key;
-      $('#mListNote').innerHTML = PH.tab === 'bottom' ? bottomTabHtml() : PH.tab === 'surge' || PH.tab === 'dump' ? sdViewHtml(PH.tab) : PH.tab === 'lead' ? leadStatsHtml() : '';
-      $('#mList').innerHTML = list.length ? list.slice(0, 200).map(i => mRow(i, PH.tab === 'recent' ? recentText(i.market) : PH.tab === 'surge' || PH.tab === 'dump' ? sdHistText(PH.tab, i.market) : PH.tab === 'lead' ? leadText(i.market) : undefined)).join('') : `<div class="m-none">${{ lead: '지금 해외가 먼저 움직인 코인이 없어요.', surge: `${SDP[sdView.period]} 동안 급등 알림이 뜬 코인이 없어요.`, dump: `${SDP[sdView.period]} 동안 급락 알림이 뜬 코인이 없어요.`, pullback: '지금 조건에 맞는 눌림 매수 종목이 없어요. ☰ → 전체 스캔을 하면 모든 종목에서 찾아요.', bottom: '지금 조건에 맞는 바닥 반등 종목이 없어요.', new: '최근 30일 안에 새로 상장된 종목이 없어요.', recent: '아직 본 종목이 없어요.', rebuy: '재매수 후보가 없어요.' }[PH.tab] || '종목이 없어요.'}</div>`;
+      $('#mListNote').innerHTML = PH.tab === 'bottom' ? bottomTabHtml() : PH.tab === 'surge' || PH.tab === 'dump' ? sdViewHtml(PH.tab) : PH.tab === 'lead' ? leadStatsHtml() : PH.tab === 'kimp' ? kimpViewHtml() : '';
+      $('#mList').innerHTML = list.length ? list.slice(0, 200).map(i => mRow(i, PH.tab === 'recent' ? recentText(i.market) : PH.tab === 'surge' || PH.tab === 'dump' ? sdHistText(PH.tab, i.market) : PH.tab === 'lead' ? leadText(i.market) : PH.tab === 'kimp' ? kimpRowText(i.market) : undefined)).join('') : `<div class="m-none">${{ kimp: '아직 국프를 계산할 수 있는 코인이 없어요. 바이낸스 가격이 들어오면 채워져요.', lead: '지금 해외가 먼저 움직인 코인이 없어요.', surge: `${SDP[sdView.period]} 동안 급등 알림이 뜬 코인이 없어요.`, dump: `${SDP[sdView.period]} 동안 급락 알림이 뜬 코인이 없어요.`, pullback: '지금 조건에 맞는 눌림 매수 종목이 없어요. ☰ → 전체 스캔을 하면 모든 종목에서 찾아요.', bottom: '지금 조건에 맞는 바닥 반등 종목이 없어요.', new: '최근 30일 안에 새로 상장된 종목이 없어요.', recent: '아직 본 종목이 없어요.', rebuy: '재매수 후보가 없어요.' }[PH.tab] || '종목이 없어요.'}</div>`;
     } else mPatch($('#mList'));
   } else if (pg === 'search'){
     const s = $('#mSearch').value.trim().toLowerCase();

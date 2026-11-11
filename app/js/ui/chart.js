@@ -96,16 +96,17 @@ export function createChart(el, legendEl, infoEl){
   function stats(i){
     const b = data[i]; if (!b) return null;
     const prev = i > 0 ? data[i - 1].c : b.o;
-    return { b, prev, chg: b.c - prev, chgPct: (b.c / prev - 1) * 100, range: b.h - b.l, rangePct: (b.h / b.l - 1) * 100, hiPct: (b.h / b.o - 1) * 100, loPct: (b.l / b.o - 1) * 100 };
+    return { b, prev, chg: b.c - prev, chgPct: (b.c / prev - 1) * 100, range: b.h - b.l, rangePct: (b.h / b.l - 1) * 100, opPct: (b.o / prev - 1) * 100, hiPct: (b.h / prev - 1) * 100, loPct: (b.l / prev - 1) * 100 };   // 시·고·저·종 % = 바로 앞 봉 종가 기준
   }
   function showInfo(i){
     if (!infoEl) return;
     const s = stats(i); if (!s){ infoEl.innerHTML = ''; return; }
     const { b } = s, tone = toneOf(s.chgPct);
     const cell = (k, v, cls = '') => `<span><em>${k}</em><b class="${cls}">${v}</b></span>`;
+    const pc = (k, v, p) => cell(k, `${fmt(v)} <small>(${sign(p)})</small>`, toneOf(p));
     infoEl.innerHTML = `<span class="t">${timeLabel(b.time)}</span>` +
-      cell('시', fmt(b.o)) + cell('고', fmt(b.h), 'up') + cell('저', fmt(b.l), 'down') + cell('종', fmt(b.c), tone) +
-      cell('등락', sign(s.chgPct), tone) + cell('고저폭', sign(s.rangePct).replace('+', '')) +
+      pc('시', b.o, s.opPct) + pc('고', b.h, s.hiPct) + pc('저', b.l, s.loPct) + pc('종', b.c, s.chgPct) +
+      cell('고저폭', sign(s.rangePct).replace('+', '')) +
       cell('거래량', fmtVol(b.v)) + (b.value ? cell('거래대금', krw(b.value)) : '');
   }
   function renderTip(i, x, y, isPinned, corner){
@@ -113,10 +114,11 @@ export function createChart(el, legendEl, infoEl){
     const { b } = s, tone = toneOf(s.chgPct);
     const row = (k, v, cls = '', sub = '') => `<div class="r"><span>${k}</span><b class="${cls}">${v}${sub ? `<i>${sub}</i>` : ''}</b></div>`;
     tip.innerHTML = `<div class="h"><span>${timeLabel(b.time)}</span>${isPinned ? '<button data-unpin aria-label="닫기">✕</button>' : '<span class="hint">클릭하면 고정</span>'}</div>` +
-      row('시가', fmt(b.o)) +
-      row('고가', fmt(b.h), 'up', sign(s.hiPct)) +
-      row('저가', fmt(b.l), 'down', sign(s.loPct)) +
-      row('종가', fmt(b.c), tone) +
+      row('시가', fmt(b.o), toneOf(s.opPct), sign(s.opPct)) +
+      row('고가', fmt(b.h), toneOf(s.hiPct), sign(s.hiPct)) +
+      row('저가', fmt(b.l), toneOf(s.loPct), sign(s.loPct)) +
+      row('종가', fmt(b.c), tone, sign(s.chgPct)) +
+      `<div class="r muted" style="justify-content:flex-end"><span>% = 앞 봉 종가 ${fmt(s.prev)} 기준</span></div>` +
       row('전봉 대비', (s.chg > 0 ? '+' : '') + fmt(s.chg), tone, sign(s.chgPct)) +
       row('최고·최저 폭', fmt(s.range), '', s.rangePct.toFixed(2) + '%') +
       row('거래량', fmtVol(b.v)) +
