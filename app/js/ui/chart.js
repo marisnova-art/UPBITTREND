@@ -176,7 +176,55 @@ export function createChart(el, legendEl, infoEl){
     if (pastBuys.length) legend.push(['과거 매수가', '#9A9AA3']);
     legend.push(['20선', C.ma20], ['60선', C.ma60]);
     if (legendEl) legendEl.innerHTML = legend.map(([t, c]) => `<span style="color:${c}">${t}</span>`).join('') +
-      (lines.length ? `<button class="lbl-toggle${showLabels ? ' on' : ''}" data-lbl aria-pressed="${showLabels}">라벨 ${showLabels ? 'ON' : 'OFF'}</button>` : '');
+      (lines.length ? `<button class="lbl-toggle${showLabels ? ' on' : ''}" data-lbl aria-pressed="${showLabels}">라벨 ${showLabels ? 'ON' : 'OFF'}</button>` : '') +
+      `<button class="lbl-toggle${showVp ? ' on' : ''}" data-vp aria-pressed="${showVp}" data-tip="매물대: 화면에 보이는 기간 동안 가격대별로 거래가 얼마나 쌓였는지 오른쪽 가로 막대로 보여요. 라임색이 가장 많이 거래된 가격대예요.">매물대 ${showVp ? 'ON' : 'OFF'}</button>`;
   }
-  return { setData, tick, setGuide, refit, chart };
+  // 매물대(볼륨 프로파일): 지금 화면에 보이는 봉들의 거래량을 가격 구간별로 합쳐 오른쪽에 가로 막대로.
+  // 가장 많이 쌓인 구간(POC)은 라임색. 라벨 ON처럼 '매물대' 버튼으로 켜고 끔.
+  const VP_KEY = 'quantera:chartVp';
+  let showVp = (() => { try { return localStorage.getItem(VP_KEY) === '1'; } catch(e){ return false; } })();
+  const vpCv = document.createElement('canvas'); vpCv.className = 'vp-cv';
+  if (getComputedStyle(el).position === 'static') el.style.position = 'relative';   // 이미 absolute면 그대로 (폰)
+  el.appendChild(vpCv);
+  let vpRaf = 0;
+  const vpLater = () => { if (!vpRaf) vpRaf = requestAnimationFrame(() => { vpRaf = 0; drawVp(); }); };
+  function drawVp(){
+    const W = el.clientWidth, H = el.clientHeight, dpr = window.devicePixelRatio || 1;
+    if (vpCv.width !== Math.round(W * dpr) || vpCv.height !== Math.round(H * dpr)){ vpCv.width = Math.round(W * dpr); vpCv.height = Math.round(H * dpr); vpCv.style.width = W + 'px'; vpCv.style.height = H + 'px'; }
+    const g = vpCv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+    if (!showVp || !data.length) return;
+    const r = chart.timeScale().getVisibleLogicalRange(); if (!r) return;
+    const a = Math.max(0, Math.floor(r.from)), b = Math.min(data.length - 1, Math.ceil(r.to)); if (b <= a) return;
+    let lo = Infinity, hi = -Infinity;
+    for (let i = a; i <= b; i++){ lo = Math.min(lo, data[i].l); hi = Math.max(hi, data[i].h); }
+    if (!(hi > lo)) return;
+    const N = 32, step = (hi - lo) / N, bins = new Array(N).fill(0);
+    for (let i = a; i <= b; i++){   // 봉의 거래량을 그 봉의 저가~고가 구간에 고르게 나눔
+      const d = data[i]; if (!d.v) continue;
+      const i0 = Math.max(0, Math.min(N - 1, Math.floor((d.l - lo) / step))), i1 = Math.max(0, Math.min(N - 1, Math.floor((d.h - lo) / step)));
+      const share = d.v / (i1 - i0 + 1); for (let k = i0; k <= i1; k++) bins[k] += share;
+    }
+    const max = Math.max(...bins); if (!max) return;
+    const poc = bins.indexOf(max);
+    const scaleW = chart.priceScale('right').width() || 60, right = W - scaleW - 2, maxW = Math.min(180, (W - scaleW) * 0.24);
+    for (let k = 0; k < N; k++){
+      if (!bins[k]) continue;
+      const y1 = candles.priceToCoordinate(lo + step * (k + 1)), y0 = candles.priceToCoordinate(lo + step * k);
+      if (y1 == null || y0 == null) continue;
+      const top = Math.min(y0, y1) + 1, h = Math.max(1, Math.abs(y0 - y1) - 2), w = bins[k] / max * maxW;
+      g.fillStyle = k === poc ? 'rgba(198,244,50,.32)' : 'rgba(237,237,239,.11)';
+      g.fillRect(right - w, top, w, h);
+    }
+  }
+  chart.timeScale().subscribeVisibleLogicalRangeChange(vpLater);
+  if (window.ResizeObserver) new ResizeObserver(vpLater).observe(el);
+  el.addEventListener('wheel', vpLater, { passive: true });
+  el.addEventListener('pointermove', e => { if (e.buttons) vpLater(); }, { passive: true });
+  if (legendEl) legendEl.addEventListener('click', e => {
+    if (!e.target.closest('[data-vp]')) return;
+    showVp = !showVp;
+    try { localStorage.setItem(VP_KEY, showVp ? '1' : '0'); } catch(err){}
+    setGuide(...lastGuide); drawVp();
+  });
+  return { setData: (r, t) => { setData(r, t); vpLater(); }, tick: (p, ts) => { tick(p, ts); if (showVp) vpLater(); }, setGuide, refit: () => { refit(); vpLater(); }, chart };
 }

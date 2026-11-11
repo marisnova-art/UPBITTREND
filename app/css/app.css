@@ -1174,3 +1174,86 @@ dialog input[type=checkbox]{width:16px;height:16px;margin:0;flex:0 0 auto}
 @media (max-width: 899px){ .jc-2,.jc-2.four{grid-template-columns:29% 15% 32% 24%} }
 @media (max-width: 899px){ .jc-2,.jc-2.four{grid-template-columns:25% 27% 27% 21%} .jc-2 div{padding-right:8px} }
 @media (max-width: 899px){ .m-jc{padding:12px} .jc-2,.jc-2.four{grid-template-columns:27% 25% 27% 21%} .jc-2 div{padding-right:6px} }
+
+/* ================= 2026-11-11 개선 라운드 ================= */
+/* 거래일지: 지우기 칸(오른쪽 고정)도 줄 바탕색 이어지게 — 불투명 바탕 위에 같은 색을 겹침 */
+.jt tr.r-buy td.acts{background:linear-gradient(rgba(240,68,82,.14),rgba(240,68,82,.14)),var(--panel)!important}
+.jt tr.r-sell td.acts{background:linear-gradient(rgba(76,141,255,.14),rgba(76,141,255,.14)),var(--panel)!important}
+.jt tr.r-buy:hover td.acts{background:linear-gradient(rgba(240,68,82,.22),rgba(240,68,82,.22)),var(--panel)!important}
+.jt tr.r-sell:hover td.acts{background:linear-gradient(rgba(76,141,255,.22),rgba(76,141,255,.22)),var(--panel)!important}
+.jt td.sym:hover{text-decoration:underline;text-underline-offset:3px}
+.m-jc .jf{color:var(--accent);cursor:pointer}
+
+/* 호가: 매도·매수 경계 줄 + 현재가 라임 */
+.ob-mid{height:22px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 10px;border-top:1px solid rgba(198,244,50,.45);border-bottom:1px solid rgba(198,244,50,.45);background:rgba(198,244,50,.05);color:var(--muted);font-size:var(--f-s)}
+.ob-mid b{color:var(--accent)}
+.ob-row.ask+.ob-mid+.ob-row.bid{border-top:0}
+.ob-row.cur{outline:1.5px solid var(--accent);outline-offset:-1.5px;border-radius:3px}
+.ob-row.cur .p{color:var(--accent)!important}
+.ob-row .p em{margin-left:6px;font-size:var(--f-s)}
+@media (max-width: 899px){
+  #mCpBook .ob-row{height:17px}
+  #mCpBook .ob-mid{height:20px;padding:0 8px}
+  #mCpBook .ob-mid span{display:none}
+  #mCpBook .ob-mid{justify-content:center}
+}
+
+/* 차트 매물대 */
+.vp-cv{position:absolute;left:0;top:0;pointer-events:none;z-index:3}
+
+/* 설정: 화면 안 페이지 */
+#pCfg{display:none}
+@media (min-width: 900px){
+  body[data-view="settings"] #pCfg{display:flex!important;max-width:880px;width:100%;justify-self:center}
+}
+.cfg-page{padding:14px 18px 18px}
+.cfg-page .cfg{max-height:none;overflow:visible}
+.cfg-note{margin:0 0 6px;color:var(--muted);font-size:var(--f-s);line-height:1.6}
+.cfg-actions{position:sticky;bottom:0;display:flex;gap:8px;align-items:center;padding:12px 0 2px;margin-top:12px;border-top:1px solid var(--line);background:var(--panel)}
+.cfg-page input[type=text],.cfg-page input[type=number],.cfg-page select{border-radius:10px;border:1px solid var(--line-2);background:var(--panel-2);color:var(--text);padding:0 10px}
+.cfg-page input[type=text]{width:180px;height:32px}
+.cfg label{min-height:36px;border-bottom:1px solid var(--line)}
+@media (max-width: 899px){
+  .m-app[data-page="cfg"] [data-p="cfg"]{display:block}
+  .cfg-page{padding:8px 16px calc(120px + env(safe-area-inset-bottom))}
+  .cfg label{min-height:48px}
+  .cfg-page input[type=number],.cfg-page select{height:40px}
+  .cfg-actions{bottom:calc(84px + env(safe-area-inset-bottom))}
+}
+
+/* 매도 예약 */
+.sa-btn{height:22px;padding:0 9px;border-radius:999px;border:1px dashed var(--line-2);background:transparent;color:var(--muted);font-size:var(--f-s);white-space:nowrap;cursor:pointer}
+.sa-btn .mono{color:var(--text)}
+.sa-btn:hover{color:var(--text);border-color:var(--muted)}
+.sa-btn.hit{border-style:solid;border-color:var(--warn);animation:qblink 1s infinite}
+.sa-line{display:flex;align-items:center;justify-content:space-between}
+.sa-bar{position:fixed;z-index:70;top:62px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;max-width:calc(100vw - 24px)}
+.sa-it{display:flex;align-items:center;gap:10px;padding:6px 8px 6px 14px;border-radius:999px;background:var(--panel);border:1px solid var(--warn);box-shadow:0 8px 30px rgba(0,0,0,.5);font-size:var(--f-s);white-space:nowrap}
+.sa-it .dot-live{background:var(--warn);box-shadow:0 0 8px var(--warn)}
+.sa-it .linkbtn{color:var(--accent)}
+@media (max-width: 899px){
+  .sa-bar{top:calc(var(--sat, 0px) + 60px);left:12px;right:12px;transform:none}
+  .sa-it{white-space:normal;flex-wrap:wrap;border-radius:16px}
+  .sa-btn{height:30px}
+}
+
+/* ================= 글자: 크기 3개 · 볼드는 타이틀만 =================
+   대·중 = 화면 제목, 패널 타이틀, 섹션 제목, 큰 현재가/총자산 / 그 밖의 읽는 글자는 모두 소(12px) */
+html,body{font-size:var(--f-s)}
+body *{font-weight:500}
+.sb-part,.wl-px .p,.field input,.stepper button,.guide-row,.peter,.mtt button,.jt td.lead,.ot td.lead,.jt td.sym,
+.m-orderbar button,.bell-row,.sd-head,.sd-row .sd-n,#pSurge .sd-row .sd-n,.bell-sec,.rec-head,.m-link,.m-btn,.m-none,.m-mute,.m-n,.m-r,.m-r span:first-child,
+.m-chips button,.m-coin-p,.m-coin-g,.m-ctabs button,#mCpChart #tfTabs .pill,#mCpBook #obBody,#mCpBook .ob-tot,#mCpBook .tr-head,#mCpBook .tr-list,#mCpInsp #inspBody,
+.m-act button,.m-jhead #jSummary,.m-jhead .pill,.m-menu button,.scan-t,.stg-desc,.stg-t,.stg-tabs .pill,.stg-form label,.stg-form button,.ai-sum p,.hold-t,
+.m-hcard .h1,.m-hcard .h2,.m-logo b,.m-logo.xs b,.hx-t,.hx-v small,.hx-s,.hx-e,.m-sc-n,.m-sc>b,.m-coin-b .m-btn,.addf .field input,.jc-2 b,.surge-bar{font-size:var(--f-s)!important}
+/* 중: 패널·섹션 제목 */
+.panel>header h2,.sec h3,.sd-ttl,.stg-h,.day-nav b,.ai-h b,.m-sub-h,.m-h,.hs-it b,.stg-card b,.rec-nm,.ot-title,.m-sec-t,.sheet-sub,.topbar .logo{font-size:var(--f-m)!important}
+/* 대: 화면 제목 · 큰 현재가 · 총자산 */
+.logo,.chart-head .px,#pChart .chart-head .px,dialog h2,.m-ttl,#mTitle .logo,.m-menu-h .logo,.m-big,.m-coin-p .m-big,.hx-v{font-size:var(--f-l)!important}
+.panel>header h2,.chart-head h2,.chart-head .px,.sec h3,dialog h2,.m-ttl,.m-ttl *,.m-h,.sd-ttl,.stg-h,.cfg h4,.m-menu-t,.hs-it b,.m-big,.hx-v,.day-nav b,.rec-nm,.ai-h b,.stg-card b,.logo,.ot-title,.m-sec-t,.sheet-sub,.m-sub-h{font-weight:700}
+.sd-ttl .sd-new,.ot-title .muted{font-weight:500}
+/* 폰 입력칸: 아이폰 자동 확대 막기 위해 '대' 크기 유지 */
+body.phone input,body.phone select,body.phone textarea,.addf .field input[type="datetime-local"]{font-size:var(--f-l)!important}
+.cfg-actions .grow{flex:1}
+.cfg h4{font-size:var(--f-m)!important;margin-top:18px}
+@media (max-width: 899px){ .cfg-actions{background:var(--bg);padding:10px 0 8px} }
