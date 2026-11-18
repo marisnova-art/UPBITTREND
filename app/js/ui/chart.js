@@ -107,7 +107,7 @@ export function createChart(el, legendEl, infoEl){
     const { b } = s, tone = toneOf(s.chgPct);
     const cell = (k, v, cls = '') => `<span><em>${k}</em><b class="${cls}">${v}</b></span>`;
     const pc = (k, v, p) => cell(k, `${fmt(v)} <small>(${sign(p)})</small>`, toneOf(p));
-    infoEl.innerHTML = `<span class="t">${timeLabel(b.time)}</span>` +
+    infoEl.innerHTML = `<span class="t">${timeLabel(b.time)}${pinned && pinned.i === i && i !== data.length - 1 ? ' · 고정' : ''}</span>` +
       pc('시', b.o, s.opPct) + pc('고', b.h, s.hiPct) + pc('저', b.l, s.loPct) + pc('종', b.c, s.chgPct) +
       cell('고저폭', sign(s.rangePct).replace('+', '')) +
       cell('거래량', fmtVol(b.v)) + (b.value ? cell('거래대금', krw(b.value)) : '');
@@ -141,14 +141,17 @@ export function createChart(el, legendEl, infoEl){
     const i = p && p.time != null && p.point && p.point.x >= 0 ? idxOf(p.time) : null;
     hoverIdx = i;
     showInfo(i == null ? (pinned ? pinned.i : data.length - 1) : i);
-    if (PHONE()){ if (pinned && i != null){ pinned.i = i; renderTip(i, 0, 0, true, true); } return; }   // 폰: 누르면 왼쪽 위 카드, 끌면 따라감
+    if (PHONE()){ if (pinned && i != null) pinned.i = i; tip.hidden = true; return; }   // 폰: 위쪽 시·고·저·종 줄에 보여 줌 (카드 없음), 끌면 따라감
     if (pinned) return;                     // 고정 중엔 카드가 움직이지 않음
     if (i == null) tip.hidden = true; else renderTip(i, p.point.x, p.point.y, false);
   });
   chart.subscribeClick(p => {
     const i = p && p.time != null && p.point ? idxOf(p.time) : null;
+    if (PHONE()){   // 폰: 봉을 누르면 그 봉 정보로 고정, 빈 곳을 누르면 최신 봉으로
+      pinned = i == null ? null : { i, x: 0, y: 0 }; tip.hidden = true;
+      showInfo(i == null ? data.length - 1 : i); return;
+    }
     if (i == null) return;
-    if (PHONE()){ pinned = { i, x: 0, y: 0 }; renderTip(i, 0, 0, true, true); return; }
     pinned = { i, x: p.point.x, y: p.point.y };   // 다른 봉을 누르면 그 봉으로 옮겨 고정
     renderTip(i, p.point.x, p.point.y, true);
   });

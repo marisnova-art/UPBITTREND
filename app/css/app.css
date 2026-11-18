@@ -1386,3 +1386,16 @@ body.no-paper .paper-only{display:none!important}
 .yr-h b{font-weight:700;font-size:var(--f-m)}
 .yr-g{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:var(--f-s)}
 #mOrdHost{padding:0 14px}
+
+/* 폰 차트: 시·고·저·종·고저폭·거래량·거래대금 줄은 위에 항상, 라벨·매물대 버튼은 오른쪽 아래(시간축 위)로 → 서로 안 가림 */
+@media (max-width: 899px){
+  .chart-info{top:4px;left:8px;right:60px;bottom:30px;justify-content:space-between;gap:4px}
+  .chart-info .ohlc{display:grid;grid-template-columns:auto auto;gap:0 12px;padding:3px 6px;border-radius:8px;background:rgba(5,5,6,.72);align-self:flex-start;max-width:100%;line-height:1.45}
+  .chart-info .ohlc .t{grid-column:1/-1}
+  .chart-info .ohlc>span{white-space:nowrap}
+  .chart-info .ohlc em{margin-right:3px}
+  .chart-info .ohlc>span:nth-child(-n+4) small{display:none}   /* 폭이 좁아 시·고·저 %는 숨기고 종가 %만 */
+  #mCpChart .chart-info{z-index:4}
+  .chart-info .legend{justify-content:flex-end;align-self:flex-end;gap:6px}
+  .chart-info .lbl-toggle{height:24px!important;min-height:24px!important;padding:0 9px!important;background:rgba(17,17,20,.85)}
+}
