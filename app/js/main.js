@@ -969,6 +969,7 @@ function resetTrades(m){
   upbit.getTrades(m, 50).then(rows => { if (TR.m !== m) return; const seen = new Set(TR.list.map(t => t.ts + ':' + t.price + ':' + t.size)); TR.list = [...TR.list, ...rows.filter(t => !seen.has(t.ts + ':' + t.price + ':' + t.size))].sort((a, b) => b.ts - a.ts).slice(0, 80); renderTrades(); }).catch(() => {});
 }
 function onTrade(t){
+  if (t.market === S.sel && chart) chart.tick(t.price, t.ts || Date.now(), t.size);   // 실시간 체결 → 차트 거래량
   if (t.market !== TR.m) return;
   TR.list.unshift(t); if (TR.list.length > 80) TR.list.length = 80;
   if (!TR.raf) TR.raf = requestAnimationFrame(() => { TR.raf = 0; renderTrades(); });

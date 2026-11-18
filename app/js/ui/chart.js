@@ -57,7 +57,8 @@ export function createChart(el, legendEl, infoEl){
     chart.timeScale().setVisibleLogicalRange({ from: data.length - n, to: data.length + 3 });
   }
   // 실시간 체결가로 마지막 봉 갱신(새 시간대면 새 봉 추가)
-  function tick(price, tsMs){
+  // size(수량)가 있으면 실시간 체결 → 지금 봉 거래량·거래대금에 더함 (새로고침 없이 거래량 막대·매물대가 자람)
+  function tick(price, tsMs, size = 0){
     if (!data.length || price == null) return;
     const sec = TF_SEC[tf]; if (!sec) return;
     let t = Math.floor(tsMs / 1000);
@@ -70,9 +71,11 @@ export function createChart(el, legendEl, infoEl){
     const last = data[data.length - 1];
     if (t < last.time) return;
     if (t === last.time){ last.h = Math.max(last.h, price); last.l = Math.min(last.l, price); last.c = price; }
-    else data.push({ time: t, o: price, h: price, l: price, c: price, v: 0 });
+    else data.push({ time: t, o: price, h: price, l: price, c: price, v: 0, value: 0 });
     const b = data[data.length - 1];
     candles.update({ time: b.time, open: b.o, high: b.h, low: b.l, close: b.c });
+    if (size > 0){ b.v = (b.v || 0) + size; if (b.value != null) b.value += size * price; }
+    vol.update({ time: b.time, value: b.v || 0, color: b.c >= b.o ? 'rgba(240,68,82,.35)' : 'rgba(76,141,255,.35)' });
     if (hoverIdx == null) showInfo(pinned ? pinned.i : data.length - 1);
     if (pinned && pinned.i === data.length - 1) renderTip(pinned.i, pinned.x, pinned.y, true);
   }
@@ -249,5 +252,5 @@ export function createChart(el, legendEl, infoEl){
     try { localStorage.setItem(VP_KEY, showVp ? '1' : '0'); } catch(err){}
     setGuide(...lastGuide); drawVp();
   });
-  return { setData: (r, t) => { setData(r, t); vpLater(); }, tick: (p, ts) => { tick(p, ts); if (showVp) vpLater(); }, setGuide, refit: () => { refit(); vpLater(); }, chart };
+  return { setData: (r, t) => { setData(r, t); vpLater(); }, tick: (p, ts, size) => { tick(p, ts, size); if (showVp) vpLater(); }, setGuide, refit: () => { refit(); vpLater(); }, chart };
 }
