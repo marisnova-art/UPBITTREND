@@ -77,7 +77,7 @@ $mode = 'push'
 if (-not $AUTO){
   Write-Host '=== QUANTERA 업비트 도우미 ===' -ForegroundColor Green
   if (-not $access){
-    Write-Host '업비트 Open API 키를 넣어 주세요. 자산조회·주문조회만 켠 키를 쓰세요.'
+    Write-Host '업비트 Open API 키를 넣어 주세요. 조회 권한만 켠 키를 쓰세요 (자산조회·주문조회, 전체 손익까지 보려면 입금 조회·출금 조회도).'
     $access = (Read-Host 'Access Key').Trim()
     $secret = (Plain (Read-Host 'Secret Key' -AsSecureString)).Trim()
     Set-Content -Path $keyFile -Value @($access, (Seal $secret))
@@ -100,8 +100,10 @@ if (-not $AUTO){
   Write-Host '  4  업비트 키만 다시 넣기 (연결 코드는 그대로)'
   Write-Host '  6  전부 지우기 (키 + 연결 코드 + 자동 실행)'
   Write-Host '  5  연결 점검 (업비트 응답을 그대로 보여 줌)'
+  Write-Host '  7  처음부터 전부 가져오기 (예: 5년치 체결 + 원화 입출금)'
   $pick = (Read-Host '번호').Trim()
   if ($pick -eq '2'){ $mode = 'file' }
+  elseif ($pick -eq '7'){ $script:full = $true }
   elseif ($pick -eq '3'){
     if (TaskOn){ TaskRemove; Write-Host '자동 실행을 껐어요.' -ForegroundColor Yellow; return }
     if (-not $code){ Write-Host '자동 실행은 연결 코드가 있어야 해요. 6번으로 지운 뒤 다시 실행해 코드를 넣어 주세요.' -ForegroundColor Yellow; return }
@@ -111,7 +113,7 @@ if (-not $AUTO){
   elseif ($pick -eq '5'){ $script:diag = $true }
   elseif ($pick -eq '6'){ Remove-Item $keyFile, $codeFile, $stateFile -ErrorAction SilentlyContinue; TaskRemove; Write-Host '전부 지웠어요. 다시 실행하면 처음부터 설정해요.'; return }
   elseif ($pick -eq '4'){
-    Write-Host '새 업비트 키를 넣어 주세요. (자산조회·주문조회만 켠 키)'
+    Write-Host '새 업비트 키를 넣어 주세요. (조회 권한만: 자산조회·주문조회·입금 조회·출금 조회)'
     $access = (Read-Host 'Access Key').Trim()
     $secret = (Plain (Read-Host 'Secret Key' -AsSecureString)).Trim()
     Set-Content -Path $keyFile -Value @($access, (Seal $secret))
@@ -131,10 +133,13 @@ if (-not $AUTO){
 
 # ---------- 기간: 지난번 이후 (하루 겹쳐서 받음, 중복은 서버가 건너뜀). 처음엔 묻거나 30일
 $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-if (($mode -eq 'file' -or -not $lastTo) -and -not $script:diag){
-  if ($AUTO){ $days = 30 } else {
-    $days = Read-Host '며칠치를 가져올까요? (엔터 = 30일, 최대 365)'
-    if (-not ($days -as [int])){ $days = 30 }; $days = [Math]::Min([int]$days, 365)
+if (($mode -eq 'file' -or -not $lastTo -or $script:full) -and -not $script:diag){
+  if ($AUTO){ $days = 30 } elseif ($script:full){
+    $y = Read-Host '몇 년 전부터 가져올까요? (엔터 = 5년, 최대 10) · 1주씩 확인해서 1년에 1~2분쯤 걸려요'
+    if (-not ($y -as [int])){ $y = 5 }; $days = [Math]::Min([int]$y, 10) * 366
+  } else {
+    $days = Read-Host '며칠치를 가져올까요? (엔터 = 30일, 최대 3650)'
+    if (-not ($days -as [int])){ $days = 30 }; $days = [Math]::Min([int]$days, 3650)
   }
   $from = $now - [int64]$days * 86400000
 } else { $from = [Math]::Max($lastTo - 86400000, $now - [int64]365 * 86400000) }
@@ -155,7 +160,7 @@ function Call($path, $query){
       if ($msg -match 'too_many_requests' -or $_.Exception.Response.StatusCode.value__ -eq 429){ Start-Sleep -Milliseconds (1000 * ($i + 1)); continue }
       if ($msg -match 'no_authorization_ip'){ $ip = ''; try { $ip = (Invoke-RestMethod -Uri 'https://api.ipify.org' -TimeoutSec 5) } catch {}; throw "허용되지 않은 IP예요. 업비트 Open API 관리에서 이 PC의 공인 IP($ip)를 키의 허용 IP에 넣어 주세요." }
       if ($msg -match 'nonce_used'){ Start-Sleep -Milliseconds 300; continue }
-      if ($msg -match 'out_of_scope'){ throw "키 권한이 부족해요. 자산조회·주문조회를 켜 주세요." }
+      if ($msg -match 'out_of_scope'){ throw "키 권한이 부족해요 ($path). 자산조회·주문조회(입출금까지 보려면 입금 조회·출금 조회도)를 켜 주세요." }
       if ($msg -match 'invalid_access_key'){ throw "Access Key가 맞지 않아요 ($path, 쓰는 키 $($access.Substring(0, [Math]::Min(6, $access.Length)))…). 도우미 4번으로 키만 다시 넣거나 5번(연결 점검)으로 확인해 주세요. 업비트 응답: $msg" }
       if ($msg -match 'jwt_verification'){ throw "Secret Key가 맞지 않아요 ($path). 도우미 4번으로 키만 다시 넣거나 5번(연결 점검)으로 확인해 주세요. 업비트 응답: $msg" }
       if ($msg -match 'expired_access_key'){ throw "업비트 키가 만료됐어요. 업비트에서 새로 발급해 주세요." }
@@ -192,8 +197,37 @@ function PushBalances(){
   }
 }
 
+# 원화 입금·출금 전체 → 전체 기간 손익(넣은 돈 대비). 6시간마다 한 번. 키에 '입금 조회'·'출금 조회' 권한이 있어야 함
+$script:flowAt = 0; $script:flowWarned = $false
+function FlowList($path, $state, $tag){
+  $out = @(); $page = 1
+  while ($page -le 200){
+    $r = @(Call $path "currency=KRW&state=$state&limit=100&page=$page&order_by=asc")
+    foreach ($x in $r){ $at = $(if ($x.done_at) { $x.done_at } else { $x.created_at }); $out += [ordered]@{ t = $tag; at = $at; amt = [double]$x.amount; fee = [double]$x.fee } }
+    if ($r.Count -lt 100){ break }
+    $page++; Start-Sleep -Milliseconds 150
+  }
+  return ,$out
+}
+function PushFlows(){
+  $t = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+  if ($t - $script:flowAt -lt 21600000){ return }
+  $script:flowAt = $t
+  try {
+    $f = @(FlowList 'deposits' 'ACCEPTED' 'd') + @(FlowList 'withdraws' 'DONE' 'w')
+    $body = @{ p_code = $code; p_flows = @($f) } | ConvertTo-Json -Depth 4 -Compress
+    $null = Invoke-RestMethod -Method Post -Uri "$SB_URL/rest/v1/rpc/q_upbit_flows_push" -Headers @{ apikey = $SB_KEY; Authorization = "Bearer $SB_KEY" } -ContentType 'application/json; charset=utf-8' -Body ($U8.GetBytes($body))
+    $script:flowWarned = $false
+    Say ("원화 입출금 {0}건 올림" -f $f.Count)
+  } catch {
+    $m = $_.Exception.Message
+    if ($m -match '권한'){ $m = "키에 '입금 조회'·'출금 조회' 권한이 없어 입출금을 못 가져왔어요. 업비트에서 두 권한을 켠 키로 바꾸면(4번) 전체 기간 손익이 보여요." }
+    if (-not $script:flowWarned){ Log ("입출금 올리기 실패: " + $m); $script:flowWarned = $true }
+  }
+}
+
 function SyncOnce($from, $now){
-  if ($mode -ne 'file'){ PushBalances }
+  if ($mode -ne 'file'){ PushBalances; PushFlows }
   Say '업비트에서 체결 내역 확인 중…'
   $accounts = @()
   if ($mode -eq 'file'){ $accounts = @(Call 'accounts' '') }
