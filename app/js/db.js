@@ -79,8 +79,22 @@ export async function loadBalances(){
 }
 export async function loadTrades(){
   if (!online()) return [];
-  try { return await q(() => db.client.from('q_trades').select('*').order('executed_at', { ascending: true }).limit(5000)); }
+  // 서버가 한 번에 1,000줄까지만 주므로 나눠서 받음 (몇 년치 가져오기 대비)
+  try {
+    const out = [];
+    for (let from = 0; from < 50000; from += 1000){
+      const r = await q(() => db.client.from('q_trades').select('*').order('executed_at', { ascending: true }).order('id', { ascending: true }).range(from, from + 999));
+      out.push(...(r || [])); if (!r || r.length < 1000) break;
+    }
+    return out;
+  }
   catch(e){ return []; }
+}
+// PC 도우미가 올린 원화 입금·출금 목록 (전체 기간 손익용). 표가 아직 없으면 null
+export async function loadFlows(){
+  if (!online()) return null;
+  try { const { data, error } = await db.client.from('q_upbit_flows').select('flows,at').limit(1); return !error && data && data[0] ? data[0] : null; }   // 표가 없어도 경고 띄우지 않음
+  catch(e){ return null; }
 }
 
 // ---------- 화면 배치 (PC 패널 크기·접힘)

@@ -29,6 +29,7 @@
       <button data-view="wiki" title="고른 종목의 위키 (오른쪽 분석 칸 아래)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 4h11l3 3v13H5z"/><path d="M9 10h6M9 14h6"/></svg>종목 위키</button>
       <button data-view="rebuy" title="재매수 후보"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12a8 8 0 0114-5l2 2M20 12a8 8 0 01-14 5l-2-2"/><path d="M20 4v5h-5M4 20v-5h5"/></svg>재매수</button>
       <button data-view="journal" title="거래일지"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18H6zM9 8h6M9 12h6"/></svg>거래일지</button>
+      <button data-view="trend" title="트렌드 리포트 — 실시간 뉴스(국내·해외 AI 요약) · 일간 동향 · 주간 동향"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v14H4z"/><path d="M8 15l3-3 2 2 4-4"/></svg>트렌드</button>
       <button data-view="strat" title="전략 검증 — 바닥 거래·눌림 매수를 과거 데이터로 돌려 보기, 급등 거래 적중률"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="4"/></svg>전략</button>
       <button data-view="assets" title="보유 자산 · 평가손익 · 수익률 (화면 전체로)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>자산</button>
       <button data-view="settings" title="설정"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>설정</button>
@@ -112,6 +113,11 @@
       <div class="body" id="inspBody"></div>
     </section>
 
+    <section class="panel" id="pTrend">
+      <header><h2>트렌드 리포트</h2><div class="grow"></div><span class="muted">뉴스 · 일간 · 주간 · Esc로 돌아가기</span></header>
+      <div class="body" id="trendBody"></div>
+    </section>
+
     <section class="panel" id="pStrat">
       <header><h2>전략 검증</h2><div class="grow"></div><span class="muted">과거 일봉으로 같은 규칙을 돌려 봐요 · Esc로 돌아가기</span></header>
       <div class="body" id="stratBody"></div>
@@ -167,6 +173,7 @@
   <!-- 첫 화면: 급등·급락 + 내 종목 -->
   <section class="m-page" data-p="home">
     <div id="mHero"></div>
+    <div id="mTrendCard"></div>
     <div class="m-sec" id="mSurgeSec"></div>
     <div class="m-sec">
       <div class="m-sec-h"><span class="m-h">내 종목</span><span class="muted">관심 · 보유</span><span class="grow"></span><button class="m-link" data-go="list" data-tab="all">전체 보기</button></div>
@@ -206,6 +213,8 @@
 
   <section class="m-page" data-p="hold"><div id="mHold"></div></section>
   <section class="m-page" data-p="strat"><div id="mStrat"></div></section>
+  <section class="m-page" data-p="trend"><div id="mTrend"></div></section>
+  <section class="m-page" data-p="orders"><div id="mOrders"><button class="estop m-estop" id="estopM">긴급 정지 · 모의 주문 전체 멈춤</button><div id="mOrdHost"></div></div></section>
   <section class="m-page" data-p="cfg"><div id="mCfgP"></div></section>
 
   <!-- 업비트 소식 -->
@@ -231,12 +240,14 @@
     </div>
     <div class="m-menu-g"><div class="m-menu-t">종목 보기</div>
       <button data-go="list" data-tab="all">전체 종목</button>
+      <button data-go="list" data-tab="fav">관심 종목</button>
       <button data-go="list" data-tab="pullback">눌림 매수</button>
       <button data-go="list" data-tab="bottom">바닥 반등</button>
       <button data-go="list" data-tab="new">신규 상장</button>
       <button data-go="list" data-tab="recent">최근 본 종목</button>
       <button data-go="list" data-tab="rebuy">재매수 후보</button>
       <button data-act="scan">전체 스캔 다시 하기</button>
+      <button data-go="trend">트렌드 리포트 <span class="muted">뉴스 · 일간 · 주간</span></button>
       <button data-go="strat">전략 검증 <span class="muted">바닥·눌림·급등</span></button>
     </div>
     <div class="m-menu-g"><div class="m-menu-t">기록</div>
@@ -244,6 +255,7 @@
       <button data-go="journal">거래일지</button>
       <button data-act="rec">기록 추가</button>
       <button data-act="paper">모의 주문</button>
+      <button data-go="orders" class="paper-only">모의 주문 내역 <span class="muted">미체결 · 예약 매도 · 긴급 정지</span></button>
       <button data-act="upbit">업비트 가져오기</button>
     </div>
     <div class="m-menu-g">
