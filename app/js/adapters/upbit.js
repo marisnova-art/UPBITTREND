@@ -9,25 +9,27 @@ export const EXCHANGE = 'upbit';
 export const toSymbol = market => `${EXCHANGE}:${market}`;
 export const toMarket = symbol => symbol.includes(':') ? symbol.split(':')[1] : symbol;
 
-const net = { via: 'direct', gap: CONFIG.api.minGapMs, lastAt: 0, okStreak: 0, rateHits: 0, requests: 0 };
+const net = { via: 'direct', gap: CONFIG.api.minGapMs, lastAt: 0, lastPrioAt: 0, okStreak: 0, rateHits: 0, requests: 0 };
 export const netStats = () => ({ ...net });
 
 const canProxy = () => /^https?:$/.test(location.protocol) && CONFIG.api.mode !== 'direct';
 if (CONFIG.api.mode === 'proxy' && canProxy()) net.via = 'proxy';
 
 // 모든 요청은 최소 간격을 예약하고 실행 (업비트 초당 10회 제한 아래로 유지)
-async function rateWait(){
+// prio: 지금 보는 차트처럼 바로 필요한 요청은 스캔이 예약해 둔 줄을 기다리지 않음 (간격만 지킴)
+async function rateWait(prio){
   const now = performance.now();
+  if (prio){ const t = Math.max(net.lastPrioAt + net.gap, now); net.lastPrioAt = t; if (t > now) await sleep(t - now); return; }
   const t = Math.max(net.lastAt + net.gap, now);
   net.lastAt = t;
   if (t > now) await sleep(t - now);
 }
 
 // 직접 호출 → 실패(CORS 등) 시 같은 도메인 프록시(/api/upbit)로 자동 전환. 429는 간격을 넓혀 재시도.
-export async function api(path){
+export async function api(path, { prio = false } = {}){
   let lastErr;
   for (let attempt = 0; attempt <= CONFIG.api.retries; attempt++){
-    await rateWait();
+    await rateWait(prio);
     const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), CONFIG.api.timeoutMs);
     try{
       net.requests++;
@@ -105,14 +107,14 @@ const toCandle = c => ({
   o: c.opening_price, h: c.high_price, l: c.low_price, c: c.trade_price, v: c.candle_acc_trade_volume, value: c.candle_acc_trade_price
 });
 // count가 200을 넘으면 'to'로 이어 받아 붙입니다(오래된 → 최신 순으로 반환).
-export async function getCandles(market, tf = '1d', { count = 200, to = null } = {}){
-  if (tf === '1y') return toYears(await getCandles(market, '1M', { count: 200, to }));
+export async function getCandles(market, tf = '1d', { count = 200, to = null, prio = false } = {}){
+  if (tf === '1y') return toYears(await getCandles(market, '1M', { count: 200, to, prio }));
   const path = TF_PATH[tf]; if (!path) throw new Error('지원하지 않는 시간 단위: ' + tf);
   let out = [], cursor = to;
   while (out.length < count){
     const n = Math.min(200, count - out.length);
     const q = `/candles/${path}?market=${market}&count=${n}` + (cursor ? '&to=' + encodeURIComponent(cursor) : '');
-    const raw = await api(q);
+    const raw = await api(q, { prio });
     if (!raw.length) break;
     out = out.concat(raw);
     cursor = raw[raw.length - 1].candle_date_time_utc + 'Z';
