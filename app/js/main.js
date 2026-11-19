@@ -82,11 +82,12 @@ async function boot(){
     for (const q of qs) S.quotes.set(q.market, q);
   }catch(e){
     $('#wlBody').innerHTML = `<div class="empty">업비트 시세를 불러오지 못했어요. (${esc(e.message)})<br>잠시 후 새로고침해 주세요.</div>`;
-    setWs('off'); return;
+    setWs('off'); window.__introDone && window.__introDone(); return;
   }
   S.watch = new Set(await loadWatchlist());
   recompute(); renderWatch();
   select(LS.get('quantera:sel', 'KRW-BTC'), { noRecent: true });
+  window.__introDone && window.__introDone();
   S.stream = upbit.stream(S.instruments.map(i => i.market), {
     ticker: onTick, orderbook: renderOrderbook, trade: onTrade, status: setWs
   });
