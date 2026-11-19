@@ -1400,3 +1400,68 @@ body.no-paper .paper-only{display:none!important}
   .chart-info .legend{justify-content:flex-end;align-self:flex-end;gap:6px}
   .chart-info .lbl-toggle{height:24px!important;min-height:24px!important;padding:0 9px!important;background:rgba(17,17,20,.85)}
 }
+
+/* 폰 홈: 시장 레이더 카드 (급등 · 급락 · 국프를 한 카드에. 위 '오늘의 동향' 카드와 같은 틀) */
+@media (max-width: 899px){
+  #mSurgeSec{margin:0;border:0}
+  .m-radar{margin:10px 14px 0;padding:4px 16px 12px;border-radius:22px;border:1px solid var(--line-2);background:var(--panel);display:flex;flex-direction:column;gap:10px}
+  .m-radar .m-sec-h{padding:0;min-height:40px}
+  .m-radar .m-link{font-size:var(--f-s);color:var(--muted);padding:6px 0}
+  .rd-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .rd-t{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;padding:10px;border-radius:14px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit;text-align:left}
+  .rd-l{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:var(--f-s);white-space:nowrap}
+  .rd-l i{width:6px;height:6px;border-radius:50%;background:var(--muted)}
+  .rd-l i.up{background:var(--up)} .rd-l i.down{background:var(--down)} .rd-l i.accent{background:var(--accent)}
+  .rd-l em{font-style:normal;color:var(--bg);background:var(--accent);border-radius:999px;padding:0 5px;margin-left:2px}
+  .rd-n{font-size:var(--f-l);line-height:1.3}
+  .rd-s{font-size:var(--f-s);color:var(--muted);line-height:1.4;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .rd-s b{font-weight:500}
+  .rd-t.on.k-surge{border-color:rgba(240,68,82,.45);background:rgba(240,68,82,.07)}
+  .rd-t.on.k-dump{border-color:rgba(76,141,255,.45);background:rgba(76,141,255,.07)}
+  .rd-t.on.k-kimp{border-color:rgba(198,244,50,.4);background:rgba(198,244,50,.06)}
+  .rd-t.new{animation:qblink 1s infinite}
+  .rd-t.new.k-dump{animation:qblinkdn 1s infinite}
+  .rd-sig{display:flex;flex-direction:column;gap:6px}
+  .rd-sh{display:flex;align-items:center;gap:8px;font-size:var(--f-s)}
+  .rd-sh .grow{flex:1}
+  .rd-sig .m-hs{padding:2px 0 4px;margin:0 -16px;padding-left:16px;padding-right:16px}
+  .rd-note{font-size:var(--f-s);color:var(--muted)}
+  .rd-foot{display:flex;align-items:center;gap:6px;font-size:var(--f-s);color:var(--muted);border-top:1px solid var(--line);padding-top:10px}
+  .rd-foot .grow{flex:1}
+  .rd-sw{display:inline-flex;align-items:center;gap:6px;border:0;background:none;color:var(--muted);font:inherit;padding:4px 0}
+  .rd-sw i{width:34px;height:20px;border-radius:999px;background:var(--accent);position:relative;flex:none}
+  .rd-sw i::after{content:'';position:absolute;right:2px;top:2px;width:16px;height:16px;border-radius:50%;background:var(--bg);transition:right .15s}
+  .rd-sw.off i{background:var(--line)} .rd-sw.off i::after{right:16px;background:var(--muted)}
+}
+
+/* 폰 하단: 메뉴는 따로 떨어진 동그란 유리 버튼(왼쪽), 홈~전략은 유리 캡슐 + 고른 탭은 라임 유리 방울 */
+@media (max-width: 899px){
+  .m-mbtn,.m-dock{
+    background:linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,.035) 45%,rgba(255,255,255,.06)),rgba(16,16,19,.55);
+    -webkit-backdrop-filter:blur(18px) saturate(1.8) brightness(1.08);backdrop-filter:blur(18px) saturate(1.8) brightness(1.08);
+    border:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.32),inset 0 -1px 0 rgba(0,0,0,.4),inset 0 0 0 1px rgba(255,255,255,.08),0 10px 30px rgba(0,0,0,.55)}
+  .m-mbtn::before,.m-dock::before{content:'';position:absolute;left:14%;right:14%;top:3px;height:36%;border-radius:999px;background:linear-gradient(180deg,rgba(255,255,255,.2),rgba(255,255,255,0));pointer-events:none}
+  .m-mbtn{position:fixed;left:12px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:62;width:62px;height:62px;border-radius:50%;display:grid;place-items:center;color:var(--accent);padding:0;
+    box-shadow:inset 0 0 0 1.5px rgba(198,244,50,.7),inset 0 1px 0 rgba(255,255,255,.32),0 10px 30px rgba(0,0,0,.55),0 0 16px rgba(198,244,50,.16)}
+  .m-mbtn svg{width:24px;height:24px;grid-area:1/1}
+  .m-mbtn .x{display:none}
+  .m-app.menu-open .m-mbtn .h{display:none} .m-app.menu-open .m-mbtn .x{display:block}
+  .m-dock,.m-dock{left:84px;right:12px;grid-template-columns:repeat(5,1fr);padding:4px;border-radius:999px;overflow:hidden}
+  .m-dock button{position:relative;z-index:1;margin:0;color:#c9c9cf;background:transparent!important}
+  .m-dock button.on{color:#f4ffd6}
+  .m-bub{position:absolute;top:4px;bottom:4px;left:4px;width:calc((100% - 8px) / 5);border-radius:999px;z-index:0;pointer-events:none;
+    background:radial-gradient(120% 90% at 50% 0%,rgba(230,255,140,.5),rgba(198,244,50,.26) 55%,rgba(198,244,50,.16));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.5),inset 0 -2px 6px rgba(0,0,0,.25),0 0 14px rgba(198,244,50,.22);
+    transition:transform .35s cubic-bezier(.3,1.3,.5,1),opacity .2s}
+}
+@media (min-width: 900px){ .m-mbtn{display:none} }
+@media (prefers-reduced-motion: reduce){ .m-bub{transition:none} }
+
+/* 내 자산 카드: 업비트 연결 점 */
+@media (max-width:899px){
+  .hx-c{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:var(--f-s);color:var(--muted)}
+  .hx-c i{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(198,244,50,.15)}
+  .hx-c.bad i{background:#F5A524;box-shadow:0 0 0 3px rgba(245,165,36,.18)}
+  .hx-c.bad{color:#F5A524}
+  .m-menu{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+}
