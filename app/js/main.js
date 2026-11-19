@@ -2368,7 +2368,7 @@ function mShow(page, opt = {}){
   const dk = { coin: 'list', search: 'list' }[page] || page;
   $$('#mDock [data-dk]').forEach(b => b.classList.toggle('on', b.dataset.dk === dk));
   $('#mTitle').textContent = page === 'list' ? (M_TABS.find(t => t[0] === PH.tab) || [, '종목'])[1] + ' 종목' : page === 'coin' ? nameOf(S.sel) : M_TITLES[page] || 'QUANTERA';
-  if (page === 'home') $('#mTitle').innerHTML = '<span class="logo"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C6F432" stroke-width="2.4" aria-hidden="true"><path d="M4 17l5-6 4 4 7-9"/></svg></i>QUANTERA</span>';
+  if (page === 'home') $('#mTitle').innerHTML = '<span class="logo"><i><svg width="20" height="20" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M33.5 12.5A15 15 0 1 0 36 30" stroke="#050506" stroke-width="5" stroke-linecap="round"/><path d="M12 31l8-8 6 5 16-17" stroke="#050506" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="42" cy="11" r="3.2" fill="#050506"/></svg></i>QUANTERA</span>';
   window.scrollTo(0, 0);
   if (page === 'search'){ setTimeout(() => $('#mSearch').focus(), 50); }
   if (page === 'coin') mSetCp(PH.cp);
