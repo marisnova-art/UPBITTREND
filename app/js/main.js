@@ -18,6 +18,8 @@ import { db, initDb, login, logout, loadWatchlist, setWatch, loadTrades, lastTra
 import { createPaper } from './paper.js';
 import { importMeta, toRow } from './upbitPrivate.js';
 import { FEE_RATE } from './analysis/ledger.js';
+import { inbox, INBOX_KINDS, KIND_KO as IB_KO } from './inbox.js';
+import { initMini, openMini, closeMini, miniOpen, miniSupported, miniUrgent, miniAck, miniCfg, saveMiniCfg, MINI_KINDS } from './mini.js';
 
 const STATUS_KO = { 'WAIT': '대기', 'WATCH': '관찰', 'ENTRY ZONE': '매수 검토', 'BREAKOUT WATCH': '돌파 대기', 'EXTENDED': '추격 주의', 'INSUFFICIENT DATA': '데이터 부족' };
 const RISK_KO = { 'LOW': '낮음', 'MEDIUM': '보통', 'HIGH': '높음', 'EXTREME': '매우 높음' };
@@ -324,6 +326,7 @@ setInterval(() => {
   for (const m of [...unseenDump]) if (!dump.events.has(m)) unseenDump.delete(m);
   if (fresh.length) notifySurge(fresh, false);
   if (freshDn.length) notifySurge(freshDn, true);
+  ibMarket(fresh, false); ibMarket(freshDn, true);
   if (fresh.length) sdHistAdd('surge', fresh);
   if (freshDn.length) sdHistAdd('dump', freshDn);
   if ((fresh.length && S.tab === 'surge') || (freshDn.length && S.tab === 'dump')) renderWatch();
@@ -367,9 +370,9 @@ function checkSellAlerts(cfg){
     if (st.acked || st.count >= max || (st.count && now - st.last < cfg.surgeRepeat * 1000)) continue;
     st.count++; st.last = now; changed = true;
     const nm = nameOf(upbit.toMarket(sym)), msg = `${nm} 매도 예약가 ${fmtPrice(x.tgt)} 도달 · 지금 ${fmtPrice(x.cur)}${x.pct != null ? ` · 매수가 대비 ${fmtPct(x.pct)}` : ''}`;
-    toast(`🔔 ${msg} (${st.count}/${max})`, 'warn');
+    if (st.count === 1) notify({ kind: 'trade', urgent: true, tone: 'warn', title: '매도 예약가 도달', body: msg, m: upbit.toMarket(sym), key: `sell:${sym}:${x.tgt}:${Math.floor(now / 3600000)}` });
+    else toast(`🔔 ${msg} (${st.count}/${max})`, 'warn');
     if (cfg.surgeAlarm) beep('sell');
-    if (st.count === 1 && 'Notification' in window && Notification.permission === 'granted'){ try { new Notification('매도 예약가 도달', { body: msg, tag: 'quantera-sell-' + sym, icon: './icons/icon-192.png' }); } catch(e){} }
   }
   if (changed || SA.size) renderSaBar();
   if (S.sel){ const x = saInfo(upbit.toSymbol(S.sel)); const k = x ? upbit.toSymbol(S.sel) + x.tgt + x.hit : ''; if (k !== saChartKey) applyGuideToChart(); }
@@ -766,7 +769,7 @@ function renderHead(){
   $('#chChg').textContent = fmtPct(q.changeRate); $('#chChg').className = 'mono ' + t;
   const rb = S.ledger.rebuy.find(x => upbit.toMarket(x.symbol) === S.sel);
   $('#chBadges').innerHTML = [rb ? '<span class="badge accent">재매수 기회</span>' : '', r && !r.insufficient ? `<span class="badge line">${esc(STAGE_KO[r.stage] || r.stage)}</span>` : ''].join(' ');
-  document.title = `${fmtPrice(q.price)} ${fmtPct(q.changeRate)} ${i.name}`;   // 탭: (아이콘) 현재가 등락률 종목명
+  setTitle(`${fmtPrice(q.price)} ${fmtPct(q.changeRate)} ${i.name}`);   // 탭: (아이콘) 현재가 등락률 종목명
 }
 function renderTf(){
   $('#tfTabs').innerHTML = CONFIG.timeframes.map(t => `<button class="pill${t.id === S.tf ? ' on' : ''}" data-tf="${t.id}">${t.label}</button>`).join('') + `<button class="pill m-only ob-tg${document.body.classList.contains('ob-big') ? ' on' : ''}" data-obtg title="호가를 크게 / 차트를 크게">호가 ${document.body.classList.contains('ob-big') ? '▾' : '▴'}</button>`;
@@ -1256,9 +1259,189 @@ function renderOrders(){
   labelTables($('#ordBody'));
 }
 // 화면 알림
-function toast(msg, tone = ''){
-  const el = document.createElement('div'); el.className = 'toast ' + tone; el.textContent = msg;
-  $('#toasts').appendChild(el); setTimeout(() => el.remove(), 7000);
+// 아래 토스트: 최대 3개만 보이고 나머지는 "+N개 더". 긴급(urgent)은 누를 때까지 남고, 일반은 7초 뒤 사라짐
+function toast(msg, tone = '', opt = {}){
+  const box = $('#toasts'), el = document.createElement('div');
+  el.className = 'toast ' + tone + (opt.urgent ? ' urgent' : '');
+  el.setAttribute('role', opt.urgent ? 'alert' : 'status');
+  el.innerHTML = `${opt.head ? `<b class="th">${esc(opt.head)}</b>` : ''}<span class="tt">${esc(msg)}</span>${opt.urgent ? '<span class="t-x">누르면 닫혀요</span>' : ''}`;
+  el.addEventListener('click', () => { el.remove(); if (opt.id){ inbox.read(opt.id); miniAck(opt.id); } if (opt.onClick) opt.onClick(); layoutToasts(); });
+  box.appendChild(el);
+  if (!opt.urgent) setTimeout(() => { el.remove(); layoutToasts(); }, 7000);
+  layoutToasts();
+}
+function layoutToasts(){
+  const box = $('#toasts'), all = $$('.toast', box);
+  const urg = all.filter(x => x.classList.contains('urgent')), gen = all.filter(x => !x.classList.contains('urgent'));
+  const show = new Set([...urg.reverse(), ...gen.reverse()].slice(0, 3));   // 긴급 먼저, 그다음 최신
+  for (const x of all) x.hidden = !show.has(x);
+  let more = $('.toast-more', box); const n = all.length - show.size;
+  if (n > 0){
+    if (!more){ more = document.createElement('button'); more.className = 'toast-more'; more.addEventListener('click', () => { for (const x of $$('.toast:not(.urgent)', box)) x.remove(); layoutToasts(); openInbox(); }); }
+    more.textContent = `+${n}개 더 · 알림함 보기`; box.appendChild(more);
+  } else if (more) more.remove();
+}
+
+// ---------------------------------------------------------------- 알림함 (폰 🔔 · PC 알림 메뉴) · 탭 제목 숫자 · 긴급 깜빡임
+const IB = { f: LS.get('quantera:ibF', 'all'), base: document.title, flash: null, blink: false, newIds: new Set(), down: false };
+if (!IB_KO[IB.f]) IB.f = 'all';
+function setTitle(t){ IB.base = t; paintTitle(); }
+function paintTitle(){
+  const n = inbox.unread(), t = (n ? `(${n > 99 ? '99+' : n}) ` : '') + IB.base;
+  document.title = IB.flash && IB.blink ? '⚠ ' + IB.flash.title : t;
+}
+// 긴급 알림: 다른 창을 보고 있을 때 탭 제목이 "⚠ …"로 깜빡임. 읽으면(토스트를 누르거나 알림함을 열면) 멈춤
+setInterval(() => {
+  if (!IB.flash) return;
+  if (IB.flash.read){ IB.flash = null; IB.blink = false; paintTitle(); return; }
+  IB.blink = (document.hidden || !document.hasFocus()) ? !IB.blink : false; paintTitle();
+}, 1000);
+// 알림 하나 올리기: 알림함에 쌓고, 토스트를 띄우고, 긴급이면 휴대폰·윈도우 알림도
+function notify(it, opt = {}){
+  const x = inbox.add(it); if (!x) return null;
+  if (opt.toast !== false) toast(x.short || x.body || '', x.tone || (x.urgent ? 'warn' : ''), { head: x.title, urgent: x.urgent, id: x.id, onClick: () => ibOpenItem(x) });
+  if (x.urgent) miniUrgent(x);
+  if ((x.urgent || opt.sys) && !(x.urgent && miniOpen() && !miniCfg().win) && 'Notification' in window && Notification.permission === 'granted'){
+    try { const n = new Notification((x.urgent ? '⚠ ' : '') + x.title, { body: x.body || '', tag: 'quantera-' + (x.key || x.id), icon: './icons/icon-192.png', requireInteraction: !!x.urgent }); n.onclick = () => { window.focus(); ibOpenItem(x); n.close(); }; } catch(e){}
+  }
+  if (x.urgent) IB.flash = x;
+  return x;
+}
+function ibOpenItem(x){
+  inbox.read(x.id);
+  if (x.m && S.byMarket.has(x.m)){ if (PH.on) mOpenCoin(x.m); else { setView('trade'); select(x.m); } }
+  else openInbox();
+}
+const inboxVisible = () => PH.on ? PH.page === 'noti' : document.body.dataset.view === 'noti';
+function openInbox(){ if (PH.on) mGo('noti'); else setView('noti'); }
+function inboxOpened(){ IB.newIds = new Set(inbox.list().filter(x => !x.read).map(x => x.id)); renderInbox(); inbox.readAll(); }
+function paintBadges(){
+  const n = inbox.unread(), t = n > 99 ? '99+' : String(n || '');
+  for (const id of ['mNotiN', 'railNotiN']){ const el = document.getElementById(id); if (el){ el.textContent = t; el.hidden = !n; } }
+  paintTitle();
+}
+inbox.on(x => {
+  if (x && inboxVisible() && !document.hidden){ IB.newIds.add(x.id); setTimeout(() => inbox.read(x.id), 0); }
+  paintBadges(); if (inboxVisible()) renderInbox();
+});
+const ibWhen = at => { const ms = Date.now() - at; if (ms < 86400000) return agoKo(ms); const d = new Date(at); return `${d.getMonth() + 1}/${d.getDate()} ${d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}`; };
+function inboxHtml(){
+  const f = IB.f, list = inbox.list(f);
+  const cnt = k => { const n = inbox.list(k).length; return n && k !== 'all' ? ` <span class="muted">${n}</span>` : ''; };
+  let perm = '';
+  if ('Notification' in window && Notification.permission === 'default') perm = `<div class="ib-perm"><span>긴급 알림(연결 끊김·IP 바뀜·매도 예약가 도달)을 휴대폰·윈도우 알림으로도 받을까요?</span><button class="pill accent sm" data-ibperm>알림 허용</button></div>`;
+  else if ('Notification' in window && Notification.permission === 'denied') perm = `<div class="ib-perm muted">브라우저에서 알림이 꺼져 있어요. 주소창 왼쪽 자물쇠 → 알림 허용을 켜면 긴급 알림이 휴대폰·윈도우 알림으로도 와요.</div>`;
+  const bar = `<div class="ib-bar">${INBOX_KINDS.map(([k, l]) => `<button class="qchip${f === k ? ' on' : ''}" data-ibf="${k}">${l}${cnt(k)}</button>`).join('')}<span class="grow"></span>${list.length ? `<button class="pill ghost sm" data-ibclr>${f === 'all' ? '모두' : IB_KO[f]} 지우기</button>` : ''}</div>`;
+  if (!list.length) return bar + perm + `<div class="ib-none">${f === 'all' ? '아직 알림이 없어요.<br>업비트 연결 끊김 · IP 바뀜 · 업비트 공지 · 매도 예약가 도달 · 급등락 · 내 코인 뉴스가 생기면 여기에 쌓여요.' : `${IB_KO[f]} 알림이 없어요.`}</div>`;
+  return bar + perm + `<ul class="ib-list">${list.slice(0, 150).map(x => {
+    const acts = [
+      x.ip ? `<button class="pill accent sm" data-ibcopy="${esc(x.ip)}">새 IP ${esc(x.ip)} 복사</button>` : '',
+      x.url ? `<a class="pill ghost sm" href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.urlLabel || '자세히')} ›</a>` : '',
+      x.m && S.byMarket.has(x.m) ? `<button class="pill ghost sm" data-ibm="${x.m}">${esc(nameOf(x.m))} 보기 ›</button>` : '',
+    ].join('');
+    return `<li class="ib-row k-${x.kind}${x.urgent ? ' urgent' : ''}${!x.read || IB.newIds.has(x.id) ? ' new' : ''}${x.tone ? ' t-' + x.tone : ''}"><i class="ib-dot"></i><div class="ib-m">
+      <div class="ib-t"><b>${esc(x.title)}</b><span class="badge line">${IB_KO[x.kind] || ''}</span>${x.urgent ? '<span class="badge warn">긴급</span>' : ''}<span class="grow"></span><span class="muted">${ibWhen(x.at)}</span></div>
+      ${x.body ? `<div class="ib-b">${esc(x.body)}</div>` : ''}${acts ? `<div class="ib-a">${acts}</div>` : ''}</div></li>`;
+  }).join('')}</ul>`;
+}
+function renderInbox(){ const h = inboxHtml(); for (const id of ['notiBody', 'mNotiBody']){ const el = document.getElementById(id); if (el) el.innerHTML = h; } }
+document.addEventListener('click', e => {
+  const f = e.target.closest('[data-ibf]'); if (f){ IB.f = f.dataset.ibf; LS.set('quantera:ibF', IB.f); renderInbox(); return; }
+  if (e.target.closest('[data-ibclr]')){ inbox.clear(IB.f); IB.newIds.clear(); return; }
+  if (e.target.closest('[data-ibperm]')){ Notification.requestPermission().then(renderInbox, renderInbox); return; }
+  const c = e.target.closest('[data-ibcopy]'); if (c){ const ip = c.dataset.ibcopy; (navigator.clipboard ? navigator.clipboard.writeText(ip) : Promise.reject()).then(() => toast(`${ip} 복사했어요. 업비트 Open API 관리 → 키의 허용 IP에 붙여 넣어 주세요.`), () => toast(`새 IP: ${ip}`)); return; }
+  const m = e.target.closest('[data-ibm]'); if (m){ const mk = m.dataset.ibm; if (PH.on) mOpenCoin(mk); else { setView('trade'); select(mk); } }
+});
+// ---------------------------------------------------------------- PC 미니 창
+function miniItems(c){
+  const out = [], seen = new Set();
+  const row = (k, m, sub) => { const i = S.byMarket.get(m), q = S.quotes.get(m) || {}; if (!i || q.price == null) return; out.push({ k, m, name: i.name, sym: m.replace(/^KRW-/, ''), price: fmtPrice(q.price), pct: q.changeRate, sub }); };
+  if (c.hold){ const H = holdData(); for (const p of H.pos){ const m = upbit.toMarket(p.symbol); seen.add(m); row('hold', m, p.pct != null ? `평단 ${fmtPrice(p.avg)} · ${fmtPct(p.pct)}` : '보유'); } }
+  if (c.fav) for (const sym of S.watch){ const m = upbit.toMarket(sym); if (!seen.has(m)) row('fav', m, '관심'); }
+  if (c.up) for (const m of sdList('surge').slice(0, 8)) row('up', m, surgeText(m, surge.get(m)));
+  if (c.dn) for (const m of sdList('dump').slice(0, 8)) row('dn', m, surgeText(m, dump.get(m)));
+  return out;
+}
+initMini({
+  items: miniItems,
+  summary(){ if (S.acct !== 'paper' && !db.user) return null; const H = holdData(); if (!H.pos.length) return { text: '보유 없음', tone: 'mut' }; return { text: `${signWon(H.pnl)} · ${fmtPct(H.pct)}`, tone: H.pnl > 0 ? 'up' : H.pnl < 0 ? 'dn' : 'mut' }; },
+  open(m){ try { window.focus(); } catch(e){} if (S.byMarket.has(m)){ setView('trade'); select(m); } },
+  ack(id){ inbox.read(id); },
+  beep(){ beep('sell'); },
+  onState(on){ const b = $('#miniBtn'); if (b){ b.classList.toggle('on', on); b.textContent = on ? '미니 창 닫기' : '미니 창'; } if (document.body.dataset.view === 'settings') renderMiniCfg(); },
+});
+async function toggleMini(){
+  if (miniOpen()){ closeMini(); return; }
+  if (!miniSupported()){ toast('미니 창은 PC 크롬·엣지(116 이상)에서만 열려요.'); return; }
+  try { await openMini(); } catch(e){ toast('미니 창을 열지 못했어요. 버튼을 다시 눌러 주세요.'); }
+}
+function miniCfgHtml(){
+  const c = miniCfg(), seg = (k, opts) => `<span class="mini-seg">${opts.map(([v, l]) => `<button type="button" class="${String(c[k]) === String(v) ? 'on' : ''}" data-mseg="${k}" data-v="${v}">${l}</button>`).join('')}</span>`;
+  const chk = (k, l) => `<label class="mini-chk"><input type="checkbox" data-mchk="${k}"${c[k] ? ' checked' : ''}>${l}</label>`;
+  return `<h4>미니 창 <span class="muted">PC 크롬·엣지 · 다른 프로그램 위에 떠 있는 작은 창 · 바꾸면 바로 적용 · 이 PC에 저장</span></h4>
+    <div class="mini-cfg">
+      <div class="mini-row"><span class="muted">보여 줄 것</span><span class="mini-chips">${MINI_KINDS.map(([k, l]) => chk(k, l)).join('')}</span></div>
+      <div class="mini-row"><span class="muted">넘어가는 간격</span>${seg('iv', [[3, '3초'], [5, '5초'], [10, '10초'], [30, '30초']])}</div>
+      <div class="mini-row"><span class="muted">돌아가는 시간대</span>${seg('mode', [['all', '항상'], ['range', '정한 시간만']])}${c.mode === 'range' ? `<span class="mini-time"><input type="time" data-mtime="t1" value="${esc(c.t1)}"> 부터 <input type="time" data-mtime="t2" value="${esc(c.t2)}"> 까지</span>` : ''}</div>
+      <div class="mini-row"><span class="muted">긴급 알림이 오면</span><span class="mini-chips">${chk('blink', '창 테두리 깜빡임')}${chk('sound', '소리')}${chk('win', '윈도우 알림도')}</span></div>
+      <div class="mini-row"><span class="muted"></span><span class="mini-chips"><button type="button" class="pill accent sm" data-mini-open>${miniOpen() ? '미니 창 닫기' : '미니 창 열기'}</button><span class="muted">${miniSupported() ? '시간 밖에는 "쉬는 중"으로 바뀌고 긴급 알림만 와요. 긴급 = 매도 예약가 도달 · 업비트 연결 끊김 · IP 바뀜 · 보유 코인 급락.' : '이 브라우저는 미니 창을 못 열어요. PC 크롬·엣지 최신 버전에서 열어 주세요.'}</span></span></div>
+    </div>`;
+}
+function renderMiniCfg(){ const el = $('#miniCfg'); if (el) el.innerHTML = miniCfgHtml(); }
+document.addEventListener('click', e => {
+  if (e.target.closest('#miniBtn, [data-mini-open]')){ e.preventDefault(); toggleMini().then(renderMiniCfg); return; }
+  const sg = e.target.closest('[data-mseg]'); if (sg){ e.preventDefault(); const c = miniCfg(); c[sg.dataset.mseg] = sg.dataset.mseg === 'iv' ? +sg.dataset.v : sg.dataset.v; saveMiniCfg(c); renderMiniCfg(); }
+});
+document.addEventListener('change', e => {
+  const k = e.target.closest('[data-mchk]'); if (k){ const c = miniCfg(); c[k.dataset.mchk] = k.checked; saveMiniCfg(c); return; }
+  const t = e.target.closest('[data-mtime]'); if (t){ const c = miniCfg(); c[t.dataset.mtime] = t.value; saveMiniCfg(c); }
+});
+
+// 업비트 연결: PC 도우미가 30초마다 올리는 잔고가 10분 넘게 안 오거나, 도우미가 오류(허용 IP 등)를 올리면 긴급 알림
+function ibConn(){
+  if (!db.user || !S.bal || !S.bal.at) return;
+  const b = S.bal, at = Date.parse(b.at), hm = new Date(at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+  if (b.err && b.err_at && Date.parse(b.err_at) > at){
+    const isIp = /IP/.test(b.err) || !!b.ip;
+    notify(isIp
+      ? { kind: 'conn', urgent: true, tone: 'warn', title: '업비트 허용 IP가 바뀌었어요', body: `PC의 공인 IP가 ${b.ip || '바뀐 주소'}로 바뀌어 업비트가 막았어요. 업비트 Open API 관리에서 키의 허용 IP를 새 IP로 바꿔 주세요. 바꾸면 도우미가 5분 안에 다시 올려요.`, short: `새 IP ${b.ip || '확인 필요'} · 업비트에서 키의 허용 IP를 바꿔 주세요`, ip: b.ip || '', url: 'https://upbit.com/mypage/open_api_management', urlLabel: '업비트 Open API 관리', key: 'conn:ip:' + (b.ip || '') + ':' + b.at }
+      : { kind: 'conn', tone: 'warn', title: 'PC 도우미 오류', body: b.err, key: 'conn:err:' + b.err.slice(0, 40) + ':' + b.at });
+    IB.down = true; return;
+  }
+  if (Date.now() - at > 600000){
+    notify({ kind: 'conn', urgent: true, tone: 'warn', title: '업비트 연결 끊김', body: `${hm} 이후로 잔고가 안 올라와요. PC가 꺼졌거나 도우미 창이 닫혔는지, IP가 바뀌었는지 확인해 주세요.`, short: `${hm} 이후 잔고가 안 올라와요 · PC 도우미를 확인해 주세요`, key: 'conn:stale:' + b.at });
+    IB.down = true;
+  } else if (IB.down){
+    IB.down = false;
+    notify({ kind: 'conn', tone: 'up', title: '업비트 다시 연결됨', body: `${hm}에 잔고가 다시 올라왔어요.`, key: 'conn:ok:' + b.at });
+  }
+}
+setInterval(ibConn, 60000);
+// 업비트 공지: 새로 올라온 공지를 알림함에. 내 코인(보유·관심)의 유의·거래지원 종료 같은 공지는 긴급
+const IB_HOT = /거래지원 종료|유의 종목|거래 유의|입출금 중단|상장폐지|거래정지/;
+function ibNotices(j){
+  const items = (j && j.items) || []; if (!items.length) return;
+  const seenRaw = LS.get('quantera:ibSeenN', null), seen = new Set(seenRaw || []);
+  const mine = [...new Set([...S.ledger.positions.map(p => upbit.toMarket(p.symbol)), ...[...S.watch].map(upbit.toMarket)])].map(m => S.byMarket.get(m)).filter(Boolean);
+  if (seenRaw) for (const n of items.slice(0, 30).reverse()){
+    const id = n.url || n.title; if (seen.has(id) || (n.at && Date.now() - Date.parse(n.at) > 2 * 86400000)) continue;
+    const my = mine.find(i => newsFor([n], i).length), hot = IB_HOT.test(n.title);
+    notify({ kind: 'notice', title: my ? `업비트 공지 · ${my.name}` : '업비트 공지', body: n.title, url: n.url, urlLabel: '공지 열기', m: my ? my.market || undefined : undefined, urgent: !!(hot && my), tone: hot ? 'warn' : '', key: 'n:' + id }, { toast: !!my || hot });
+  }
+  LS.set('quantera:ibSeenN', items.slice(0, 200).map(n => n.url || n.title));
+}
+// 급등·급락: 알림함에 기록. 보유·관심 종목이면 토스트, 보유 종목 급락은 긴급
+function ibMarket(ms, isDump){
+  if (!ms.length || surgeMuted()) return;
+  const held = new Set(S.ledger.positions.map(p => upbit.toMarket(p.symbol))), fav = new Set([...S.watch].map(upbit.toMarket));
+  const lab = isDump ? '급락' : '급등', mine = ms.filter(m => held.has(m) || fav.has(m)), slot = Math.floor(Date.now() / 60000);
+  const names = ms.slice(0, 6).map(sdNm).join(', ') + (ms.length > 6 ? ` 외 ${ms.length - 6}` : '');
+  const others = ms.filter(m => !mine.includes(m));
+  if (others.length) notify({ kind: 'market', title: `${lab} ${others.length}종목`, body: others.length === ms.length ? names : others.slice(0, 6).map(sdNm).join(', '), m: others.length === 1 ? others[0] : undefined, tone: isDump ? 'down' : 'up', key: `${lab}:${others.join(',')}:${slot}` }, { toast: false });
+  for (const m of mine){
+    const q = S.quotes.get(m) || {}, h = held.has(m);
+    notify({ kind: 'market', title: `${h ? '보유' : '관심'} ${sdNm(m)} ${lab}`, body: `지금 ${fmtPrice(q.price)} · ${fmtPct(q.changeRate)}`, m, urgent: h && isDump, tone: isDump ? 'down' : 'up', key: `${lab}:${m}:${slot}` });
+  }
 }
 let paperRaf = false;
 paper.on('change', () => {
@@ -1281,8 +1464,7 @@ paper.on('bracket', ({ bracket, kind, trade }) => {
   const nm = (S.byMarket.get(upbit.toMarket(trade.symbol)) || {}).name || trade.symbol;
   const net = trade.qty * trade.price * (1 - FEE_RATE) - trade.qty * bracket.entry * (1 + FEE_RATE);
   const msg = `${kind === 'tp' ? '익절' : '손절'} 도달 · ${nm} ${fmtPrice(trade.price)}에 모의 매도 · ${net > 0 ? '+' : ''}${won(net)}원`;
-  toast(msg, kind === 'tp' ? 'up' : 'down'); beep('etc');
-  if ('Notification' in window && Notification.permission === 'granted') try { new Notification('모의 ' + (kind === 'tp' ? '익절' : '손절'), { body: msg, tag: 'quantera-paper-' + bracket.id, icon: './icons/icon-192.png' }); } catch(e){}
+  notify({ kind: 'trade', title: '모의 ' + (kind === 'tp' ? '익절' : '손절'), body: msg, m: upbit.toMarket(trade.symbol), tone: kind === 'tp' ? 'up' : 'down', key: 'paper:' + bracket.id }, { sys: true }); beep('etc');
 });
 
 // ---------------------------------------------------------------- 보유 자산 (실제 | 모의)
@@ -1443,8 +1625,9 @@ let flowsAt = 0;
 async function loadBal(){
   if (!db.user) return;
   if (Date.now() - flowsAt > 600000){ flowsAt = Date.now(); loadFlows().then(f => { if (f){ S.flows = f; if (isHoldOpen()) renderHold(); if (PH.on && PH.page === 'hold') $('#mHold').innerHTML = mHoldHtml(); } }); }
-  const b = await loadBalances(); if (!b || b.at === balMark) return;
-  balMark = b.at; S.bal = b;
+  const b = await loadBalances(); if (b && b.err_at !== (S.bal || {}).err_at && b.at === balMark){ S.bal = b; ibConn(); }
+  if (!b || b.at === balMark) return;
+  balMark = b.at; S.bal = b; ibConn();
   recompute(); await reconcileCarry();
   renderStatus(); if (S.tab === 'hold') renderWatch(); if (isHoldOpen()) renderHold(); if (PH.on && PH.page === 'hold') $('#mHold').innerHTML = mHoldHtml();
 }
@@ -1975,6 +2158,7 @@ function setView(v, opt = {}){
   if (v === 'assets') $('#jTabs [data-j="hold"]').click();
   if (v === 'strat') renderStrat();
   if (v === 'trend') renderTrend();
+  if (v === 'noti') inboxOpened();
   if (v === 'wiki'){ const w = $('#wikiSec'); if (w){ w.open = true; LS.set('quantera:wikiOpen', true); requestAnimationFrame(() => w.scrollIntoView({ block: 'start' })); } }
   if (matchMedia('(max-width: 899px)').matches){
     if (v === 'journal' || v === 'assets') setMobile('journal');
@@ -2161,13 +2345,15 @@ async function renderNews(){
   const note = (j.error || (srcs.length && failed === srcs.length)) ? '업비트 소식을 불러오지 못했어요. 잠시 후 다시 시도해요.' : '최근 소식이 없어요.';
   const html = newsHtml(j.items || [], esc, { empty: note, limit: 40 });
   $('#newsBody').innerHTML = html; $('#alertBody').innerHTML = html;
+  ibNotices(j);
   renderInspNews(j);
 }
 function renderInspNews(j){
   const el = $('#inspNews'); if (!el || !j || !el.isConnected) return;
   el.innerHTML = newsHtml(newsFor(j.items || [], S.byMarket.get(S.sel)), esc, { empty: '최근 이 종목 관련 공지·공시가 없어요.', limit: 6 });
 }
-setInterval(() => { if (document.visibilityState === 'visible') loadNews(true).then(renderNews); }, 300000);
+setInterval(() => { loadNews(true).then(renderNews); }, 300000);   // 창이 뒤에 있어도 새 공지를 알림함에
+setTimeout(() => loadNews().then(renderNews), 6000);
 
 // ---------------------------------------------------------------- 매수 검토 기준 설정
 const CFG_FIELDS = [
@@ -2230,7 +2416,7 @@ function openCfg(c = allCfg()){
 }
 function closeCfg(){ if (PH.on) history.length > 1 ? history.back() : mGo('home'); else setView('trade'); }
 function renderCfg(c = allCfg()){
-  $('#cfgBody').innerHTML = appCfgHtml() + CFG_FIELDS.map(([title, fs]) => `<h4>${title}</h4>` + fs.map(([k, label, unit]) => unit === 'sound'
+  $('#cfgBody').innerHTML = `<div id="miniCfg" class="hide-m">${miniCfgHtml()}</div>` + appCfgHtml() + CFG_FIELDS.map(([title, fs]) => `<h4>${title}</h4>` + fs.map(([k, label, unit]) => unit === 'sound'
     ? `<label>${label}<span class="row-btns"><select name="${k}">${Object.entries(SOUNDS).map(([id, [nm]]) => `<option value="${id}"${c[k] === id ? ' selected' : ''}>${nm}</option>`).join('')}</select><button type="button" class="pill sm" data-preview="${k}">듣기</button></span></label>`
     : unit === 'text'
     ? `<label>${label}<input type="text" name="${k}" value="${esc(c[k])}"></label>`
@@ -2326,7 +2512,7 @@ function bindMobile(){
 // PC는 HTS처럼 여러 칸을 한 화면에, 폰은 한 화면에 한 가지만 크게. 나머지는 ☰ 메뉴.
 // PC 칸에서 쓰던 요소(차트·호가·분석·거래일지)는 폰일 때 아래 화면으로 옮겨 그대로 씀.
 const PH = { page: 'home', tab: 'all', cp: LS.get('quantera:mCp', 'chart'), on: false };
-const M_TITLES = { trend: '트렌드 리포트', orders: '모의 주문 내역', cfg: '설정', hold: '보유 자산', home: 'QUANTERA', list: '종목', search: '종목 검색', journal: '거래일지', news: '업비트 소식', strat: '전략 검증' };
+const M_TITLES = { trend: '트렌드 리포트', orders: '모의 주문 내역', cfg: '설정', hold: '보유 자산', home: 'QUANTERA', list: '종목', search: '종목 검색', journal: '거래일지', news: '업비트 소식', strat: '전략 검증', noti: '알림' };
 const M_TABS = [['all', '전체'], ['fav', '관심'], ['hold', '보유'], ['pullback', '눌림'], ['bottom', '바닥'], ['new', '신규'], ['surge', '급등'], ['dump', '급락'], ['lead', '선행'], ['kimp', '국프'], ['recent', '최근'], ['rebuy', '재매수']];
 function initPhone(){
   if (!isPhone()) return;
@@ -2378,6 +2564,7 @@ function mShow(page, opt = {}){
   if (page === 'journal') renderJournal();
   if (page === 'strat') renderStrat();
   if (page === 'trend') renderTrend();
+  if (page === 'noti') inboxOpened();
   if (page === 'orders'){ $('#ordBody').classList.remove('hidden'); renderOrders(); }
   if (page === 'hold') $('#mHold').innerHTML = mHoldHtml();
   if (page === 'news') renderNews().then(() => { $('#mNewsAll').innerHTML = $('#newsBody').innerHTML; });
@@ -2439,6 +2626,7 @@ function mHeroHtml(){
 // 내 자산 카드 아래 작은 연결 점: 라임 = 정상, 주황 = 10분 넘게 잔고가 안 올라옴(도우미 꺼짐·IP 바뀜 등)
 function mConnHtml(){
   if (!S.bal || !S.bal.at) return `<div class="hx-c bad"><i></i>업비트 미연결 · 거래일지 기준</div>`;
+  if (S.bal.err && S.bal.err_at && Date.parse(S.bal.err_at) > Date.parse(S.bal.at)) return `<div class="hx-c bad"><i></i>${S.bal.ip ? `IP 바뀜 · 새 IP ${esc(S.bal.ip)}` : '도우미 오류 · 알림 확인'}</div>`;
   const t = Date.parse(S.bal.at), age = Date.now() - t, d = new Date(t);
   const hm = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
   const when = new Date().toDateString() === d.toDateString() ? hm : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
@@ -2646,10 +2834,12 @@ async function trTick(){
   const ctx = trendCtx(), fresh = freshMine(j, ctx.mine);
   for (const n of fresh.slice(0, 3)){
     const msg = `${n.m === '+' ? '호재' : n.m === '-' ? '악재' : '소식'} · ${(n.c || []).map(c => ctx.names.get(c) || c).join(', ')}: ${n.t}`;
-    toast(msg, n.m === '+' ? 'up' : n.m === '-' ? 'down' : '');
-    if ('Notification' in window && Notification.permission === 'granted') try { new Notification('내 코인 뉴스', { body: msg, tag: 'quantera-news-' + n.id, icon: './icons/icon-192.png' }); } catch(e){}
+    const c0 = (n.c || [])[0];
+    notify({ kind: 'news', title: '내 코인 뉴스', body: msg, m: c0 ? 'KRW-' + c0 : undefined, url: n.u || n.url || undefined, urlLabel: '기사 열기', tone: n.m === '+' ? 'up' : n.m === '-' ? 'down' : '', key: 'news:' + n.id }, { sys: true });
   }
   if (trVisible() && TRD.tab === 'news') trPaint();
   if (PH.on){ await loadTrend('daily'); if (PH.page === 'home') $('#mTrendCard').innerHTML = homeCardHtml(trendCached('daily')); }
 }
 setTimeout(trTick, 8000); setInterval(trTick, 10 * 60000);
+
+paintBadges();

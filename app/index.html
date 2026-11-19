@@ -39,10 +39,10 @@
 <script type="module" src="./js/main.js"></script>
 </head>
 <body data-m="list" data-mt="book">
-<div id="intro" data-ver="1.0.2" aria-label="QUANTERA v1.0.2">
+<div id="intro" data-ver="1.1.0" aria-label="QUANTERA v1.1.0">
   <div class="tile"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path class="rg" pathLength="100" d="M33.5 12.5A15 15 0 1 0 36 30" stroke="#050506" stroke-width="5" stroke-linecap="round"/><path class="ln" pathLength="100" d="M12 31l8-8 6 5 16-17" stroke="#050506" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle class="dt" cx="42" cy="11" r="3.2" fill="#050506"/></svg></div>
   <div class="nm">QUANTERA</div>
-  <div class="vr">v1.0.2</div>
+  <div class="vr">v1.1.0</div>
   <div class="bd">2026.11.20 빌드</div>
 </div>
 <script>
@@ -65,11 +65,13 @@
       <button data-view="trend" title="트렌드 리포트 — 실시간 뉴스(국내·해외 AI 요약) · 일간 동향 · 주간 동향"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v14H4z"/><path d="M8 15l3-3 2 2 4-4"/></svg>트렌드</button>
       <button data-view="strat" title="전략 검증 — 바닥 거래·눌림 매수를 과거 데이터로 돌려 보기, 급등 거래 적중률"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="4"/></svg>전략</button>
       <button data-view="assets" title="보유 자산 · 평가손익 · 수익률 (화면 전체로)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>자산</button>
+      <button data-view="noti" title="알림함 — 연결 · 업비트 공지 · 매매 · 뉴스 · 급등락"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4z"/><path d="M10 21h4"/></svg>알림<i class="rail-n" id="railNotiN" hidden></i></button>
       <button data-view="settings" title="설정"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>설정</button>
     </nav>
     <div class="sd-wrap" id="sdWrap"><div class="sd-chips" id="sdChips" role="status"></div></div>
     <div class="grow"></div>
     <div class="chips">
+      <button class="pill ghost sm hide-m" id="miniBtn" title="미니 창 — 다른 프로그램 위에 떠 있는 작은 시세 창 (크롬·엣지)">미니 창</button>
       <span class="hide-m" id="exchangeChip">업비트 · 원화</span>
       <span class="ws-chip"><span class="dot" id="wsDot"></span> <span id="wsText">연결 중</span></span>
       <button class="iconbtn sound-btn" data-sound></button>
@@ -151,6 +153,11 @@
       <div class="body" id="trendBody"></div>
     </section>
 
+    <section class="panel" id="pNoti">
+      <header><h2>알림</h2><div class="grow"></div><span class="muted">연결 · 업비트 공지 · 매매 · 뉴스 · 급등락 · 최근 7일 · Esc로 돌아가기</span></header>
+      <div class="body" id="notiBody"></div>
+    </section>
+
     <section class="panel" id="pStrat">
       <header><h2>전략 검증</h2><div class="grow"></div><span class="muted">과거 일봉으로 같은 규칙을 돌려 봐요 · Esc로 돌아가기</span></header>
       <div class="body" id="stratBody"></div>
@@ -200,6 +207,7 @@
     <div class="m-ttl" id="mTitle">QUANTERA</div>
     <button class="m-ib sound-btn" data-sound></button>
     <button class="m-ib" id="mFind" aria-label="종목 검색"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4-4"/></svg></button>
+    <button class="m-ib m-noti" data-go="noti" aria-label="알림"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4z"/><path d="M10 21h4"/></svg><i id="mNotiN" hidden></i></button>
     <button class="m-ib" id="mCfg" data-act="cfg" aria-label="설정"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
   </header>
 
@@ -251,6 +259,7 @@
   <section class="m-page" data-p="cfg"><div id="mCfgP"></div></section>
 
   <!-- 업비트 소식 -->
+  <section class="m-page" data-p="noti"><div id="mNotiBody"></div></section>
   <section class="m-page" data-p="news"><div id="mNewsAll"><div class="empty">불러오는 중…</div></div></section>
 
 

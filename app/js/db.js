@@ -74,7 +74,7 @@ export async function lastTradeId(){
 // PC 도우미가 올린 업비트 잔고 (최신 한 줄). 표가 아직 없으면 null
 export async function loadBalances(){
   if (!online()) return null;
-  try { const r = await q(() => db.client.from('q_upbit_balances').select('accounts,at').limit(1)); return r && r[0] ? r[0] : null; }
+  try { const r = await q(() => db.client.from('q_upbit_balances').select('*').limit(1)); return r && r[0] ? r[0] : null; }
   catch(e){ return null; }
 }
 export async function loadTrades(){

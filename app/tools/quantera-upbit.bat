@@ -180,6 +180,14 @@ function Push($chunk){
   }
 }
 
+# 업비트 오류(허용 IP 바뀜 등)를 QUANTERA에 알림 → 앱 알림함에 "IP 바뀜 · 새 IP"가 뜸. 실패해도 조용히 넘어감
+function PushStatus($err){
+  $ip = ''; if ("$err" -match '공인 IP\(([0-9a-fA-F\.:]+)\)'){ $ip = $Matches[1] }
+  try {
+    $body = @{ p_code = $code; p_err = "$err"; p_ip = $ip } | ConvertTo-Json -Compress
+    $null = Invoke-RestMethod -Method Post -Uri "$SB_URL/rest/v1/rpc/q_upbit_status_push" -Headers @{ apikey = $SB_KEY; Authorization = "Bearer $SB_KEY" } -ContentType 'application/json; charset=utf-8' -Body ($U8.GetBytes($body))
+  } catch {}
+}
 # 업비트 잔고(보유 코인·평단)를 체결과 같이 30초마다 올림 → QUANTERA 보유 자산이 업비트와 똑같이 보임
 $script:balAt = 0; $script:balWarned = $false
 function PushBalances(){
@@ -194,6 +202,7 @@ function PushBalances(){
   } catch {
     $script:balAt = $t + 270000   # 실패하면 5분 뒤 다시
     if (-not $script:balWarned){ Log ("잔고 올리기 실패: " + $_.Exception.Message + " " + "$($_.ErrorDetails.Message)"); $script:balWarned = $true }
+    PushStatus $_.Exception.Message
   }
 }
 
