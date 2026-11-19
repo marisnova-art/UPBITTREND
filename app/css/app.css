@@ -148,6 +148,7 @@ a{color:var(--accent)} a:hover{color:var(--accent)}
 .chart-head .px{font-size:var(--f-l);font-weight:500}
 .chart-wrap{position:relative;flex:1;min-height:0}
 .chart-wrap .tv{position:absolute;inset:0}
+.chart-wrap .chart-err{position:absolute;inset:0;z-index:6;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(0,0,0,.72);color:var(--fg,#EDEDEF);font-size:12px}
 .attrib{position:absolute;left:10px;bottom:6px;z-index:3;font-size:var(--f-s);color:var(--muted);text-decoration:none}
 .chart-info{position:absolute;left:12px;right:90px;top:8px;z-index:3;display:flex;flex-direction:column;gap:6px;pointer-events:none}
 .ohlc{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:var(--f-s);align-items:baseline}

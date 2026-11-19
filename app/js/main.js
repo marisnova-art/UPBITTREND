@@ -56,7 +56,11 @@ async function boot(){
   initTips();
   bindUi();
   await waitFor(() => window.LightweightCharts, 8000);
-  chart = createChart($('#tv'), $('#legend'), $('#ohlc'));
+  try{ chart = createChart($('#tv'), $('#legend'), $('#ohlc')); }
+  catch(e){   // 차트 프로그램이 늦게 오면 앱은 먼저 띄우고, 도착하는 대로 차트를 붙임
+    chart = null;
+    waitFor(() => window.LightweightCharts, 30000).then(() => { try{ chart = createChart($('#tv'), $('#legend'), $('#ohlc')); if (S.sel) loadChart(); }catch(_){} });
+  }
   renderTf();
 
   initDb().catch(() => {});
@@ -705,14 +709,36 @@ async function select(market, { noRecent = false } = {}){
   }catch(e){ if (S.sel === market) $('#inspBody').innerHTML = `<div class="empty">분석 실패: ${esc(e.message)}</div>`; }
 }
 let chartTok = 0;
+// 차트 캔들: 스캔보다 먼저(prio) 받고, 실패하면 3번까지 다시 받음. 그래도 안 되면 차트 칸에 '다시 시도' 버튼.
 async function loadChart(){
   const tok = ++chartTok, m = S.sel, tf = S.tf;
-  try{
-    const rows = await upbit.getCandles(m, tf, { count: tf === '1d' ? 300 : tf === '1M' ? 200 : 400 });
-    if (tok !== chartTok) return;
-    chart.setData(rows, tf); applyGuideToChart();
-  }catch(e){ /* 차트 실패는 조용히 */ }
+  chartErr(false);
+  if (!chart){ chartErr(true, '차트 프로그램을 불러오지 못했어요'); return; }
+  let lastErr;
+  for (let i = 0; i < 3; i++){
+    try{
+      const rows = await upbit.getCandles(m, tf, { count: tf === '1d' ? 300 : tf === '1M' ? 200 : 400, prio: true });
+      if (tok !== chartTok) return;
+      if (!rows.length) throw new Error('캔들 없음');
+      chart.setData(rows, tf); applyGuideToChart();
+      $('#chartWrap').dataset.bars = rows.length;   // 자동 테스트가 봉 개수를 확인
+      return;
+    }catch(e){ lastErr = e; if (tok !== chartTok) return; await new Promise(r => setTimeout(r, 700 * (i + 1))); }
+  }
+  if (tok !== chartTok) return;
+  try{ chart.setData([], tf); }catch(_){}
+  $('#chartWrap').dataset.bars = 0;
+  chartErr(true, '차트를 불러오지 못했어요');
+  console.warn('[chart]', lastErr);
 }
+function chartErr(on, msg){
+  const w = $('#chartWrap'); if (!w) return;
+  let el = w.querySelector('.chart-err');
+  if (!on){ el && el.remove(); return; }
+  if (!el){ el = document.createElement('div'); el.className = 'chart-err'; w.appendChild(el); }
+  el.innerHTML = `<span>${esc(msg)}</span><button class="pill" data-chretry>다시 시도</button>`;
+}
+document.addEventListener('click', e => { if (e.target.closest('[data-chretry]')) loadChart(); });
 function applyGuideToChart(){
   const r = S.results.get(S.sel);
   const sym = upbit.toSymbol(S.sel), extra = [];
@@ -1288,7 +1314,7 @@ const ymd = t => new Date(t).toLocaleDateString('ko-KR', { year: 'numeric', mont
 function rlzBarHtml(H){
   const [from, p] = rlzRange();
   const since = from || (H.first ? Date.parse(H.first) : null);
-  return `<div class="rlz-bar"><span class="muted">실현손익 기간</span>${RLZ_P.map(([k, v]) => `<button class="pill sm${p === k ? ' on' : ''}" data-rlzp="${k}">${v}</button>`).join('')}<span class="muted">${since ? `${ymd(since)} ~ 오늘` : '기록 없음'}${p === 'all' && H.first ? ' · 거래일지에 있는 가장 오래된 기록부터' : ''}</span></div>`;
+  return `<div class="rlz-bar"><span class="muted">내 계좌 전체 거래 기준</span>${RLZ_P.map(([k, v]) => `<button class="pill sm${p === k ? ' on' : ''}" data-rlzp="${k}">${v}</button>`).join('')}<span class="muted">${since ? `${ymd(since)} ~ 오늘` : '기록 없음'}${p === 'all' && H.first ? ' · 거래일지에 있는 가장 오래된 기록부터' : ''}</span></div>`;
 }
 // 전체 기간 손익: 업비트 원화 입금·출금(도우미가 올림) 대비 지금 총자산
 function lifeData(H){
@@ -1303,9 +1329,9 @@ function lifeData(H){
 function lifeHtml(H){
   if (H.isPaper) return '';
   const L = lifeData(H);
-  if (!L) return `<div class="life"><div class="life-h"><b>전체 기간 손익</b><span class="muted">업비트에 넣은 돈 대비</span></div><div class="note">PC 도우미 새 버전이 업비트 원화 입금·출금 내역을 올리면 여기에 처음 입금한 날부터의 전체 손익이 보여요. 업비트 키에 <b>입금 조회 · 출금 조회</b> 권한도 켜 주세요.</div></div>`;
+  if (!L) return `<div class="life"><div class="life-h"><b>내 계좌 전체 손익 (첫 입금부터)</b><span class="muted">업비트에 넣은 돈 대비</span></div><div class="note">PC 도우미 새 버전이 업비트 원화 입금·출금 내역을 올리면 여기에 처음 입금한 날부터의 전체 손익이 보여요. 업비트 키에 <b>입금 조회 · 출금 조회</b> 권한도 켜 주세요.</div></div>`;
   const it = (lab, val, cls = '') => `<div class="hs-it"><span class="muted">${lab}</span><b class="mono ${cls}">${val}</b></div>`;
-  return `<div class="life"><div class="life-h"><b>전체 기간 손익</b><span class="muted">${L.first ? ymd(L.first) + ' 첫 입금부터' : ''} · 업비트 원화 입출금 기준</span><span class="grow"></span><button class="pill sm${S.showYears ? ' on' : ''}" data-yrtg>연도별</button></div>
+  return `<div class="life"><div class="life-h"><b>내 계좌 전체 손익 (첫 입금부터)</b><span class="muted">${L.first ? ymd(L.first) + ' 첫 입금부터' : ''} · 업비트 원화 입출금 기준</span><span class="grow"></span><button class="pill sm${S.showYears ? ' on' : ''}" data-yrtg>연도별</button></div>
     <div class="hold-sum life-sum">
       ${it('총 입금', won(L.dep) + '원')}
       ${it('총 출금', won(L.wd) + '원')}
@@ -1337,7 +1363,7 @@ function holdSumHtml(H){
     ${it('평가금액', won(H.value) + '원')}
     ${it('평가손익', signWon(H.pnl), toneOf(H.pnl))}
     ${it('수익률', fmtPct(H.pct), toneOf(H.pct))}
-    ${it('실현손익 · ' + (RLZ_P.find(x => x[0] === rlzRange()[1]) || [, '전체'])[1], signWon(H.realized), toneOf(H.realized))}
+    ${it('내 계좌 실현손익 · ' + (rlzRange()[1] === 'all' ? '전체 기간' : (RLZ_P.find(x => x[0] === rlzRange()[1]) || [, '전체 기간'])[1]), signWon(H.realized), toneOf(H.realized))}
     ${H.isPaper ? it('현금', won(H.cash) + '원') + it('총자산 수익률', fmtPct(((H.cash + H.value) / H.start - 1) * 100), toneOf(H.cash + H.value - H.start)) : ''}
   </div>`;
 }
@@ -1347,7 +1373,7 @@ function renderHold(){
   const H = holdData();
   const note = `<div class="note" style="padding:8px">${H.isPaper ? '모의 계좌 기준이에요. 모의 주문·예약 매도는 "주문" 탭에 있어요.' : (H.fromUpbit ? `업비트 잔고 기준이에요 (PC 도우미가 30초마다 올림 · ${new Date(S.bal.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })} 확인). 평단은 업비트 평단이에요.` : '거래일지 기록으로 계산했어요. PC 도우미(새 버전)가 업비트 잔고를 올리면 업비트와 똑같이 맞춰져요.')} 평가손익은 팔 때 수수료 ${FEE_RATE * 100}%를 뺀 값이에요.</div>`;
   if (!H.pos.length){ box.innerHTML = holdSumHtml(H) + rlzBarHtml(H) + `<div class="empty">${H.isPaper ? '모의 보유 종목이 없어요.' : '지금 보유 중인 종목이 없어요.'}</div>` + lifeHtml(H) + note; return; }
-  box.innerHTML = holdSumHtml(H) + rlzBarHtml(H) + `<table class="ot hold-t"><thead><tr><th class="l">종목</th><th>보유 수량</th><th>평단</th><th>현재가</th><th>오늘</th><th>매수금액</th><th>평가금액</th><th>평가손익</th><th>수익률</th><th>비중</th><th>실현손익</th><th data-tip="이 가격 이상이 되면 알림 (매수가 대비 %와 함께, 확인 전까지 최대 5번)">매도 예약</th><th></th></tr></thead><tbody>
+  box.innerHTML = holdSumHtml(H) + rlzBarHtml(H) + `<table class="ot hold-t"><thead><tr><th class="l">종목</th><th>보유 수량</th><th>평단</th><th>현재가</th><th>오늘</th><th>매수금액</th><th>평가금액</th><th>평가손익</th><th>수익률</th><th>비중</th><th>이 종목 실현손익</th><th data-tip="이 가격 이상이 되면 알림 (매수가 대비 %와 함께, 확인 전까지 최대 5번)">매도 예약</th><th></th></tr></thead><tbody>
     ${H.pos.map(p => `<tr class="sc-row" data-hm="${upbit.toMarket(p.symbol)}" data-hs="${esc(p.symbol)}">
       <td class="l">${mLogo(upbit.toMarket(p.symbol), 'xs')}<b class="hold-nm">${esc(nameOf(upbit.toMarket(p.symbol)))}</b> <span class="mono muted">${upbit.toMarket(p.symbol).replace('KRW-', '')}</span></td>
       <td class="mono">${p.qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</td>
@@ -2354,7 +2380,8 @@ function mShow(page, opt = {}){
   mRender();
 }
 addEventListener('popstate', e => { if (!PH.on) return; const st = e.state && e.state.mp; mCloseMenu(); mShow(st ? st.page : 'home', st || {}); });
-function mOpenCoin(m){ select(m); mGo('coin'); }
+// 종목을 누르면 항상 차트·호가 탭으로 연다 (마지막에 보던 탭이 남아 차트가 안 보이던 문제 방지)
+function mOpenCoin(m){ PH.cp = 'chart'; LS.set('quantera:mCp', 'chart'); select(m); mGo('coin'); }
 function mSetCp(cp){
   if (cp === 'book') cp = 'chart';   // 차트와 호가는 한 화면
   PH.cp = cp; LS.set('quantera:mCp', cp); $('#mApp').dataset.cp = cp;
