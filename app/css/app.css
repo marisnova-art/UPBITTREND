@@ -89,7 +89,7 @@ a{color:var(--accent)} a:hover{color:var(--accent)}
 .app{height:100vh;display:grid;grid-template-rows:52px minmax(0,1fr) 40px;grid-template-columns:64px minmax(0,1fr)}
 .topbar{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:0 16px 0 14px;border-bottom:1px solid var(--line)}
 .logo{display:flex;align-items:center;gap:10px;font-weight:500;font-size:var(--f-l);letter-spacing:.02em}
-.logo i{width:30px;height:30px;border-radius:10px;background:var(--chip);border:1px solid var(--line-2);display:flex;align-items:center;justify-content:center}
+.logo i{width:30px;height:30px;border-radius:9px;background:var(--accent);display:flex;align-items:center;justify-content:center}
 .search{flex:0 1 360px;height:34px;border-radius:999px;border:1px solid var(--line-2);background:var(--panel);padding:0 14px;font-size:var(--f-s)}
 .topbar .grow{flex:1}
 .chips{display:flex;gap:8px;align-items:center;font-size:var(--f-s);color:var(--text-2)}
