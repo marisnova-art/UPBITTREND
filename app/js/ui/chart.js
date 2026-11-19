@@ -10,7 +10,8 @@ const TF_SEC = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '1d': 86400, '1w':
 export function createChart(el, legendEl, infoEl){
   const LW = window.LightweightCharts;
   const chart = LW.createChart(el, {
-    autoSize: true,
+    autoSize: false,   // 크기는 아래 fitSize가 직접 맞춤 (폰에서 autoSize가 옛 크기(높이 0)에 멈춰 차트가 안 보이던 문제)
+    width: el.clientWidth || 300, height: el.clientHeight || 200,
     layout: { background: { type: 'solid', color: 'transparent' }, textColor: C.text, fontFamily: "'JetBrains Mono', monospace", fontSize: 12 },
     grid: { vertLines: { color: C.grid }, horzLines: { color: C.grid } },
     rightPriceScale: { borderColor: '#24242A', scaleMargins: { top: 0.14, bottom: 0.2 } },
@@ -38,6 +39,7 @@ export function createChart(el, legendEl, infoEl){
     return arr.map((x, i) => m[i] == null ? null : { time: x.time, value: m[i] }).filter(Boolean);
   }
   function setData(rows, timeframe){
+    fitSize();
     tf = timeframe; off = LONG.has(tf) ? 0 : KST;
     data = rows.map(x => ({ ...x, time: x.time + off }));
     candles.setData(data.map(x => ({ time: x.time, open: x.o, high: x.h, low: x.l, close: x.c })));
@@ -48,8 +50,19 @@ export function createChart(el, legendEl, infoEl){
     showInfo(data.length - 1);
     refit();
   }
+  // 차트 크기를 담는 칸(#tv)에 직접 맞춤. 숨겨져 있을 땐(0) 건너뛰고, 보이는 순간 다시 맞춤.
+  let szW = 0, szH = 0;
+  function fitSize(){
+    const w = Math.floor(el.clientWidth), h = Math.floor(el.clientHeight);
+    if (w < 10 || h < 10 || (w === szW && h === szH)) return;
+    szW = w; szH = h; chart.resize(w, h, true);
+  }
+  if (window.ResizeObserver) new ResizeObserver(() => fitSize()).observe(el);
+  window.addEventListener('resize', fitSize); window.addEventListener('orientationchange', () => setTimeout(fitSize, 300));
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { szW = szH = 0; fitSize(); } });
   // 최근 봉 위주로 보이기 (화면 폭에 맞춰 개수 조절)
   function refit(){
+    szW = szH = 0; fitSize();
     if (!data.length) return;
     const w = el.clientWidth || 800;
     if (tf === '1M' || tf === '1y'){ chart.timeScale().fitContent(); return; } // 월·연봉은 전체
@@ -192,7 +205,7 @@ export function createChart(el, legendEl, infoEl){
   const VP_KEY = 'quantera:chartVp';
   let showVp = (() => { try { return localStorage.getItem(VP_KEY) === '1'; } catch(e){ return false; } })();
   const vpCv = document.createElement('canvas'); vpCv.className = 'vp-cv';
-  if (getComputedStyle(el).position === 'static') el.style.position = 'relative';   // 이미 absolute면 그대로 (폰)
+  // (#tv는 CSS에서 항상 absolute. 예전엔 CSS가 늦게 오면 여기서 relative로 바꿔 차트 높이가 0이 될 수 있었음)
   el.appendChild(vpCv);
   const vpTip = document.createElement('div'); vpTip.className = 'vp-tip'; vpTip.hidden = true; el.appendChild(vpTip);
   let vpRaf = 0, vpGeo = [];

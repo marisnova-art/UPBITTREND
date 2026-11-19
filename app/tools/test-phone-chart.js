@@ -64,7 +64,9 @@ async function route(ctx, st){
 const chartState = pg => pg.evaluate(() => {
   const w = document.querySelector('#chartWrap'), r = w.getBoundingClientRect();
   const err = w.querySelector('.chart-err');
-  return { cp: document.querySelector('#mApp').dataset.cp, h: Math.round(r.height), w: Math.round(r.width), bars: +(w.dataset.bars || 0), canvas: w.querySelectorAll('canvas').length, err: !!err, visible: getComputedStyle(document.querySelector('#mCpChart')).display !== 'none' };
+  const tv = document.querySelector('#tv').getBoundingClientRect();
+  const cv = [...w.querySelectorAll('.tv-lightweight-charts canvas, #tv canvas')].reduce((m, c) => Math.max(m, c.getBoundingClientRect().height), 0);
+  return { cp: document.querySelector('#mApp').dataset.cp, h: Math.round(r.height), w: Math.round(r.width), tvH: Math.round(tv.height), tvW: Math.round(tv.width), cvH: Math.round(cv), bars: +(w.dataset.bars || 0), canvas: w.querySelectorAll('canvas').length, err: !!err, visible: getComputedStyle(document.querySelector('#mCpChart')).display !== 'none' };
 });
 const waitBars = (pg, ms = 8000) => pg.waitForFunction(() => +(document.querySelector('#chartWrap').dataset.bars || 0) > 0, null, { timeout: ms }).catch(() => {});
 
@@ -87,7 +89,7 @@ const waitBars = (pg, ms = 8000) => pg.waitForFunction(() => +(document.querySel
       await waitBars(pg);
       let s = await chartState(pg);
       check(dev, '종목 누르면 차트 탭', s.cp === 'chart' && s.visible, s);
-      check(dev, '차트 높이·봉', s.h >= 150 && s.w >= 250 && s.bars > 50 && s.canvas > 0 && !s.err, s);
+      check(dev, '차트 높이·봉', s.h >= 150 && s.w >= 250 && s.tvH >= 150 && s.tvW >= 250 && s.cvH >= 100 && s.bars > 50 && s.canvas > 0 && !s.err, s);
 
       await pg.evaluate(() => history.back()); await pg.waitForTimeout(500);
       await pg.evaluate(() => document.querySelectorAll('#mList [data-mm]')[1].click());
