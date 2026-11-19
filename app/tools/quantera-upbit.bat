@@ -142,7 +142,7 @@ if (($mode -eq 'file' -or -not $lastTo -or $script:full) -and -not $script:diag)
     if (-not ($days -as [int])){ $days = 30 }; $days = [Math]::Min([int]$days, 3650)
   }
   $from = $now - [int64]$days * 86400000
-} else { $from = [Math]::Max($lastTo - 86400000, $now - [int64]365 * 86400000) }
+} else { $from = [Math]::Max([int64]$lastTo - [int64]86400000, [int64]$now - [int64]365 * 86400000) }   # 둘 다 int64 (처음·점검 땐 $lastTo가 비어 Int32로 잡혀 오류 나던 문제)
 
 $hmac = New-Object Security.Cryptography.HMACSHA512 (,$U8.GetBytes($secret))
 $sha = [Security.Cryptography.SHA512]::Create()
