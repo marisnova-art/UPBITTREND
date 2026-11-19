@@ -19,6 +19,7 @@ import { createPaper } from './paper.js';
 import { importMeta, toRow } from './upbitPrivate.js';
 import { FEE_RATE } from './analysis/ledger.js';
 import { inbox, INBOX_KINDS, KIND_KO as IB_KO } from './inbox.js';
+import { initMini, openMini, closeMini, miniOpen, miniSupported, miniUrgent, miniAck, miniCfg, saveMiniCfg, MINI_KINDS } from './mini.js';
 
 const STATUS_KO = { 'WAIT': '대기', 'WATCH': '관찰', 'ENTRY ZONE': '매수 검토', 'BREAKOUT WATCH': '돌파 대기', 'EXTENDED': '추격 주의', 'INSUFFICIENT DATA': '데이터 부족' };
 const RISK_KO = { 'LOW': '낮음', 'MEDIUM': '보통', 'HIGH': '높음', 'EXTREME': '매우 높음' };
@@ -1264,7 +1265,7 @@ function toast(msg, tone = '', opt = {}){
   el.className = 'toast ' + tone + (opt.urgent ? ' urgent' : '');
   el.setAttribute('role', opt.urgent ? 'alert' : 'status');
   el.innerHTML = `${opt.head ? `<b class="th">${esc(opt.head)}</b>` : ''}<span class="tt">${esc(msg)}</span>${opt.urgent ? '<span class="t-x">누르면 닫혀요</span>' : ''}`;
-  el.addEventListener('click', () => { el.remove(); if (opt.id) inbox.read(opt.id); if (opt.onClick) opt.onClick(); layoutToasts(); });
+  el.addEventListener('click', () => { el.remove(); if (opt.id){ inbox.read(opt.id); miniAck(opt.id); } if (opt.onClick) opt.onClick(); layoutToasts(); });
   box.appendChild(el);
   if (!opt.urgent) setTimeout(() => { el.remove(); layoutToasts(); }, 7000);
   layoutToasts();
@@ -1299,7 +1300,8 @@ setInterval(() => {
 function notify(it, opt = {}){
   const x = inbox.add(it); if (!x) return null;
   if (opt.toast !== false) toast(x.short || x.body || '', x.tone || (x.urgent ? 'warn' : ''), { head: x.title, urgent: x.urgent, id: x.id, onClick: () => ibOpenItem(x) });
-  if ((x.urgent || opt.sys) && 'Notification' in window && Notification.permission === 'granted'){
+  if (x.urgent) miniUrgent(x);
+  if ((x.urgent || opt.sys) && !(x.urgent && miniOpen() && !miniCfg().win) && 'Notification' in window && Notification.permission === 'granted'){
     try { const n = new Notification((x.urgent ? '⚠ ' : '') + x.title, { body: x.body || '', tag: 'quantera-' + (x.key || x.id), icon: './icons/icon-192.png', requireInteraction: !!x.urgent }); n.onclick = () => { window.focus(); ibOpenItem(x); n.close(); }; } catch(e){}
   }
   if (x.urgent) IB.flash = x;
@@ -1350,6 +1352,51 @@ document.addEventListener('click', e => {
   const c = e.target.closest('[data-ibcopy]'); if (c){ const ip = c.dataset.ibcopy; (navigator.clipboard ? navigator.clipboard.writeText(ip) : Promise.reject()).then(() => toast(`${ip} 복사했어요. 업비트 Open API 관리 → 키의 허용 IP에 붙여 넣어 주세요.`), () => toast(`새 IP: ${ip}`)); return; }
   const m = e.target.closest('[data-ibm]'); if (m){ const mk = m.dataset.ibm; if (PH.on) mOpenCoin(mk); else { setView('trade'); select(mk); } }
 });
+// ---------------------------------------------------------------- PC 미니 창
+function miniItems(c){
+  const out = [], seen = new Set();
+  const row = (k, m, sub) => { const i = S.byMarket.get(m), q = S.quotes.get(m) || {}; if (!i || q.price == null) return; out.push({ k, m, name: i.name, sym: m.replace(/^KRW-/, ''), price: fmtPrice(q.price), pct: q.changeRate, sub }); };
+  if (c.hold){ const H = holdData(); for (const p of H.pos){ const m = upbit.toMarket(p.symbol); seen.add(m); row('hold', m, p.pct != null ? `평단 ${fmtPrice(p.avg)} · ${fmtPct(p.pct)}` : '보유'); } }
+  if (c.fav) for (const sym of S.watch){ const m = upbit.toMarket(sym); if (!seen.has(m)) row('fav', m, '관심'); }
+  if (c.up) for (const m of sdList('surge').slice(0, 8)) row('up', m, surgeText(m, surge.get(m)));
+  if (c.dn) for (const m of sdList('dump').slice(0, 8)) row('dn', m, surgeText(m, dump.get(m)));
+  return out;
+}
+initMini({
+  items: miniItems,
+  summary(){ if (S.acct !== 'paper' && !db.user) return null; const H = holdData(); if (!H.pos.length) return { text: '보유 없음', tone: 'mut' }; return { text: `${signWon(H.pnl)} · ${fmtPct(H.pct)}`, tone: H.pnl > 0 ? 'up' : H.pnl < 0 ? 'dn' : 'mut' }; },
+  open(m){ try { window.focus(); } catch(e){} if (S.byMarket.has(m)){ setView('trade'); select(m); } },
+  ack(id){ inbox.read(id); },
+  beep(){ beep('sell'); },
+  onState(on){ const b = $('#miniBtn'); if (b){ b.classList.toggle('on', on); b.textContent = on ? '미니 창 닫기' : '미니 창'; } if (document.body.dataset.view === 'settings') renderMiniCfg(); },
+});
+async function toggleMini(){
+  if (miniOpen()){ closeMini(); return; }
+  if (!miniSupported()){ toast('미니 창은 PC 크롬·엣지(116 이상)에서만 열려요.'); return; }
+  try { await openMini(); } catch(e){ toast('미니 창을 열지 못했어요. 버튼을 다시 눌러 주세요.'); }
+}
+function miniCfgHtml(){
+  const c = miniCfg(), seg = (k, opts) => `<span class="mini-seg">${opts.map(([v, l]) => `<button type="button" class="${String(c[k]) === String(v) ? 'on' : ''}" data-mseg="${k}" data-v="${v}">${l}</button>`).join('')}</span>`;
+  const chk = (k, l) => `<label class="mini-chk"><input type="checkbox" data-mchk="${k}"${c[k] ? ' checked' : ''}>${l}</label>`;
+  return `<h4>미니 창 <span class="muted">PC 크롬·엣지 · 다른 프로그램 위에 떠 있는 작은 창 · 바꾸면 바로 적용 · 이 PC에 저장</span></h4>
+    <div class="mini-cfg">
+      <div class="mini-row"><span class="muted">보여 줄 것</span><span class="mini-chips">${MINI_KINDS.map(([k, l]) => chk(k, l)).join('')}</span></div>
+      <div class="mini-row"><span class="muted">넘어가는 간격</span>${seg('iv', [[3, '3초'], [5, '5초'], [10, '10초'], [30, '30초']])}</div>
+      <div class="mini-row"><span class="muted">돌아가는 시간대</span>${seg('mode', [['all', '항상'], ['range', '정한 시간만']])}${c.mode === 'range' ? `<span class="mini-time"><input type="time" data-mtime="t1" value="${esc(c.t1)}"> 부터 <input type="time" data-mtime="t2" value="${esc(c.t2)}"> 까지</span>` : ''}</div>
+      <div class="mini-row"><span class="muted">긴급 알림이 오면</span><span class="mini-chips">${chk('blink', '창 테두리 깜빡임')}${chk('sound', '소리')}${chk('win', '윈도우 알림도')}</span></div>
+      <div class="mini-row"><span class="muted"></span><span class="mini-chips"><button type="button" class="pill accent sm" data-mini-open>${miniOpen() ? '미니 창 닫기' : '미니 창 열기'}</button><span class="muted">${miniSupported() ? '시간 밖에는 "쉬는 중"으로 바뀌고 긴급 알림만 와요. 긴급 = 매도 예약가 도달 · 업비트 연결 끊김 · IP 바뀜 · 보유 코인 급락.' : '이 브라우저는 미니 창을 못 열어요. PC 크롬·엣지 최신 버전에서 열어 주세요.'}</span></span></div>
+    </div>`;
+}
+function renderMiniCfg(){ const el = $('#miniCfg'); if (el) el.innerHTML = miniCfgHtml(); }
+document.addEventListener('click', e => {
+  if (e.target.closest('#miniBtn, [data-mini-open]')){ e.preventDefault(); toggleMini().then(renderMiniCfg); return; }
+  const sg = e.target.closest('[data-mseg]'); if (sg){ e.preventDefault(); const c = miniCfg(); c[sg.dataset.mseg] = sg.dataset.mseg === 'iv' ? +sg.dataset.v : sg.dataset.v; saveMiniCfg(c); renderMiniCfg(); }
+});
+document.addEventListener('change', e => {
+  const k = e.target.closest('[data-mchk]'); if (k){ const c = miniCfg(); c[k.dataset.mchk] = k.checked; saveMiniCfg(c); return; }
+  const t = e.target.closest('[data-mtime]'); if (t){ const c = miniCfg(); c[t.dataset.mtime] = t.value; saveMiniCfg(c); }
+});
+
 // 업비트 연결: PC 도우미가 30초마다 올리는 잔고가 10분 넘게 안 오거나, 도우미가 오류(허용 IP 등)를 올리면 긴급 알림
 function ibConn(){
   if (!db.user || !S.bal || !S.bal.at) return;
@@ -2369,7 +2416,7 @@ function openCfg(c = allCfg()){
 }
 function closeCfg(){ if (PH.on) history.length > 1 ? history.back() : mGo('home'); else setView('trade'); }
 function renderCfg(c = allCfg()){
-  $('#cfgBody').innerHTML = appCfgHtml() + CFG_FIELDS.map(([title, fs]) => `<h4>${title}</h4>` + fs.map(([k, label, unit]) => unit === 'sound'
+  $('#cfgBody').innerHTML = `<div id="miniCfg" class="hide-m">${miniCfgHtml()}</div>` + appCfgHtml() + CFG_FIELDS.map(([title, fs]) => `<h4>${title}</h4>` + fs.map(([k, label, unit]) => unit === 'sound'
     ? `<label>${label}<span class="row-btns"><select name="${k}">${Object.entries(SOUNDS).map(([id, [nm]]) => `<option value="${id}"${c[k] === id ? ' selected' : ''}>${nm}</option>`).join('')}</select><button type="button" class="pill sm" data-preview="${k}">듣기</button></span></label>`
     : unit === 'text'
     ? `<label>${label}<input type="text" name="${k}" value="${esc(c[k])}"></label>`
