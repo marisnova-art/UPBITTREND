@@ -542,6 +542,7 @@ function renderSurgeBadges(){
 }
 function setWs(s){
   const map = { live: ['live', '실시간'], connecting: ['wait', '연결 중'], reconnecting: ['wait', '재연결 중'], off: ['off', '끊김'] };
+  S.wsState = s;
   const [c, t] = map[s] || map.off; $('#wsDot').className = 'dot ' + c; $('#wsText').textContent = t;
 }
 
@@ -2367,6 +2368,8 @@ function mShow(page, opt = {}){
   $('#mBack').hidden = page === 'home';
   const dk = { coin: 'list', search: 'list' }[page] || page;
   $$('#mDock [data-dk]').forEach(b => b.classList.toggle('on', b.dataset.dk === dk));
+  const di = $$('#mDock [data-dk]').findIndex(b => b.dataset.dk === dk), bub = $('#mDock .m-bub');   // 라임 유리 방울을 고른 탭으로
+  if (bub){ bub.style.opacity = di < 0 ? '0' : '1'; if (di >= 0) bub.style.transform = `translateX(${di * 100}%)`; }
   $('#mTitle').textContent = page === 'list' ? (M_TABS.find(t => t[0] === PH.tab) || [, '종목'])[1] + ' 종목' : page === 'coin' ? nameOf(S.sel) : M_TITLES[page] || 'QUANTERA';
   if (page === 'home') $('#mTitle').innerHTML = '<span class="logo"><i><svg width="20" height="20" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M33.5 12.5A15 15 0 1 0 36 30" stroke="#050506" stroke-width="5" stroke-linecap="round"/><path d="M12 31l8-8 6 5 16-17" stroke="#050506" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="42" cy="11" r="3.2" fill="#050506"/></svg></i>QUANTERA</span>';
   window.scrollTo(0, 0);
@@ -2431,24 +2434,54 @@ function mHeroHtml(){
   const bar = H.value ? `<div class="hx-bar">${segs.map((p, k) => `<i style="width:${p.weight.toFixed(1)}%;background:${HX_C[k]}"></i>`).join('')}</div><div class="hx-lg">${segs.map((p, k) => `<span><i style="background:${HX_C[k]}"></i>${esc(nameOf(upbit.toMarket(p.symbol)))} ${p.weight.toFixed(0)}%</span>`).join('')}</div>` : '';
   return `<button class="m-hero" data-go="hold"><div class="hx-t"><span>${H.isPaper ? '모의 자산' : '내 자산'}</span><span class="muted">보유 ${H.pos.length}종목 ›</span></div>
     <div class="hx-v mono">${won(H.isPaper ? H.cash + H.value : H.value)}<small>원</small></div>
-    <div class="hx-s"><span class="m-pct ${toneOf(H.pct)}">${fmtPct(H.pct)}</span><span class="mono ${toneOf(H.pnl)}">${signWon(H.pnl)}</span><span class="muted">평가손익</span></div>${bar}</button>`;
+    <div class="hx-s"><span class="m-pct ${toneOf(H.pct)}">${fmtPct(H.pct)}</span><span class="mono ${toneOf(H.pnl)}">${signWon(H.pnl)}</span><span class="muted">평가손익</span></div>${bar}${H.isPaper ? '' : mConnHtml()}</button>`;
 }
-function mSurgeHtml(){
-  const muted = surgeMuted();
-  const sec = (kind, label, cls) => {
-    const ms = sdList(kind), un = kind === 'dump' ? unseenDump : unseen;
-    const nNew = muted ? 0 : ms.filter(m => un.has(m)).length;
-    const cards = ms.slice(0, 12).map(m => mSdCard(m, kind)).join('');
-    return `<div class="m-sd ${nNew ? (kind === 'dump' ? 'blink-dn' : 'blink') : ''}"><div class="m-sec-h"><span class="m-h ${ms.length ? cls : 'muted'}">● ${label} ${ms.length}</span>${nNew ? `<span class="sd-new">새 ${nNew}</span>` : ''}<span class="grow"></span>${nNew ? `<button class="m-btn" data-ack-kind="${kind}">확인</button>` : ''}</div>${cards ? `<div class="m-hs">${cards}</div>` : `<div class="m-none">지금 잡힌 ${label}이 없어요.</div>`}</div>`;
+// 내 자산 카드 아래 작은 연결 점: 라임 = 정상, 주황 = 10분 넘게 잔고가 안 올라옴(도우미 꺼짐·IP 바뀜 등)
+function mConnHtml(){
+  if (!S.bal || !S.bal.at) return `<div class="hx-c bad"><i></i>업비트 미연결 · 거래일지 기준</div>`;
+  const t = Date.parse(S.bal.at), age = Date.now() - t, d = new Date(t);
+  const hm = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const when = new Date().toDateString() === d.toDateString() ? hm : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
+  return age > 600000 ? `<div class="hx-c bad"><i></i>업비트 연결 끊김 · ${when} 마지막</div>` : `<div class="hx-c"><i></i>업비트 연결 · ${when}</div>`;
+}
+// 시장 레이더: 급등·급락·국프를 카드 하나로. 0개여도 지금 시장 상태(1위·꼴찌·국프 평균)를 보여 줌
+function radarIdle(){
+  let top = null, bot = null, ks = 0, kn = 0;
+  for (const [m, q] of S.quotes){
+    if (!q || q.changeRate == null || !S.byMarket.has(m) || (q.value24h || 0) < 3e8) continue;   // 거래대금 3억 미만은 건너뜀
+    if (!top || q.changeRate > top[1]) top = [m, q.changeRate];
+    if (!bot || q.changeRate < bot[1]) bot = [m, q.changeRate];
+    if (ovs.has(m)){ const k = ovs.kimp(m); if (k != null && isFinite(k)){ ks += k; kn++; } }
+  }
+  return { top, bot, kimp: kn ? ks / kn : null };
+}
+function mRadarHtml(){
+  const muted = surgeMuted(), c = allCfg(), I = radarIdle();
+  const K = [
+    { kind: 'surge', label: '급등', cls: 'up', ms: sdList('surge'), un: unseen },
+    { kind: 'dump', label: '급락', cls: 'down', ms: sdList('dump'), un: unseenDump },
+    { kind: 'kimp', label: '국프 급변', cls: 'accent', ms: c.kimpOn ? kimpSwingList() : [], un: unseenKimp },
+  ];
+  const sub = k => {
+    if (k.ms.length){ const m = k.ms[0], q = S.quotes.get(m) || {};
+      if (k.kind === 'kimp'){ const e = ovs.getSwing(m); return `<b class="mono ${e && e.delta > 0 ? 'up' : 'down'}">${e ? (e.delta > 0 ? '+' : '') + e.delta.toFixed(1) + '%p' : ''}</b><br>${esc(nameOf(m))}${k.ms.length > 1 ? ` 외 ${k.ms.length - 1}` : ''}`; }
+      return `<b class="mono ${toneOf(q.changeRate)}">${fmtPct(q.changeRate)}</b><br>${esc(nameOf(m))}${k.ms.length > 1 ? ` 외 ${k.ms.length - 1}` : ''}`; }
+    if (k.kind === 'surge') return I.top ? `1위 <b class="mono ${toneOf(I.top[1])}">${fmtPct(I.top[1])}</b><br>${esc(nameOf(I.top[0]))}` : '시세 받는 중';
+    if (k.kind === 'dump') return I.bot ? `꼴찌 <b class="mono ${toneOf(I.bot[1])}">${fmtPct(I.bot[1])}</b><br>${esc(nameOf(I.bot[0]))}` : '시세 받는 중';
+    if (!c.kimpOn) return '꺼짐<br>설정에서 켜기';
+    if (ovs.status() !== 'live') return '바이낸스<br>연결 중';
+    return I.kimp != null ? `평균 <b class="mono">${I.kimp > 0 ? '+' : ''}${I.kimp.toFixed(1)}%</b><br>${c.swingMin}분 ±${c.swingPp}%p 감시` : '계산 중';
   };
-  const kimpSec = () => {
-    const c = allCfg(); if (!c.kimpOn) return '';
-    const ms = kimpSwingList(), nNew = muted ? 0 : ms.filter(m => unseenKimp.has(m)).length;
-    const cards = ms.slice(0, 12).map(m => mSdCard(m, 'kimp')).join('');
-    return `<div class="m-sd ${nNew ? 'blink' : ''}"><div class="m-sec-h"><span class="m-h ${ms.length ? 'accent' : 'muted'}">● 국프 급변 ${ms.length}</span>${nNew ? `<span class="sd-new">새 ${nNew}</span>` : ''}<span class="grow"></span>${nNew ? '<button class="m-btn" data-ack-kind="kimp">확인</button>' : ''}</div>${cards ? `<div class="m-hs">${cards}</div><div class="m-none" style="padding-top:4px">국프가 갑자기 오르면 국내만 과열된 거예요. 따라 사면 비싸게 살 수 있어요 (추격 주의).</div>` : `<div class="m-none">${ovs.status() !== 'live' ? '바이낸스 연결 중이에요.' : `지금 국프 급변이 없어요. ${c.swingMin}분 안에 국프가 ±${c.swingPp}%p 넘게 바뀌면 떠요.`}</div>`}</div>`;
-  };
-  return sec('surge', '급등', 'up') + sec('dump', '급락', 'down') + kimpSec()
-    + `<div class="m-mute"><span class="${muted ? 'muted' : 'accent'}">● 알림 ${muted ? muteText() : '켜짐'}</span><span class="grow"></span>${muted ? '<button class="m-btn" data-mute="0">다시 켜기</button>' : '<button class="m-btn" data-mute="30">30분 끄기</button><button class="m-btn" data-mute="-1">끄기</button>'}</div>`;
+  const tiles = K.map(k => { const nNew = muted ? 0 : k.ms.filter(m => k.un.has(m)).length;
+    return `<button class="rd-t${k.ms.length ? ' on k-' + k.kind : ''}${nNew ? ' new' : ''}" data-go="list" data-tab="${k.kind}"><span class="rd-l"><i class="${k.cls}"></i>${k.label}${nNew ? `<em>새 ${nNew}</em>` : ''}</span><span class="rd-n mono ${k.ms.length ? k.cls : ''}">${k.ms.length}</span><span class="rd-s">${sub(k)}</span></button>`; }).join('');
+  const lists = K.filter(k => k.ms.length).map(k => { const nNew = muted ? 0 : k.ms.filter(m => k.un.has(m)).length;
+    return `<div class="rd-sig"><div class="rd-sh"><span class="${k.cls}">● ${k.label} ${k.ms.length}</span><span class="grow"></span>${nNew ? `<button class="m-btn" data-ack-kind="${k.kind}">확인</button>` : ''}</div><div class="m-hs">${k.ms.slice(0, 12).map(m => mSdCard(m, k.kind)).join('')}</div>${k.kind === 'kimp' ? '<div class="rd-note">국프가 갑자기 오르면 국내만 과열된 거예요. 따라 사면 비싸게 살 수 있어요 (추격 주의).</div>' : ''}</div>`; }).join('');
+  const live = S.wsState === 'live', now = new Date();
+  const hm = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+  return `<div class="m-radar"><div class="m-sec-h"><span class="m-h">시장 레이더</span><span class="muted">급등 · 급락 · 국프</span><span class="grow"></span><button class="m-link" data-go="list" data-tab="surge">전체 ›</button></div>
+    <div class="rd-tiles">${tiles}</div>${lists}
+    <div class="rd-foot"><span class="dot ${live ? 'live' : 'wait'}"></span><span>${live ? `${S.instruments.length}종목 감시 중 · ${hm} 확인` : '시세 연결 중'}</span><span class="grow"></span>
+      <button class="rd-sw${muted ? ' off' : ''}" data-mute="${muted ? 0 : -1}" aria-pressed="${!muted}" title="${muted ? muteText() : '급등·급락 소리·팝업 알림'}"><span>알림${muted && muteUntil() > 0 ? ' ' + muteText() : ''}</span><i></i></button></div></div>`;
 }
 function mMineHtml(){
   const held = new Map(S.ledger.positions.map(p => [upbit.toMarket(p.symbol), p]));
@@ -2468,7 +2501,7 @@ function mRender(force){
     $('#mHero').innerHTML = mHeroHtml();
     $('#mTrendCard').innerHTML = homeCardHtml(trendCached('daily'));
     const hs = $$('#mSurgeSec .m-hs').map(x => x.scrollLeft);
-    $('#mSurgeSec').innerHTML = mSurgeHtml();
+    $('#mSurgeSec').innerHTML = mRadarHtml();
     $$('#mSurgeSec .m-hs').forEach((x, k) => { if (hs[k]) x.scrollLeft = hs[k]; });
     $('#mMine').innerHTML = mMineHtml();
     $('#mScanLine').textContent = $('#scanText') ? '스캔 · ' + $('#scanText').textContent : '';
@@ -2526,11 +2559,11 @@ function mMenuIcons(){
     if (M_ICONS[k] && !b.querySelector('.mi')) b.insertAdjacentHTML('afterbegin', MI(M_ICONS[k]));
   }
 }
-function mOpenMenu(){ $('#mApp').classList.add('menu-open'); }
-function mCloseMenu(){ $('#mApp').classList.remove('menu-open'); }
+function mOpenMenu(){ $('#mApp').classList.add('menu-open'); const b = $('#mMenuBtn'); b.setAttribute('aria-expanded', 'true'); b.setAttribute('aria-label', '메뉴 닫기'); }
+function mCloseMenu(){ $('#mApp').classList.remove('menu-open'); const b = $('#mMenuBtn'); b.setAttribute('aria-expanded', 'false'); b.setAttribute('aria-label', '메뉴 열기'); }
 function bindPhone(){
   const app = $('#mApp');
-  $('#mMenuBtn').addEventListener('click', mOpenMenu);
+  $('#mMenuBtn').addEventListener('click', () => $('#mApp').classList.contains('menu-open') ? mCloseMenu() : mOpenMenu());
   $('#mDim').addEventListener('click', mCloseMenu);
   $('#mBack').addEventListener('click', () => history.length > 1 ? history.back() : mShow('home'));
   $('#mFind').addEventListener('click', () => mGo('search'));
