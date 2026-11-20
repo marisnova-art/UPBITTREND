@@ -1526,3 +1526,11 @@ body.no-paper .paper-only{display:none!important}
 .mini-time{display:inline-flex;align-items:center;gap:6px;margin-left:10px;color:var(--muted)}
 .mini-time input{background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:10px;height:30px;padding:0 8px;font:500 var(--f-s) var(--mono)}
 @media (max-width:899px){#miniCfg{display:none}}
+
+/* 업비트 시세 연결 안 됨 표시 (폰·PC 공통, 위쪽) */
+#netBar{position:fixed;left:50%;transform:translateX(-50%);top:calc(64px + env(safe-area-inset-top));z-index:80;width:min(560px,calc(100% - 24px));padding:10px 14px;border-radius:16px;background:var(--panel);border:2px solid #F5A524;box-shadow:0 10px 30px rgba(0,0,0,.55);font-size:var(--f-s);cursor:pointer;display:flex;flex-direction:column;gap:4px}
+#netBar .nb-h{display:flex;align-items:center;gap:8px}
+#netBar .nb-h span{flex:1}
+#netBar .nb-h i{flex:none;width:8px;height:8px;border-radius:50%;background:#F5A524;animation:nbp 1.2s infinite}
+@keyframes nbp{50%{opacity:.25}}
+#netBar .nb-d{overflow-wrap:anywhere;color:var(--muted)}
