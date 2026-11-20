@@ -11,6 +11,7 @@ export const toMarket = symbol => symbol.includes(':') ? symbol.split(':')[1] : 
 
 const net = { via: 'direct', gap: CONFIG.api.minGapMs, lastAt: 0, lastPrioAt: 0, okStreak: 0, rateHits: 0, requests: 0 };
 export const netStats = () => ({ ...net });
+export const netReset = () => { net.via = CONFIG.api.mode === 'proxy' && canProxy() ? 'proxy' : 'direct'; net.gap = CONFIG.api.minGapMs; };   // 다시 시도할 때 직접 → 중계 순서로 처음부터
 
 const canProxy = () => /^https?:$/.test(location.protocol) && CONFIG.api.mode !== 'direct';
 if (CONFIG.api.mode === 'proxy' && canProxy()) net.via = 'proxy';
@@ -27,7 +28,7 @@ async function rateWait(prio){
 
 // 직접 호출 → 실패(CORS 등) 시 같은 도메인 프록시(/api/upbit)로 자동 전환. 429는 간격을 넓혀 재시도.
 export async function api(path, { prio = false } = {}){
-  let lastErr;
+  let lastErr, switched = false;
   for (let attempt = 0; attempt <= CONFIG.api.retries; attempt++){
     await rateWait(prio);
     const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), CONFIG.api.timeoutMs);
@@ -44,6 +45,7 @@ export async function api(path, { prio = false } = {}){
       }
       if (!res.ok){
         lastErr = new Error('HTTP ' + res.status);
+        if (net.via === 'direct' && canProxy() && !switched && (res.status >= 500 || res.status === 403 || res.status === 451)){ switched = true; net.via = 'proxy'; attempt--; continue; }   // 업비트가 이 기기에 오류를 주면 중계 서버로 한 번 더
         if (res.status >= 400 && res.status < 500) break;
         await sleep(600 * (attempt + 1)); continue;
       }

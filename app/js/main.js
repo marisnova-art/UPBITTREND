@@ -76,15 +76,21 @@ async function boot(){
   });
   db.events.on('tables', ok => { $('#sbDbDot').className = 'dot ' + (ok ? 'live' : 'wait'); $('#sbDb').textContent = ok ? '기록 저장소 연결' : '기록 테이블 준비 전 · 이 기기에만 저장'; });
 
-  try{
-    S.instruments = await upbit.listInstruments();
-    S.byMarket = new Map(S.instruments.map(i => [i.market, i]));
-    markFirstSeen();
-    const qs = await upbit.getQuotes();
-    for (const q of qs) S.quotes.set(q.market, q);
-  }catch(e){
-    $('#wlBody').innerHTML = `<div class="empty">업비트 시세를 불러오지 못했어요. (${esc(e.message)})<br>잠시 후 새로고침해 주세요.</div>`;
-    setWs('off'); window.__introDone && window.__introDone(); return;
+  // 업비트 시세: 못 받으면 화면(폰·PC)에 표시하고 30초마다 저절로 다시 시도 (전에는 폰에 아무 표시 없이 멈춰 있었음)
+  for (let n = 1; ; n++){
+    try{
+      S.instruments = await upbit.listInstruments();
+      S.byMarket = new Map(S.instruments.map(i => [i.market, i]));
+      markFirstSeen();
+      const qs = await upbit.getQuotes();
+      for (const q of qs) S.quotes.set(q.market, q);
+      netBar(null); break;
+    }catch(e){
+      $('#wlBody').innerHTML = `<div class="empty">업비트 시세를 불러오지 못했어요. (${esc(e.message)})<br>30초마다 저절로 다시 시도해요.</div>`;
+      setWs('off'); window.__introDone && window.__introDone();
+      netBar({ kind: 'boot', msg: e.message, n });
+      await netWait(30000); upbit.netReset();
+    }
   }
   S.watch = new Set(await loadWatchlist());
   recompute(); renderWatch();
@@ -543,6 +549,41 @@ function renderSurgeBadges(){
     }
   }
 }
+// ---------------------------------------------------------------- 업비트 시세 연결 표시
+// boot: 처음 시세를 못 받음 → 30초마다 재시도 · ws: 실시간이 45초 넘게 끊김 → 10초마다 현재가를 따로 받아 채움
+const NET = { info: null, wake: null, open: false, wsDownAt: 0, pollAt: 0 };
+function netWait(ms){ return new Promise(r => { const t = setTimeout(done, ms); function done(){ clearTimeout(t); NET.wake = null; r(); } NET.wake = done; }); }
+addEventListener('online', () => NET.wake && NET.wake());
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && NET.wake) NET.wake(); });
+function netBar(info){
+  NET.info = info;
+  let el = document.getElementById('netBar');
+  if (!info){ if (el) el.remove(); return; }
+  if (!el){
+    el = document.createElement('div'); el.id = 'netBar'; el.setAttribute('role', 'alert');
+    el.addEventListener('click', e => { if (e.target.closest('[data-net-retry]')){ e.stopPropagation(); if (NET.wake) NET.wake(); else netPoll(true); return; } NET.open = !NET.open; netBar(NET.info); });
+    document.body.appendChild(el);
+  }
+  const st = upbit.netStats(), via = st.via === 'proxy' ? '중계 서버 경유' : '업비트 직접';
+  const head = info.kind === 'boot' ? `업비트 시세 연결 안 됨 · 30초마다 다시 시도 (${info.n}번째)` : '실시간 시세 끊김 · 10초마다 현재가를 따로 받는 중';
+  el.innerHTML = `<div class="nb-h"><i></i><span>${head}</span><button type="button" class="pill sm" data-net-retry>지금 다시</button></div>`
+    + (NET.open ? `<div class="nb-d">오류: ${esc(info.msg || '-')} · ${via} · 요청 ${st.requests}회 · 제한(429) ${st.rateHits}회 · ${new Date().toLocaleTimeString('ko-KR', { hour12: false })}</div>` : `<div class="nb-d muted">누르면 자세한 오류를 보여 줘요</div>`);
+}
+async function netPoll(force){
+  if (!S.instruments.length || NET.pollBusy) return;
+  NET.pollBusy = true;
+  try { const qs = await upbit.getQuotes(); for (const q of qs){ const old = S.quotes.get(q.market); S.quotes.set(q.market, old ? { ...old, ...q } : q); } NET.pollAt = Date.now(); if (NET.info && NET.info.kind === 'ws'){ NET.info.msg = '실시간 연결(웹소켓) 안 됨 · 현재가는 받는 중'; netBar(NET.info); } if (PH.on) mRender(); else renderWatch(); }
+  catch(e){ if (NET.info) { NET.info.msg = e.message; netBar(NET.info); } }
+  finally { NET.pollBusy = false; }
+}
+setInterval(() => {
+  if (!S.instruments.length || document.visibilityState !== 'visible' || (NET.info && NET.info.kind === 'boot')) return;
+  if (S.wsState === 'live'){ NET.wsDownAt = 0; if (NET.info && NET.info.kind === 'ws') netBar(null); return; }
+  if (!NET.wsDownAt){ NET.wsDownAt = Date.now(); return; }
+  if (Date.now() - NET.wsDownAt < 45000) return;
+  if (!NET.info) netBar({ kind: 'ws', msg: '실시간 연결(웹소켓)이 ' + Math.round((Date.now() - NET.wsDownAt) / 1000) + '초째 안 돼요' });
+  if (Date.now() - NET.pollAt > 10000) netPoll();
+}, 5000);
 function setWs(s){
   const map = { live: ['live', '실시간'], connecting: ['wait', '연결 중'], reconnecting: ['wait', '재연결 중'], off: ['off', '끊김'] };
   S.wsState = s;
@@ -1397,26 +1438,25 @@ document.addEventListener('change', e => {
   const t = e.target.closest('[data-mtime]'); if (t){ const c = miniCfg(); c[t.dataset.mtime] = t.value; saveMiniCfg(c); }
 });
 
-// 업비트 연결: PC 도우미가 30초마다 올리는 잔고가 10분 넘게 안 오거나, 도우미가 오류(허용 IP 등)를 올리면 긴급 알림
-function ibConn(){
-  if (!db.user || !S.bal || !S.bal.at) return;
-  const b = S.bal, at = Date.parse(b.at), hm = new Date(at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+// 업비트 연결: PC 도우미가 30초마다 올리는 잔고가 20분 넘게 안 오면 알림 하나(일반). 다시 오면 같은 줄에 "다시 연결됨"으로 고침.
+// 판단은 방금 새로 읽은 잔고로만 (화면이 뒤에 있는 동안은 잔고를 안 읽어서, 전에는 PC가 멀쩡해도 "끊김"이 쌓였음)
+const CONN_GAP = 20 * 60000;
+function ibConn(fresh){
+  if (!fresh || !db.user || !S.bal || !S.bal.at) return;
+  const b = S.bal, at = Date.parse(b.at), hm = t => new Date(t).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
   if (b.err && b.err_at && Date.parse(b.err_at) > at){
     const isIp = /IP/.test(b.err) || !!b.ip;
-    notify(isIp
-      ? { kind: 'conn', urgent: true, tone: 'warn', title: '업비트 허용 IP가 바뀌었어요', body: `PC의 공인 IP가 ${b.ip || '바뀐 주소'}로 바뀌어 업비트가 막았어요. 업비트 Open API 관리에서 키의 허용 IP를 새 IP로 바꿔 주세요. 바꾸면 도우미가 5분 안에 다시 올려요.`, short: `새 IP ${b.ip || '확인 필요'} · 업비트에서 키의 허용 IP를 바꿔 주세요`, ip: b.ip || '', url: 'https://upbit.com/mypage/open_api_management', urlLabel: '업비트 Open API 관리', key: 'conn:ip:' + (b.ip || '') + ':' + b.at }
-      : { kind: 'conn', tone: 'warn', title: 'PC 도우미 오류', body: b.err, key: 'conn:err:' + b.err.slice(0, 40) + ':' + b.at });
-    IB.down = true; return;
+    if (isIp) notify({ kind: 'conn', urgent: true, tone: 'warn', title: '업비트 허용 IP가 바뀌었어요', body: `PC의 공인 IP가 ${b.ip || '바뀐 주소'}로 바뀌어 업비트가 막았어요. 업비트 Open API 관리에서 키의 허용 IP를 새 IP로 바꿔 주세요. 바꾸면 도우미가 5분 안에 다시 올려요.`, short: `새 IP ${b.ip || '확인 필요'} · 업비트에서 키의 허용 IP를 바꿔 주세요`, ip: b.ip || '', url: 'https://upbit.com/mypage/open_api_management', urlLabel: '업비트 Open API 관리', key: 'conn:ip:' + (b.ip || '') + ':' + b.at });
+    return;
   }
-  if (Date.now() - at > 600000){
-    notify({ kind: 'conn', urgent: true, tone: 'warn', title: '업비트 연결 끊김', body: `${hm} 이후로 잔고가 안 올라와요. PC가 꺼졌거나 도우미 창이 닫혔는지, IP가 바뀌었는지 확인해 주세요.`, short: `${hm} 이후 잔고가 안 올라와요 · PC 도우미를 확인해 주세요`, key: 'conn:stale:' + b.at });
-    IB.down = true;
-  } else if (IB.down){
-    IB.down = false;
-    notify({ kind: 'conn', tone: 'up', title: '업비트 다시 연결됨', body: `${hm}에 잔고가 다시 올라왔어요.`, key: 'conn:ok:' + b.at });
+  const down = inbox.list('conn').find(x => x.key && x.key.startsWith('conn:down:') && !x.back);
+  if (Date.now() - at > CONN_GAP){
+    if (!down) notify({ kind: 'conn', tone: 'warn', title: '업비트 연결 끊김', body: `${hm(at)} 이후로 잔고가 안 올라와요. PC가 꺼졌거나 도우미가 멈췄을 수 있어요. 시세·차트는 PC 없이도 그대로 돼요.`, short: `${hm(at)} 이후 잔고가 안 올라와요 · 시세는 그대로 돼요`, key: 'conn:down:' + b.at, since: at });
+  } else if (down){
+    inbox.patch(down.id, { back: Date.now(), title: '업비트 연결 끊겼다 다시 연결됨', body: `${hm(down.since || down.at)} ~ ${hm(at)} 동안 잔고가 안 올라왔어요. 지금은 다시 연결됐어요.`, tone: 'up' });
   }
 }
-setInterval(ibConn, 60000);
+
 // 업비트 공지: 새로 올라온 공지를 알림함에. 내 코인(보유·관심)의 유의·거래지원 종료 같은 공지는 긴급
 const IB_HOT = /거래지원 종료|유의 종목|거래 유의|입출금 중단|상장폐지|거래정지/;
 function ibNotices(j){
@@ -1625,9 +1665,10 @@ let flowsAt = 0;
 async function loadBal(){
   if (!db.user) return;
   if (Date.now() - flowsAt > 600000){ flowsAt = Date.now(); loadFlows().then(f => { if (f){ S.flows = f; if (isHoldOpen()) renderHold(); if (PH.on && PH.page === 'hold') $('#mHold').innerHTML = mHoldHtml(); } }); }
-  const b = await loadBalances(); if (b && b.err_at !== (S.bal || {}).err_at && b.at === balMark){ S.bal = b; ibConn(); }
+  const b = await loadBalances();
+  if (b && b.at === balMark){ if (b.err_at !== (S.bal || {}).err_at) S.bal = b; ibConn(true); }
   if (!b || b.at === balMark) return;
-  balMark = b.at; S.bal = b; ibConn();
+  balMark = b.at; S.bal = b; ibConn(true);
   recompute(); await reconcileCarry();
   renderStatus(); if (S.tab === 'hold') renderWatch(); if (isHoldOpen()) renderHold(); if (PH.on && PH.page === 'hold') $('#mHold').innerHTML = mHoldHtml();
 }

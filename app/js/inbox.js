@@ -22,6 +22,7 @@ export const inbox = {
     const x = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: Date.now(), read: false, ...it };
     items.unshift(x); save(); emit(x); return x;
   },
+  patch(id, ch){ const x = items.find(y => y.id === id); if (!x) return; Object.assign(x, ch); save(); emit(null); },
   read(id){ const x = items.find(y => y.id === id); if (x && !x.read){ x.read = true; save(); emit(null); } },
   readAll(){ let ch = false; for (const x of items) if (!x.read){ x.read = true; ch = true; } if (ch){ save(); emit(null); } },
   clear(kind = 'all'){ items = kind === 'all' ? [] : items.filter(x => x.kind !== kind); save(); emit(null); },
