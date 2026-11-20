@@ -14,3 +14,17 @@
 
 /icons/*
   Cache-Control: public, max-age=604800
+
+/app/*
+  Cache-Control: no-cache
+
+/app/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+  Service-Worker-Allowed: /app/
+
+/app/manifest.webmanifest
+  Content-Type: application/manifest+json; charset=utf-8
+
+/app/tools/*
+  Content-Type: application/octet-stream
+  Content-Disposition: attachment
