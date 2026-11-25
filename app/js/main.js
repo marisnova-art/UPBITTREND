@@ -585,12 +585,12 @@ function netBar(info){
   const st = upbit.netStats(), via = st.via === 'proxy' ? '중계 서버 경유' : '업비트 직접';
   const head = info.kind === 'boot' ? `업비트 시세 연결 안 됨 · 30초마다 다시 시도 (${info.n}번째)` : '실시간 시세 끊김 · 10초마다 현재가를 따로 받는 중';
   el.innerHTML = `<div class="nb-h"><i></i><span>${head}</span><button type="button" class="pill sm" data-net-retry>지금 다시</button></div>`
-    + (NET.open ? `<div class="nb-d">오류: ${esc(info.msg || '-')} · ${via} · 요청 ${st.requests}회 · 제한(429) ${st.rateHits}회 · ${new Date().toLocaleTimeString('ko-KR', { hour12: false })}</div>` : `<div class="nb-d muted">누르면 자세한 오류를 보여 줘요</div>`);
+    + (NET.open ? `<div class="nb-d">오류: ${esc(info.msg || '-')} · ${via} · 요청 ${st.requests}회 · 제한(429/418) ${st.rateHits}회${st.blockUntil > Date.now() ? ` · 업비트 차단 ${new Date(st.blockUntil).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}까지 중계 서버로 받는 중` : ''} · 대기 ${upbit.queueLen()}건 · ${new Date().toLocaleTimeString('ko-KR', { hour12: false })}</div>` : `<div class="nb-d muted">누르면 자세한 오류를 보여 줘요</div>`);
 }
 async function netPoll(force){
   if (!S.instruments.length || NET.pollBusy) return;
-  NET.pollBusy = true;
-  try { const qs = await upbit.getQuotes(); for (const q of qs){ const old = S.quotes.get(q.market); S.quotes.set(q.market, old ? { ...old, ...q } : q); } NET.pollAt = Date.now(); if (NET.info && NET.info.kind === 'ws'){ NET.info.msg = '실시간 연결(웹소켓) 안 됨 · 현재가는 받는 중'; netBar(NET.info); } if (PH.on) mRender(); else renderWatch(); }
+  NET.pollBusy = true; NET.pollAt = Date.now();   // 시도한 시각 (실패해도 10초는 쉼 · 전에는 실패하면 미니 창이 1초마다 다시 요청해서 제한을 더 키웠음)
+  try { const qs = await upbit.getQuotes(); for (const q of qs){ const old = S.quotes.get(q.market); S.quotes.set(q.market, old ? { ...old, ...q } : q); } NET.pollOkAt = Date.now(); if (NET.info && NET.info.kind === 'ws'){ NET.info.msg = '실시간 연결(웹소켓) 안 됨 · 현재가는 받는 중'; netBar(NET.info); } if (PH.on) mRender(); else renderWatch(); }
   catch(e){ if (NET.info) { NET.info.msg = e.message; netBar(NET.info); } }
   finally { NET.pollBusy = false; }
 }
@@ -1425,7 +1425,7 @@ function miniItems(c){
 }
 initMini({
   items: miniItems,
-  tickAge: () => Date.now() - Math.max(S.tickAt || 0, NET.pollAt || 0),
+  tickAge: () => Date.now() - Math.max(S.tickAt || 0, NET.pollOkAt || 0),
   refresh(){ if (Date.now() - (NET.pollAt || 0) > 10000) netPoll(true); },
   summary(){ if (S.acct !== 'paper' && !db.user) return null; const H = holdData(); if (!H.pos.length) return { text: '보유 없음', tone: 'mut' }; return { text: `${signWon(H.pnl)} · ${fmtPct(H.pct)}`, tone: H.pnl > 0 ? 'up' : H.pnl < 0 ? 'dn' : 'mut' }; },
   open(m){ try { window.focus(); } catch(e){} if (S.byMarket.has(m)){ setView('trade'); select(m); } },
@@ -2099,6 +2099,7 @@ function scanLabel(){
 function autoScan(force){
   if (S.scanning || document.hidden) return;
   if (Date.now() - (S.resumeAt || 0) < 30000) return;   // 화면 복귀 직후에는 시세부터 (스캔은 다음 차례에)
+  if (PH.on) return;   // 폰은 전체 자동 스캔 안 함 (같은 와이파이의 PC와 합쳐 업비트 요청 제한을 넘기던 원인). 폰 메뉴의 '전체 스캔'은 그대로
   if (!force && S.results.size > 50 && Date.now() - (LS.get(SCAN_KEY, 0) || 0) < SCAN_EVERY - 5000) return;
   toggleScan(true);
 }

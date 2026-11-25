@@ -1,7 +1,7 @@
 // QUANTERA 설정. 분석 기준값은 기존 업비트트랜드와 같은 값을 씁니다.
 export const CONFIG = {
   appName: 'QUANTERA',
-  api: { base: 'https://api.upbit.com/v1', proxyBase: '/api/upbit', mode: 'auto', minGapMs: 130, maxGapMs: 1600, timeoutMs: 10000, retries: 4 },
+  api: { base: 'https://api.upbit.com/v1', proxyBase: '/api/upbit', mode: 'auto', minGapMs: 170, maxGapMs: 1600, timeoutMs: 8000, retries: 3 },
   ws: { url: 'wss://api.upbit.com/websocket/v1', reconnectMs: 3000 },
   candles: { daily: 400, weekly: 104, monthly: 60 }, // 일봉 400개: 바닥 반등(1년 고점) 판단과 검증용
   minBars: { daily: 130, weekly: 40, monthly: 12 },
