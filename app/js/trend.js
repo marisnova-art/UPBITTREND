@@ -2,7 +2,8 @@
 // 서버(/api/trend)가 만들어 Supabase에 저장해 둔 것을 받아 보여 줌. 로그인 필요.
 import { esc, fmtPrice, fmtPct, fmtKrwShort, toneOf, LS } from './util.js';
 
-const cache = { news: null, daily: null, weekly: null }, at = { news: 0, daily: 0, weekly: 0 }, busy = {};
+// 일간 동향은 이 기기에 마지막 것을 남겨 둠 → 앱을 열자마자 홈 카드가 제자리에 그려져 화면이 밀리지 않음
+const cache = { news: null, daily: LS.get('quantera:trDaily', null), weekly: null }, at = { news: 0, daily: 0, weekly: 0 }, busy = {};
 let tokenFn = async () => '';
 export function initTrend(getToken){ tokenFn = getToken; }
 
@@ -18,6 +19,7 @@ export async function loadTrend(kind, force = false){
       const j = await res.json().catch(() => ({ error: 'bad', message: '응답을 읽지 못했어요.' }));
       if (!res.ok) return cache[kind] ? { ...cache[kind], warn: j.message } : j;
       cache[kind] = j; at[kind] = Date.now();
+      if (kind === 'daily') try { LS.set('quantera:trDaily', j); } catch(e){}
       return j;
     } catch (e) { return cache[kind] || { error: 'net', message: '트렌드를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.' }; }
     finally { busy[kind] = null; }
@@ -84,7 +86,12 @@ export function reportHtml(kind, j, pickDay){
 }
 // 폰 홈 카드: 오늘의 동향 한 줄 + 숫자
 export function homeCardHtml(j){
-  const r = j && j.reports && j.reports[0]; if (!r) return '';
+  const r = j && j.reports && j.reports[0];
+  if (!r){
+    if (j && j.error) return '';
+    // 불러오는 동안 같은 크기의 빈 카드로 자리를 잡아 둠 (늦게 끼어들며 아래 카드를 밀어내던 것 방지)
+    return `<button class="m-trend sk" data-go="trend"><div class="m-sec-h"><span class="m-h">오늘의 동향</span><span class="grow"></span><span class="muted">불러오는 중</span></div><div class="mt-k"><span class="muted">오름 · 내림 · BTC</span></div><div class="mt-t muted">&nbsp;</div></button>`;
+  }
   const S = r.stats || {};
   const first = String(r.text || '').split('\n').map(x => x.trim()).filter(x => x && !/^(■|#|\*\*)/.test(x))[0] || '';
   return `<button class="m-trend" data-go="trend"><div class="m-sec-h"><span class="m-h">오늘의 동향</span><span class="grow"></span><span class="muted">트렌드 ›</span></div>

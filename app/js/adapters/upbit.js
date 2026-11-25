@@ -9,7 +9,7 @@ export const EXCHANGE = 'upbit';
 export const toSymbol = market => `${EXCHANGE}:${market}`;
 export const toMarket = symbol => symbol.includes(':') ? symbol.split(':')[1] : symbol;
 
-const net = { via: 'direct', gap: CONFIG.api.minGapMs, lastAt: 0, lastPrioAt: 0, okStreak: 0, rateHits: 0, requests: 0 };
+const net = { proxyAt: 0, via: 'direct', gap: CONFIG.api.minGapMs, lastAt: 0, lastPrioAt: 0, okStreak: 0, rateHits: 0, requests: 0 };
 export const netStats = () => ({ ...net });
 export const netReset = () => { net.via = CONFIG.api.mode === 'proxy' && canProxy() ? 'proxy' : 'direct'; net.gap = CONFIG.api.minGapMs; };   // 다시 시도할 때 직접 → 중계 순서로 처음부터
 
@@ -29,6 +29,8 @@ async function rateWait(prio){
 // 직접 호출 → 실패(CORS 등) 시 같은 도메인 프록시(/api/upbit)로 자동 전환. 429는 간격을 넓혀 재시도.
 export async function api(path, { prio = false } = {}){
   let lastErr, switched = false;
+  // 잠깐의 오류로 중계 서버로 넘어갔으면 1분 뒤 다시 업비트 직접으로 (중계 서버는 여러 사람이 같이 써서 제한에 자주 걸림)
+  if (net.via === 'proxy' && net.proxyAt && CONFIG.api.mode !== 'proxy' && Date.now() - net.proxyAt > 60000){ net.via = 'direct'; net.proxyAt = 0; }
   for (let attempt = 0; attempt <= CONFIG.api.retries; attempt++){
     await rateWait(prio);
     const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), CONFIG.api.timeoutMs);
@@ -45,7 +47,7 @@ export async function api(path, { prio = false } = {}){
       }
       if (!res.ok){
         lastErr = new Error('HTTP ' + res.status);
-        if (net.via === 'direct' && canProxy() && !switched && (res.status >= 500 || res.status === 403 || res.status === 451)){ switched = true; net.via = 'proxy'; attempt--; continue; }   // 업비트가 이 기기에 오류를 주면 중계 서버로 한 번 더
+        if (net.via === 'direct' && canProxy() && !switched && (res.status >= 500 || res.status === 403 || res.status === 451)){ switched = true; net.via = 'proxy'; net.proxyAt = Date.now(); attempt--; continue; }   // 업비트가 이 기기에 오류를 주면 중계 서버로 한 번 더
         if (res.status >= 400 && res.status < 500) break;
         await sleep(600 * (attempt + 1)); continue;
       }
@@ -56,7 +58,7 @@ export async function api(path, { prio = false } = {}){
       return json;
     }catch(e){
       clearTimeout(to);
-      if (e.name !== 'AbortError' && net.via === 'direct' && canProxy()){ net.via = 'proxy'; attempt--; continue; }
+      if (e.name !== 'AbortError' && net.via === 'direct' && canProxy() && navigator.onLine !== false && !switched){ switched = true; net.via = 'proxy'; net.proxyAt = Date.now(); attempt--; continue; }
       lastErr = e.name === 'AbortError' ? new Error('응답 시간 초과') : new Error('네트워크 오류');
       await sleep(700 * (attempt + 1));
     }
@@ -93,11 +95,11 @@ const mapTicker = t => ({
 });
 export async function getQuotes(markets){
   if (!markets){
-    try { return (await api('/ticker/all?quote_currencies=KRW')).map(mapTicker); } catch(e){ /* 아래로 */ }
+    try { return (await api('/ticker/all?quote_currencies=KRW', { prio: true })).map(mapTicker); } catch(e){ /* 아래로 */ }
     markets = (await listInstruments()).map(i => i.market);
   }
   let out = [];
-  for (let i = 0; i < markets.length; i += 100) out = out.concat(await api('/ticker?markets=' + markets.slice(i, i + 100).join(',')));
+  for (let i = 0; i < markets.length; i += 100) out = out.concat(await api('/ticker?markets=' + markets.slice(i, i + 100).join(','), { prio: true }));
   return out.map(mapTicker);
 }
 
@@ -159,7 +161,7 @@ export async function getTrades(market, count = 50){
 // ---------- 실시간 (WebSocket). 연결이 끊기면 자동 재연결.
 // handlers: { ticker(q), orderbook(ob), trade(t), status(state) }
 export function stream(markets, handlers = {}){
-  let ws = null, closed = false, timer = null, subs = { ticker: [...markets], orderbook: [], trade: [] };
+  let ws = null, closed = false, timer = null, lastMsg = 0, dog = null, subs = { ticker: [...markets], orderbook: [], trade: [] };
   const setStatus = s => handlers.status && handlers.status(s);
   const send = () => {
     if (!ws || ws.readyState !== 1) return;
@@ -174,8 +176,10 @@ export function stream(markets, handlers = {}){
     setStatus('connecting');
     try { ws = new WebSocket(CONFIG.ws.url); } catch(e){ return retry(); }
     ws.binaryType = 'arraybuffer';
-    ws.onopen = () => { setStatus('live'); send(); };
+    lastMsg = Date.now();
+    ws.onopen = () => { lastMsg = Date.now(); setStatus('live'); send(); };
     ws.onmessage = async ev => {
+      lastMsg = Date.now();
       try{
         const text = typeof ev.data === 'string' ? ev.data : new TextDecoder().decode(ev.data);
         const d = JSON.parse(text);
@@ -184,15 +188,22 @@ export function stream(markets, handlers = {}){
         else if (d.type === 'trade' && handlers.trade) handlers.trade({ market: d.code, price: d.trade_price, size: d.trade_volume, side: d.ask_bid === 'BID' ? 'buy' : 'sell', ts: d.trade_timestamp });
       }catch(e){ /* 잘못된 메시지는 무시 */ }
     };
-    ws.onclose = () => { if (!closed){ setStatus('reconnecting'); retry(); } };
+    const me = ws;
+    ws.onclose = () => { if (!closed && ws === me){ setStatus('reconnecting'); retry(); } };
     ws.onerror = () => { try { ws.close(); } catch(e){} };
   };
   const retry = () => { clearTimeout(timer); timer = setTimeout(open, CONFIG.ws.reconnectMs); };
+  // 새로 연결: 폰 잠금·PC 절전 뒤에는 연결이 '살아 있는 척' 조용히 죽어 있는 경우가 많아서, 버리고 바로 새로 엶
+  const kick = () => { if (closed) return; clearTimeout(timer); const old = ws; ws = null; if (old){ old.onclose = old.onmessage = old.onerror = null; try { old.close(); } catch(e){} } setStatus('reconnecting'); open(); };
+  // 감시: 전체 종목 시세는 1초에도 여러 번 오는데, 8초 넘게 아무것도 안 오면 끊긴 것으로 보고 새로 연결
+  dog = setInterval(() => { if (closed || !ws) return; if (ws.readyState === 1 && Date.now() - lastMsg > 8000) kick(); else if (ws.readyState === 0 && Date.now() - lastMsg > 10000) kick(); }, 2000);
   open();
   return {
     // 선택 종목이 바뀌면 호가·체결 구독만 바꿉니다(시세는 전체 유지)
     focus(market){ subs.orderbook = market ? [market] : []; subs.trade = market ? [market] : []; send(); },
     setTickers(list){ subs.ticker = [...list]; send(); },
-    close(){ closed = true; clearTimeout(timer); try { ws && ws.close(); } catch(e){} setStatus('off'); }
+    kick,
+    idle: () => Date.now() - lastMsg,
+    close(){ closed = true; clearTimeout(timer); clearInterval(dog); try { ws && ws.close(); } catch(e){} setStatus('off'); }
   };
 }
