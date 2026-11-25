@@ -18,19 +18,34 @@ if (CONFIG.api.mode === 'proxy' && canProxy()) net.via = 'proxy';
 
 // 모든 요청은 최소 간격을 예약하고 실행 (업비트 초당 10회 제한 아래로 유지)
 // prio: 지금 보는 차트처럼 바로 필요한 요청은 스캔이 예약해 둔 줄을 기다리지 않음 (간격만 지킴)
-async function rateWait(prio){
-  const now = performance.now();
-  if (prio){ const t = Math.max(net.lastPrioAt + net.gap, now); net.lastPrioAt = t; if (t > now) await sleep(t - now); return; }
-  const t = Math.max(net.lastAt + net.gap, now);
-  net.lastAt = t;
-  if (t > now) await sleep(t - now);
+// 한 줄 대기열: 모든 요청이 같은 간격을 지킴. prio(차트·현재가)는 줄 앞쪽에 서지만 간격은 똑같이 지킴
+// (전에는 prio가 따로 간격을 세서 스캔과 합치면 초당 15회 가까이 → 업비트가 429/418로 IP를 막았음)
+const Q = []; let pumping = false;
+function rateWait(prio){
+  return new Promise(res => {
+    if (prio){ const i = Q.findIndex(x => !x.p); Q.splice(i < 0 ? Q.length : i, 0, { p: true, res }); }
+    else Q.push({ p: false, res });
+    pump();
+  });
 }
+async function pump(){
+  if (pumping) return; pumping = true;
+  try {
+    while (Q.length){
+      // 스캔 같은 일반 요청은 초당 4회 이하로 (같은 와이파이의 다른 기기·차트 몫을 남겨 둠). prio는 초당 약 6회
+      const wait = net.lastAt + (Q[0].p ? net.gap : Math.max(net.gap, 250)) - performance.now();
+      if (wait > 0) await sleep(wait);
+      const it = Q.shift(); net.lastAt = performance.now(); it.res();
+    }
+  } finally { pumping = false; }
+}
+export const queueLen = () => Q.length;
 
 // 직접 호출 → 실패(CORS 등) 시 같은 도메인 프록시(/api/upbit)로 자동 전환. 429는 간격을 넓혀 재시도.
 export async function api(path, { prio = false } = {}){
   let lastErr, switched = false;
   // 잠깐의 오류로 중계 서버로 넘어갔으면 1분 뒤 다시 업비트 직접으로 (중계 서버는 여러 사람이 같이 써서 제한에 자주 걸림)
-  if (net.via === 'proxy' && net.proxyAt && CONFIG.api.mode !== 'proxy' && Date.now() - net.proxyAt > 60000){ net.via = 'direct'; net.proxyAt = 0; }
+  if (net.via === 'proxy' && net.proxyAt && CONFIG.api.mode !== 'proxy' && Date.now() > Math.max(net.proxyAt + 60000, net.blockUntil || 0)){ net.via = 'direct'; net.proxyAt = 0; }
   for (let attempt = 0; attempt <= CONFIG.api.retries; attempt++){
     await rateWait(prio);
     const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), CONFIG.api.timeoutMs);
@@ -39,10 +54,21 @@ export async function api(path, { prio = false } = {}){
       const url = (net.via === 'proxy' ? CONFIG.api.proxyBase : CONFIG.api.base) + path;
       const res = await fetch(url, { signal: ctrl.signal, headers: { accept: 'application/json' } });
       clearTimeout(to);
+      // 418: 제한을 여러 번 넘겨 업비트가 이 IP를 잠시 막음 (수 분~수십 분). 막힌 동안은 중계 서버(다른 IP)로 받음
+      if (res.status === 418){
+        net.rateHits++; net.blocks = (net.blocks || 0) + 1; net.okStreak = 0;
+        net.blockUntil = Date.now() + Math.min(30, 5 * net.blocks) * 60000;
+        net.gap = Math.min(CONFIG.api.maxGapMs, Math.max(net.gap * 2, 400));
+        lastErr = new Error('업비트가 잠시 막음(418) · 요청이 너무 많았어요');
+        if (net.via === 'direct' && canProxy()){ net.via = 'proxy'; net.proxyAt = Date.now(); attempt--; continue; }
+        await sleep(3000); continue;
+      }
       if (res.status === 429){
         net.rateHits++; net.okStreak = 0;
         net.gap = Math.min(CONFIG.api.maxGapMs, Math.round(net.gap * 1.6));
         lastErr = new Error('요청 제한(429)');
+        // 같은 요청이 두 번 연속 429면 이 IP(집 와이파이 = PC·폰 공용)가 꽉 찬 것 → 2분 동안 중계 서버로
+        if (attempt >= 1 && net.via === 'direct' && canProxy()){ net.via = 'proxy'; net.proxyAt = Date.now(); net.blockUntil = Math.max(net.blockUntil || 0, Date.now() + 120000); attempt--; continue; }
         await sleep(1000 + attempt * 800); continue;
       }
       if (!res.ok){
@@ -52,7 +78,7 @@ export async function api(path, { prio = false } = {}){
         await sleep(600 * (attempt + 1)); continue;
       }
       const rem = res.headers.get('Remaining-Req');
-      if (rem){ const m = /sec=(\d+)/.exec(rem); if (m && +m[1] <= 1) await sleep(900); }
+      if (rem){ const m = /sec=(\d+)/.exec(rem); if (m && +m[1] <= 2){ net.gap = Math.min(CONFIG.api.maxGapMs, Math.max(net.gap, 250)); if (+m[1] <= 1) await sleep(600); } }   // 남은 횟수가 적으면 간격을 넓힘
       const json = await res.json();
       if (++net.okStreak > 40 && net.gap > CONFIG.api.minGapMs){ net.gap = Math.max(CONFIG.api.minGapMs, Math.round(net.gap * 0.9)); net.okStreak = 0; }
       return json;
@@ -68,7 +94,7 @@ export async function api(path, { prio = false } = {}){
 
 // ---------- 종목 목록 (원화 마켓 전체, 신규 상장 포함)
 export async function listInstruments(){
-  const list = await api('/market/all?is_details=true');
+  const list = await api('/market/all?is_details=true', { prio: true });
   return list.filter(x => x.market && x.market.startsWith('KRW-')).map(x => {
     const ev = x.market_event || {};
     const caution = ev.caution ? Object.entries(ev.caution).filter(([, v]) => v).map(([k]) => k) : [];
