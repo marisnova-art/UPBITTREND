@@ -5,7 +5,7 @@
 //      /api/upbit/candles/minutes/5?market=KRW-BTC&count=100   (보유 종목 5분봉)
 //      /api/upbit/orderbook?markets=KRW-BTC                     (보유 종목 호가)
 
-const ALLOWED = /^(market\/all|ticker|ticker\/all|orderbook|candles\/(days|weeks|months)|candles\/minutes\/(1|3|5|10|15|30|60|240))$/;
+const ALLOWED = /^(market\/all|ticker|ticker\/all|orderbook|trades\/ticks|candles\/(days|weeks|months)|candles\/minutes\/(1|3|5|10|15|30|60|240))$/;
 
 // 엣지 캐시 시간(초): 같은 요청은 캐시로 응답해 업비트 요청 제한(429)을 줄입니다.
 // 호가·분봉·현재가는 실시간이라 캐시하지 않거나 아주 짧게만 둡니다.
@@ -13,7 +13,7 @@ function cacheTtl(path) {
   if (path === 'candles/months' || path === 'candles/weeks') return 3600;
   if (path === 'candles/days') return 300;
   if (path === 'market/all') return 3600;
-  if (path === 'orderbook') return 0;
+  if (path === 'orderbook' || path === 'trades/ticks') return 0;
   if (path.startsWith('candles/minutes/')) return 5;
   return 3; // ticker
 }
