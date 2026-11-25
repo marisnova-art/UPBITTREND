@@ -70,6 +70,8 @@ async function boot(){
   // 다른 기기에서 한 모의 거래를 앱으로 돌아올 때 맞춤
   document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState !== 'visible' || !db.user) return;
+    await new Promise(r => setTimeout(r, 1500));   // 시세 재연결이 먼저
+    if (document.visibilityState !== 'visible') return;
     resetPrefsCache(); reloadTrades();
     const pr = await paperRemote.load(); if (!pr) return;
     paper.merge(pr.state, pr.trades); recompute(); renderStatus(); renderOrderForm(); if (isOrdersOpen()) renderOrders(); renderJournal();
@@ -134,6 +136,7 @@ async function onAuth(user){
 // ---------------------------------------------------------------- 실시간
 let rafPending = false;
 function onTick(q){
+  S.tickAt = Date.now();
   S.quotes.set(q.market, q);
   surge.push(q); dump.push(q);
   paper.tick(upbit.toSymbol(q.market), q.price);
@@ -550,11 +553,26 @@ function renderSurgeBadges(){
   }
 }
 // ---------------------------------------------------------------- 업비트 시세 연결 표시
-// boot: 처음 시세를 못 받음 → 30초마다 재시도 · ws: 실시간이 45초 넘게 끊김 → 10초마다 현재가를 따로 받아 채움
+// boot: 처음 시세를 못 받음 → 30초마다 재시도 · ws: 실시간이 15초 넘게 끊김 → 10초마다 현재가를 따로 받아 채움
 const NET = { info: null, wake: null, open: false, wsDownAt: 0, pollAt: 0 };
 function netWait(ms){ return new Promise(r => { const t = setTimeout(done, ms); function done(){ clearTimeout(t); NET.wake = null; r(); } NET.wake = done; }); }
 addEventListener('online', () => NET.wake && NET.wake());
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && NET.wake) NET.wake(); });
+// 화면 복귀(폰 잠금 해제·PC 절전 해제·탭 전환): 실시간 연결을 새로 열고 현재가부터 먼저 받음. 무거운 스캔은 30초 뒤로 미룸.
+NET.hiddenAt = 0; S.resumeAt = 0;
+function resume(why){
+  if (!S.stream) return;
+  S.resumeAt = Date.now();
+  S.stream.kick();
+  netPoll(true);
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden'){ NET.hiddenAt = Date.now(); return; }
+  if (NET.hiddenAt && Date.now() - NET.hiddenAt > 3000) resume('visible');
+  NET.hiddenAt = 0;
+});
+addEventListener('online', () => resume('online'));
+addEventListener('pageshow', e => { if (e.persisted) resume('pageshow'); });
 function netBar(info){
   NET.info = info;
   let el = document.getElementById('netBar');
@@ -580,7 +598,7 @@ setInterval(() => {
   if (!S.instruments.length || document.visibilityState !== 'visible' || (NET.info && NET.info.kind === 'boot')) return;
   if (S.wsState === 'live'){ NET.wsDownAt = 0; if (NET.info && NET.info.kind === 'ws') netBar(null); return; }
   if (!NET.wsDownAt){ NET.wsDownAt = Date.now(); return; }
-  if (Date.now() - NET.wsDownAt < 45000) return;
+  if (Date.now() - NET.wsDownAt < 15000) return;
   if (!NET.info) netBar({ kind: 'ws', msg: '실시간 연결(웹소켓)이 ' + Math.round((Date.now() - NET.wsDownAt) / 1000) + '초째 안 돼요' });
   if (Date.now() - NET.pollAt > 10000) netPoll();
 }, 5000);
@@ -738,8 +756,10 @@ function patchWatchPrices(){
 async function select(market, { noRecent = false } = {}){
   if (unseen.has(market) || unseenDump.has(market)) ackSurge(market);
   if (!S.byMarket.has(market)) market = 'KRW-BTC';
-  if (S.sel !== market) OF.price = OF.amount = OF.qty = OF.sellPct = '';
-  S.sel = market; LS.set('quantera:sel', market);
+  const coinChanged = S.sel !== market;
+  if (coinChanged){ OF.price = OF.amount = OF.qty = OF.sellPct = ''; OF.err = ''; OF.side = 'buy'; }
+  S.sel = market;
+  if (coinChanged && OF.strategy !== 'manual') applyStrategy();   // 가이드·바닥·급등 방식은 새 종목 기준으로 다시 계산 LS.set('quantera:sel', market);
   if (!noRecent){ addRecent(market); if (S.tab === 'recent' && !S.search) renderWatch(); }
   for (const el of $$('.wl-row')) el.classList.toggle('sel', el.dataset.m === market);
   S.stream && S.stream.focus(market);
@@ -1091,7 +1111,7 @@ function sellPreview(pos){
   const cur = priceOf(upbit.toSymbol(S.sel));
   const p = OF.type === 'market' ? cur : num(OF.price), q = num(OF.qty);
   if (!(p > 0) || !(q > 0) || !pos) return '<div><span>가격과 수량을 넣으면 예상 손익이 보여요.</span></div>';
-  const net = q * p * (1 - FEE_RATE) - pos.avg * q, pct = (p / pos.avg - 1) * 100;
+  const net = q * p * (1 - FEE_RATE) - pos.avg * q, pct = net / (pos.avg * q) * 100;   // 평단에 산 수수료 포함, 팔 때 수수료 뺌 → 금액과 % 부호 같음
   return `<div><span>받을 금액</span><b class="mono">${won(q * p * (1 - FEE_RATE))}원</b></div><div><span>예상 손익 (평단 대비 ${fmtPct(pct)})</span><b class="${toneOf(net)}">${net > 0 ? '+' : ''}${won(net)}원</b></div>`;
 }
 // 매도 % 단계: 2% 단위로 10%까지, 그 뒤 5% 단위 (−/+ 버튼, 키보드 ↑↓)
@@ -1113,7 +1133,7 @@ function patchLive(root){
     else if (k === 'gap') txt = fmtPct((p / c - 1) * 100);
     else if (k === 'cur') txt = fmtPrice(c);
     else if (k === 'val') txt = won(c * q);
-    else if (k === 'pnl'){ const pnl = c * q * (1 - FEE_RATE) - +el.dataset.c; txt = `${pnl > 0 ? '+' : ''}${won(pnl)} (${fmtPct((c / p - 1) * 100)})`; tone = toneOf(pnl); }
+    else if (k === 'pnl'){ const cost = +el.dataset.c, pnl = c * q * (1 - FEE_RATE) - cost; txt = `${pnl > 0 ? '+' : ''}${won(pnl)} (${fmtPct(cost ? pnl / cost * 100 : 0)})`; tone = toneOf(pnl); }
     if (el.textContent !== txt){ el.textContent = txt; if (tone != null) el.className = 'mono ' + tone; }
   }
 }
@@ -1124,7 +1144,7 @@ function capBadges(list){
   return list.slice(0, 2).join('') + `<span class="badge more" data-tip="${esc(rest)}">+${list.length - 2}</span>`;
 }
 function holdHtml(pos, cur){
-  return `보유 <b>${pos.qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</b> · 평단 <b>${fmtPrice(pos.avg)}</b><br>평가손익 <b class="${toneOf(pos.pnl)}">${pos.pnl != null ? (pos.pnl > 0 ? '+' : '') + won(pos.pnl) + '원' : '-'}</b> <span class="${toneOf(pos.pnl)}">${cur ? fmtPct((cur / pos.avg - 1) * 100) : ''}</span>`;
+  return `보유 <b>${pos.qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</b> · 평단 <b>${fmtPrice(pos.avg)}</b><br>평가손익 <b class="${toneOf(pos.pnl)}">${pos.pnl != null ? (pos.pnl > 0 ? '+' : '') + won(pos.pnl) + '원' : '-'}</b> <span class="${toneOf(pos.pnl)}">${pos.pnl != null && pos.cost ? fmtPct(pos.pnl / pos.cost * 100) : ''}</span>`;
 }
 // 손익 숫자 실시간 갱신 (1초): 입력 중인 칸은 건드리지 않고 숫자만 바꿈
 let liveN = 0;
@@ -1292,7 +1312,7 @@ function renderOrders(){
       ${br.map(b => { const c = priceOf(b.symbol), pl = c ? (c / b.entry - 1) * 100 : null; return `<tr><td class="l">${esc(nm(b.symbol))}</td><td class="mono">${(+b.qty).toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</td><td class="mono">${fmtPrice(b.entry)}</td><td class="mono up">${b.tp ? fmtPrice(b.tp) + ` (+${b.tpPct}%)` : '-'}</td><td class="mono down">${b.sl ? fmtPrice(b.sl) + ` (-${b.slPct}%)` : '없음'}</td><td class="mono ${toneOf(pl)}" data-lv="vs" data-s="${b.symbol}" data-p="${b.entry}">${pl != null ? fmtPct(pl) : ''}</td><td class="l">${esc(b.strategy || '')}</td><td><button data-bset="${b.id}">수정</button><button data-boff="${b.id}">끄기</button></td></tr>`; }).join('')}</tbody></table>` : '<div class="empty" style="padding:12px">걸려 있는 예약 매도가 없어요.</div>'}
     <div class="ot-title">모의 보유 <span class="muted">${pos.length}종목</span></div>
     ${pos.length ? `<table class="ot"><thead><tr><th class="l">종목</th><th>수량</th><th>평단</th><th>현재가</th><th>평가금액</th><th>평가손익</th><th></th></tr></thead><tbody>
-      ${pos.map(p => { const c = priceOf(p.symbol), has = br.some(b => b.symbol === p.symbol); return `<tr><td class="l">${esc(nm(p.symbol))}</td><td class="mono">${p.qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</td><td class="mono">${fmtPrice(p.avg)}</td><td class="mono" data-lv="cur" data-s="${p.symbol}">${fmtPrice(c)}</td><td class="mono" data-lv="val" data-s="${p.symbol}" data-q="${p.qty}">${p.value != null ? won(p.value) : ''}</td><td class="mono ${toneOf(p.pnl)}" data-lv="pnl" data-s="${p.symbol}" data-q="${p.qty}" data-c="${p.cost}" data-p="${p.avg}">${p.pnl != null ? (p.pnl > 0 ? '+' : '') + won(p.pnl) + ' (' + fmtPct((c / p.avg - 1) * 100) + ')' : ''}</td><td>${has ? '' : `<button data-badd="${p.symbol}">예약 걸기</button>`}<button data-sell="${p.symbol}">팔기</button></td></tr>`; }).join('')}</tbody></table>` : '<div class="empty" style="padding:12px">모의 보유 종목이 없어요.</div>'}
+      ${pos.map(p => { const c = priceOf(p.symbol), has = br.some(b => b.symbol === p.symbol); return `<tr><td class="l">${esc(nm(p.symbol))}</td><td class="mono">${p.qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}</td><td class="mono">${fmtPrice(p.avg)}</td><td class="mono" data-lv="cur" data-s="${p.symbol}">${fmtPrice(c)}</td><td class="mono" data-lv="val" data-s="${p.symbol}" data-q="${p.qty}">${p.value != null ? won(p.value) : ''}</td><td class="mono ${toneOf(p.pnl)}" data-lv="pnl" data-s="${p.symbol}" data-q="${p.qty}" data-c="${p.cost}" data-p="${p.avg}">${p.pnl != null ? (p.pnl > 0 ? '+' : '') + won(p.pnl) + ' (' + fmtPct(p.cost ? p.pnl / p.cost * 100 : 0) + ')' : ''}</td><td>${has ? '' : `<button data-badd="${p.symbol}">예약 걸기</button>`}<button data-sell="${p.symbol}">팔기</button></td></tr>`; }).join('')}</tbody></table>` : '<div class="empty" style="padding:12px">모의 보유 종목이 없어요.</div>'}
     <div class="ot-title">모의 계좌 <span class="grow"></span><button class="pill accent" data-deposit>자금 추가</button><button class="pill" data-reset>새로 시작</button></div>
     <table class="ot acct"><tbody><tr><td class="l">시작 금액</td><td class="mono">${won(st.start)}원</td><td class="l">현금</td><td class="mono">${won(st.cash)}원</td><td class="l">총자산</td><td class="mono">${won(total)}원</td><td class="l">수익률</td><td class="mono ${toneOf(total - st.start)}">${fmtPct((total / st.start - 1) * 100)}</td></tr></tbody></table>
     ${(st.deposits || []).length ? `<div class="note" style="padding:4px 8px">추가한 자금: ${st.deposits.map(d => `${new Date(d.at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })} +${won(d.amount)}원`).join(' · ')} · 시작 금액에 더해서 수익률은 그대로예요.</div>` : ''}
@@ -1370,10 +1390,10 @@ function inboxHtml(){
   const f = IB.f, list = inbox.list(f);
   const cnt = k => { const n = inbox.list(k).length; return n && k !== 'all' ? ` <span class="muted">${n}</span>` : ''; };
   let perm = '';
-  if ('Notification' in window && Notification.permission === 'default') perm = `<div class="ib-perm"><span>긴급 알림(연결 끊김·IP 바뀜·매도 예약가 도달)을 휴대폰·윈도우 알림으로도 받을까요?</span><button class="pill accent sm" data-ibperm>알림 허용</button></div>`;
+  if ('Notification' in window && Notification.permission === 'default') perm = `<div class="ib-perm"><span>긴급 알림(IP 바뀜·매도 예약가 도달·보유 코인 급락)을 휴대폰·윈도우 알림으로도 받을까요?</span><button class="pill accent sm" data-ibperm>알림 허용</button></div>`;
   else if ('Notification' in window && Notification.permission === 'denied') perm = `<div class="ib-perm muted">브라우저에서 알림이 꺼져 있어요. 주소창 왼쪽 자물쇠 → 알림 허용을 켜면 긴급 알림이 휴대폰·윈도우 알림으로도 와요.</div>`;
   const bar = `<div class="ib-bar">${INBOX_KINDS.map(([k, l]) => `<button class="qchip${f === k ? ' on' : ''}" data-ibf="${k}">${l}${cnt(k)}</button>`).join('')}<span class="grow"></span>${list.length ? `<button class="pill ghost sm" data-ibclr>${f === 'all' ? '모두' : IB_KO[f]} 지우기</button>` : ''}</div>`;
-  if (!list.length) return bar + perm + `<div class="ib-none">${f === 'all' ? '아직 알림이 없어요.<br>업비트 연결 끊김 · IP 바뀜 · 업비트 공지 · 매도 예약가 도달 · 급등락 · 내 코인 뉴스가 생기면 여기에 쌓여요.' : `${IB_KO[f]} 알림이 없어요.`}</div>`;
+  if (!list.length) return bar + perm + `<div class="ib-none">${f === 'all' ? '아직 알림이 없어요.<br>IP 바뀜 · 업비트 공지 · 매도 예약가 도달 · 급등락 · 내 코인 뉴스가 생기면 여기에 쌓여요.' : `${IB_KO[f]} 알림이 없어요.`}</div>`;
   return bar + perm + `<ul class="ib-list">${list.slice(0, 150).map(x => {
     const acts = [
       x.ip ? `<button class="pill accent sm" data-ibcopy="${esc(x.ip)}">새 IP ${esc(x.ip)} 복사</button>` : '',
@@ -1405,6 +1425,8 @@ function miniItems(c){
 }
 initMini({
   items: miniItems,
+  tickAge: () => Date.now() - Math.max(S.tickAt || 0, NET.pollAt || 0),
+  refresh(){ if (Date.now() - (NET.pollAt || 0) > 10000) netPoll(true); },
   summary(){ if (S.acct !== 'paper' && !db.user) return null; const H = holdData(); if (!H.pos.length) return { text: '보유 없음', tone: 'mut' }; return { text: `${signWon(H.pnl)} · ${fmtPct(H.pct)}`, tone: H.pnl > 0 ? 'up' : H.pnl < 0 ? 'dn' : 'mut' }; },
   open(m){ try { window.focus(); } catch(e){} if (S.byMarket.has(m)){ setView('trade'); select(m); } },
   ack(id){ inbox.read(id); },
@@ -1425,7 +1447,7 @@ function miniCfgHtml(){
       <div class="mini-row"><span class="muted">넘어가는 간격</span>${seg('iv', [[3, '3초'], [5, '5초'], [10, '10초'], [30, '30초']])}</div>
       <div class="mini-row"><span class="muted">돌아가는 시간대</span>${seg('mode', [['all', '항상'], ['range', '정한 시간만']])}${c.mode === 'range' ? `<span class="mini-time"><input type="time" data-mtime="t1" value="${esc(c.t1)}"> 부터 <input type="time" data-mtime="t2" value="${esc(c.t2)}"> 까지</span>` : ''}</div>
       <div class="mini-row"><span class="muted">긴급 알림이 오면</span><span class="mini-chips">${chk('blink', '창 테두리 깜빡임')}${chk('sound', '소리')}${chk('win', '윈도우 알림도')}</span></div>
-      <div class="mini-row"><span class="muted"></span><span class="mini-chips"><button type="button" class="pill accent sm" data-mini-open>${miniOpen() ? '미니 창 닫기' : '미니 창 열기'}</button><span class="muted">${miniSupported() ? '시간 밖에는 "쉬는 중"으로 바뀌고 긴급 알림만 와요. 긴급 = 매도 예약가 도달 · 업비트 연결 끊김 · IP 바뀜 · 보유 코인 급락.' : '이 브라우저는 미니 창을 못 열어요. PC 크롬·엣지 최신 버전에서 열어 주세요.'}</span></span></div>
+      <div class="mini-row"><span class="muted"></span><span class="mini-chips"><button type="button" class="pill accent sm" data-mini-open>${miniOpen() ? '미니 창 닫기' : '미니 창 열기'}</button><span class="muted">${miniSupported() ? '시간 밖에는 "쉬는 중"으로 바뀌고 긴급 알림만 와요. 긴급 = 매도 예약가 도달 · IP 바뀜 · 보유 코인 급락.' : '이 브라우저는 미니 창을 못 열어요. PC 크롬·엣지 최신 버전에서 열어 주세요.'}</span></span></div>
     </div>`;
 }
 function renderMiniCfg(){ const el = $('#miniCfg'); if (el) el.innerHTML = miniCfgHtml(); }
@@ -1438,9 +1460,8 @@ document.addEventListener('change', e => {
   const t = e.target.closest('[data-mtime]'); if (t){ const c = miniCfg(); c[t.dataset.mtime] = t.value; saveMiniCfg(c); }
 });
 
-// 업비트 연결: PC 도우미가 30초마다 올리는 잔고가 20분 넘게 안 오면 알림 하나(일반). 다시 오면 같은 줄에 "다시 연결됨"으로 고침.
+// 업비트 연결: 도우미가 올린 오류 중 IP 바뀜만 긴급 알림. PC 꺼짐은 알림 없이 내 자산 카드에만 표시.
 // 판단은 방금 새로 읽은 잔고로만 (화면이 뒤에 있는 동안은 잔고를 안 읽어서, 전에는 PC가 멀쩡해도 "끊김"이 쌓였음)
-const CONN_GAP = 20 * 60000;
 function ibConn(fresh){
   if (!fresh || !db.user || !S.bal || !S.bal.at) return;
   const b = S.bal, at = Date.parse(b.at), hm = t => new Date(t).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -1449,12 +1470,9 @@ function ibConn(fresh){
     if (isIp) notify({ kind: 'conn', urgent: true, tone: 'warn', title: '업비트 허용 IP가 바뀌었어요', body: `PC의 공인 IP가 ${b.ip || '바뀐 주소'}로 바뀌어 업비트가 막았어요. 업비트 Open API 관리에서 키의 허용 IP를 새 IP로 바꿔 주세요. 바꾸면 도우미가 5분 안에 다시 올려요.`, short: `새 IP ${b.ip || '확인 필요'} · 업비트에서 키의 허용 IP를 바꿔 주세요`, ip: b.ip || '', url: 'https://upbit.com/mypage/open_api_management', urlLabel: '업비트 Open API 관리', key: 'conn:ip:' + (b.ip || '') + ':' + b.at });
     return;
   }
-  const down = inbox.list('conn').find(x => x.key && x.key.startsWith('conn:down:') && !x.back);
-  if (Date.now() - at > CONN_GAP){
-    if (!down) notify({ kind: 'conn', tone: 'warn', title: '업비트 연결 끊김', body: `${hm(at)} 이후로 잔고가 안 올라와요. PC가 꺼졌거나 도우미가 멈췄을 수 있어요. 시세·차트는 PC 없이도 그대로 돼요.`, short: `${hm(at)} 이후 잔고가 안 올라와요 · 시세는 그대로 돼요`, key: 'conn:down:' + b.at, since: at });
-  } else if (down){
-    inbox.patch(down.id, { back: Date.now(), title: '업비트 연결 끊겼다 다시 연결됨', body: `${hm(down.since || down.at)} ~ ${hm(at)} 동안 잔고가 안 올라왔어요. 지금은 다시 연결됐어요.`, tone: 'up' });
-  }
+  // PC가 꺼져 잔고가 안 오는 건 정상이라 알림을 쌓지 않음. 내 자산 카드에만 "PC 꺼짐 · 마지막 시각"으로 조용히 표시.
+  // 예전 버전이 남긴 '끊김' 알림은 읽음으로 정리
+  for (const x of inbox.list('conn')) if (x.key && x.key.startsWith('conn:down:') && !x.read) inbox.read(x.id);
 }
 
 // 업비트 공지: 새로 올라온 공지를 알림함에. 내 코인(보유·관심)의 유의·거래지원 종료 같은 공지는 긴급
@@ -1818,7 +1836,7 @@ function openRec(tab = 'rec', { edit = null, price = null, side = null } = {}){
   if (side) OF.side = side;
   renderAddSide();
   if (!recOpen()) $('#addDlg').showModal();
-  setRecTab(tab); setRecMarket(m);
+  setRecMarket(m); setRecTab(tab);   // 종목 먼저 (전에는 모의 탭이 지난번 창의 종목으로 되돌려서 이전 주문 정보가 보였음)
 }
 function openAddDlg(edit){ openRec('rec', { edit }); }
 function setRecTab(t){
@@ -1980,7 +1998,7 @@ function renderStatus(){
   const isP = S.acct === 'paper';
   $('#sbAcct').textContent = isP ? '모의' : '실제 기록'; $('#sbAcct').className = 'sb-acct' + (isP ? '' : ' real');
   if (isP){
-    const total = paper.state.cash + val, ret = (total / paper.state.start - 1) * 100;
+    const total = paper.state.cash + val * (1 - FEE_RATE), ret = (total / paper.state.start - 1) * 100;
     $('#sbAssets').innerHTML = `${won(total)} <span class="${toneOf(ret)}">(${fmtPct(ret)})</span>`;
   } else $('#sbAssets').textContent = val ? won(val) : '-';
   $('#sbPnl').textContent = pos.length ? (pnl > 0 ? '+' : '') + won(pnl) : '-';
@@ -2080,6 +2098,7 @@ function scanLabel(){
 }
 function autoScan(force){
   if (S.scanning || document.hidden) return;
+  if (Date.now() - (S.resumeAt || 0) < 30000) return;   // 화면 복귀 직후에는 시세부터 (스캔은 다음 차례에)
   if (!force && S.results.size > 50 && Date.now() - (LS.get(SCAN_KEY, 0) || 0) < SCAN_EVERY - 5000) return;
   toggleScan(true);
 }
@@ -2671,7 +2690,7 @@ function mConnHtml(){
   const t = Date.parse(S.bal.at), age = Date.now() - t, d = new Date(t);
   const hm = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
   const when = new Date().toDateString() === d.toDateString() ? hm : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
-  return age > 600000 ? `<div class="hx-c bad"><i></i>업비트 연결 끊김 · ${when} 마지막</div>` : `<div class="hx-c"><i></i>업비트 연결 · ${when}</div>`;
+  return age > 600000 ? `<div class="hx-c idle"><i></i>PC 꺼짐 · 잔고는 ${when} 기준 · 시세는 정상</div>` : `<div class="hx-c"><i></i>업비트 연결 · ${when}</div>`;
 }
 // 시장 레이더: 급등·급락·국프를 카드 하나로. 0개여도 지금 시장 상태(1위·꼴찌·국프 평균)를 보여 줌
 function radarIdle(){
@@ -2728,7 +2747,7 @@ function mRender(force){
   const pg = PH.page;
   if (pg === 'home'){
     $('#mHero').innerHTML = mHeroHtml();
-    $('#mTrendCard').innerHTML = homeCardHtml(trendCached('daily'));
+    $('#mTrendCard').innerHTML = homeCardHtml(trendCached('daily') || (db.user ? null : { error: 'login' }));
     const hs = $$('#mSurgeSec .m-hs').map(x => x.scrollLeft);
     $('#mSurgeSec').innerHTML = mRadarHtml();
     $$('#mSurgeSec .m-hs').forEach((x, k) => { if (hs[k]) x.scrollLeft = hs[k]; });
@@ -2879,7 +2898,7 @@ async function trTick(){
     notify({ kind: 'news', title: '내 코인 뉴스', body: msg, m: c0 ? 'KRW-' + c0 : undefined, url: n.u || n.url || undefined, urlLabel: '기사 열기', tone: n.m === '+' ? 'up' : n.m === '-' ? 'down' : '', key: 'news:' + n.id }, { sys: true });
   }
   if (trVisible() && TRD.tab === 'news') trPaint();
-  if (PH.on){ await loadTrend('daily'); if (PH.page === 'home') $('#mTrendCard').innerHTML = homeCardHtml(trendCached('daily')); }
+  if (PH.on){ const j = await loadTrend('daily'); if (PH.page === 'home') $('#mTrendCard').innerHTML = homeCardHtml(trendCached('daily') || j); }
 }
 setTimeout(trTick, 8000); setInterval(trTick, 10 * 60000);
 

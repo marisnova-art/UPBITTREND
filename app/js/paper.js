@@ -9,6 +9,8 @@ import { FEE_RATE } from './analysis/ledger.js';
 
 const KEY = 'quantera:paper', TKEY = 'quantera:paperTrades';
 export const PAPER_START = 10_000_000;
+// 기기 표시(영문 2자): 폰과 PC가 같은 번호(P-0005)를 따로 만들면 서버에 하나만 저장되던 문제 방지 → P-0005-KX
+const DEV = (() => { let d = LS.get('quantera:dev', ''); if (!/^[A-Z]{2}$/.test(d)){ const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; d = A[Math.random() * 24 | 0] + A[Math.random() * 24 | 0]; LS.set('quantera:dev', d); } return d; })();
 
 const fresh = () => ({ v: 1, start: PAPER_START, cash: PAPER_START, seq: 0, orders: [], brackets: [], lastCheck: Date.now(), halted: false });
 
@@ -19,7 +21,7 @@ export function createPaper({ priceOf, remote }){
   let lastLocal = 0;
   const save = () => { st.savedAt = Date.now(); lastLocal = st.savedAt; LS.set(KEY, st); LS.set(TKEY, trades); remote && remote.saveState(st); ev.emit('change'); };
   const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  const nextNo = () => { st.seq = Math.max(st.seq, ...trades.map(t => +String(t.trade_no || '').replace(/\D/g, '') || 0)) + 1; return 'P-' + String(st.seq).padStart(4, '0'); };
+  const nextNo = () => { st.seq = Math.max(st.seq, ...trades.map(t => +String(t.trade_no || '').replace(/\D/g, '') || 0)) + 1; return 'P-' + String(st.seq).padStart(4, '0') + '-' + DEV; };
 
   // ---------- 보유 (체결 기록에서 계산)
   const active = () => st.resetAt ? trades.filter(t => Date.parse(t.executed_at) >= st.resetAt) : trades;  // 초기화 이후 기록만
@@ -167,8 +169,10 @@ export function createPaper({ priceOf, remote }){
       if (remoteState && (remoteState.savedAt || 0) > (st.savedAt || 0)) st = remoteState;
       // 체결 기록은 양쪽을 합침 (서버에 없는 이 기기 기록은 올림 — 로그인 전에 한 모의 거래도 포함)
       const rt = remoteTrades || [];
-      const have = new Set(rt.map(t => t.trade_no));
-      const local = trades.filter(t => !have.has(t.trade_no));
+      // 같은 번호라도 다른 기기에서 다른 거래일 수 있어서 번호+시각+방향으로 비교 (전에는 번호만 봐서 한쪽 거래가 사라지고 손익이 어긋났음)
+      const k = t => `${t.trade_no}|${Date.parse(t.executed_at)}|${t.side}`;
+      const have = new Set(rt.map(k));
+      const local = trades.filter(t => !have.has(k(t)));
       trades = [...rt.map(t => ({ ...t, synced: true })), ...local].sort((a, b) => Date.parse(a.executed_at) - Date.parse(b.executed_at));
       for (const t of local) remote && remote.addTrade(t).then(ok => { if (ok){ t.synced = true; LS.set(TKEY, trades); } });
       save();

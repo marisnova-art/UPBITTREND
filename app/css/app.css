@@ -1463,6 +1463,7 @@ body.no-paper .paper-only{display:none!important}
   .hx-c i{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(198,244,50,.15)}
   .hx-c.bad i{background:#F5A524;box-shadow:0 0 0 3px rgba(245,165,36,.18)}
   .hx-c.bad{color:#F5A524}
+  .hx-c.idle i{background:#5a5a63;box-shadow:none}
   .m-menu{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
 }
 
@@ -1534,3 +1535,11 @@ body.no-paper .paper-only{display:none!important}
 #netBar .nb-h i{flex:none;width:8px;height:8px;border-radius:50%;background:#F5A524;animation:nbp 1.2s infinite}
 @keyframes nbp{50%{opacity:.25}}
 #netBar .nb-d{overflow-wrap:anywhere;color:var(--muted)}
+/* 오늘의 동향: 불러오는 동안 자리 잡기 */
+.m-trend.sk .mt-t{min-height:1.4em}
+/* 모의 주문 칸: 창(dialog) 기본 입력칸 모양(높이 40·아래 여백 8)이 덮어써서 숫자가 위로 떠 보이던 것 정리 */
+.order .field input{height:100%;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;min-width:0;line-height:normal}
+.order .field select{height:100%;margin:0}
+.order .stepper{height:100%}
+.order .stepper .sign{width:10px;text-align:center}
+.order .hold-box{line-height:1.6}
